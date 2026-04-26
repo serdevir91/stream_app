@@ -30,7 +30,9 @@ class SourcesRepository {
   Future<void> toggleSource(String id, bool isEnabled) async {
     final model = _box.get(id);
     if (model != null) {
-      final updatedModel = SourceModel.fromEntity(model.copyWith(isEnabled: isEnabled));
+      final updatedModel = SourceModel.fromEntity(
+        model.copyWith(isEnabled: isEnabled),
+      );
       await _box.put(id, updatedModel);
     }
   }

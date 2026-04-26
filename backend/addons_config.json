@@ -1,0 +1,12 @@
+{
+  "enabled": {
+    "jellyfin": false,
+    "archiveorg": false,
+    "webtorrent": false,
+    "imdb.ratings.local": true,
+    "builtin.vidsrc": true
+  },
+  "custom_urls": {
+    "imdb.ratings.local": "https://stremio-ratings-v3-production.up.railway.app/manifest.json"
+  }
+}

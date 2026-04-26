@@ -35,4 +35,6 @@ class SourcesNotifier extends Notifier<List<Source>> {
   }
 }
 
-final sourcesProvider = NotifierProvider<SourcesNotifier, List<Source>>(SourcesNotifier.new);
+final sourcesProvider = NotifierProvider<SourcesNotifier, List<Source>>(
+  SourcesNotifier.new,
+);

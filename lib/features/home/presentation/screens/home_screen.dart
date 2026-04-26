@@ -1,38 +1,72 @@
 import 'package:flutter/material.dart';
-import '../../../search/presentation/screens/search_screen.dart';
-import '../../../sources/presentation/screens/sources_screen.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-class HomeScreen extends StatefulWidget {
+import '../../../../core/i18n/app_text.dart';
+import '../../../search/presentation/screens/search_screen.dart';
+import '../../../library/presentation/screens/library_screen.dart';
+import '../../../addons/presentation/screens/addon_manager_screen.dart';
+import '../../../sources/presentation/screens/sources_screen.dart';
+import '../../../settings/presentation/screens/settings_screen.dart';
+import 'home_content.dart';
+
+class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
 
   @override
-  State<HomeScreen> createState() => _HomeScreenState();
+  ConsumerState<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends ConsumerState<HomeScreen> {
   int _currentIndex = 0;
 
   final List<Widget> _screens = [
-    const Center(child: Text('Home Content')), // Future Home
+    const HomeContent(),
     const SearchScreen(),
-    const SourcesScreen(), // Future Sources Manager
+    const LibraryScreen(),
+    const AddonManagerScreen(),
+    const SourcesScreen(),
+    const SettingsScreen(),
   ];
 
   @override
   Widget build(BuildContext context) {
+    final text = ref.watch(appTextProvider);
+
     return Scaffold(
       body: _screens[_currentIndex],
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _currentIndex,
+        type: BottomNavigationBarType.fixed,
         onTap: (index) {
           setState(() {
             _currentIndex = index;
           });
         },
-        items: const [
-          BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Home'),
-          BottomNavigationBarItem(icon: Icon(Icons.search), label: 'Search'),
-          BottomNavigationBarItem(icon: Icon(Icons.settings), label: 'Sources'),
+        items: [
+          BottomNavigationBarItem(
+            icon: const Icon(Icons.home),
+            label: text.t('home'),
+          ),
+          BottomNavigationBarItem(
+            icon: const Icon(Icons.search),
+            label: text.t('search'),
+          ),
+          BottomNavigationBarItem(
+            icon: const Icon(Icons.library_books),
+            label: text.t('library'),
+          ),
+          BottomNavigationBarItem(
+            icon: const Icon(Icons.extension),
+            label: text.t('addons'),
+          ),
+          BottomNavigationBarItem(
+            icon: const Icon(Icons.storage_outlined),
+            label: text.t('sources'),
+          ),
+          BottomNavigationBarItem(
+            icon: const Icon(Icons.settings),
+            label: text.t('settings'),
+          ),
         ],
       ),
     );
