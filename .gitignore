@@ -59,3 +59,4 @@ backend/__pycache__/
 # Local planning docs (do not publish)
 AGENT.md
 TASKS.md
+output/

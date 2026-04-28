@@ -27,6 +27,29 @@ watch history, a personal library, and runtime app settings.
 - FastAPI + Uvicorn + httpx
 - VLC/WebView-based playback depending on stream type/platform
 
+## Download
+
+### Android
+
+| Architecture | File | Size |
+|-------------|------|------|
+| ARM64 (most devices) | [app-arm64-v8a-release.apk](https://github.com/serdevir91/stream_app/releases/download/v1.0.1/app-arm64-v8a-release.apk) | ~61 MB |
+| ARM 32-bit (older devices) | [app-armeabi-v7a-release.apk](https://github.com/serdevir91/stream_app/releases/download/v1.0.1/app-armeabi-v7a-release.apk) | ~54 MB |
+| x86_64 (emulators) | [app-x86_64-release.apk](https://github.com/serdevir91/stream_app/releases/download/v1.0.1/app-x86_64-release.apk) | ~68 MB |
+
+> Most modern phones use ARM64. If unsure, download the ARM64 version.
+
+### Windows
+
+| Type | File | Size |
+|------|------|------|
+| Installer (recommended) | [StreamApp-Setup-v1.0.1.exe](https://github.com/serdevir91/stream_app/releases/download/v1.0.1/StreamApp-Setup-v1.0.1.exe) | ~11 MB |
+| Portable | [stream_app-windows-x64.zip](https://github.com/serdevir91/stream_app/releases/download/v1.0.1/stream_app-windows-x64.zip) | ~13 MB |
+
+**Installer**: Run the `.exe` wizard. Creates Start Menu shortcuts and an uninstaller.
+
+**Portable**: Extract the ZIP and run `stream_app.exe` directly. No installation needed.
+
 ## Project Structure
 
 ```text
@@ -114,16 +137,36 @@ Output:
 build/windows/x64/runner/Release/stream_app.exe
 ```
 
+### Windows Installer
+
+Requires [Inno Setup 6](https://jrsoftware.org/isinfo.php).
+
+```bash
+# Build Windows release first
+flutter build windows --release
+
+# Compile installer
+"C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer\stream_app.iss
+```
+
+Output: `output/StreamApp-Setup-v1.0.1.exe`
+
 ### Android APK
 
 ```bash
+# Single APK (all architectures, ~180MB)
 flutter build apk --release
+
+# Split APKs by architecture (recommended, ~55-70MB each)
+flutter build apk --split-per-abi --release
 ```
 
 Output:
 
 ```text
-build/app/outputs/flutter-apk/app-release.apk
+build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
+build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk
+build/app/outputs/flutter-apk/app-x86_64-release.apk
 ```
 
 ## QA
@@ -139,6 +182,22 @@ flutter test
 
 - If Windows build fails with file lock errors, close any running `stream_app.exe` and build again.
 - If add-ons appear empty on first use, refresh once from the Add-ons screen.
+
+## Built-in Add-ons
+
+StreamApp ships with the following source add-ons:
+
+| Add-on | Type | Description |
+|--------|------|-------------|
+| **VidSrc** | Embed | Multi-source embed provider |
+| **TwoEmbed** | Embed | 2embed.cc streaming source |
+| **SuperEmbed** | Embed | SuperEmbed embed provider |
+| **VidLink** | Embed | VidLink embed provider |
+| **EmbedSU** | Embed | Embed.su streaming source |
+| **FlixHQ** | API/Scraping | FlixHQ movie/series source |
+| **Archive.org** | API | Internet Archive content (disabled by default) |
+| **WebTorrent** | API | WebTorrent-based streaming (disabled by default) |
+| **Jellyfin** | API | Jellyfin media server integration (disabled by default) |
 
 ## Add-on Creation Guide
 
@@ -208,3 +267,30 @@ Your backend must expose:
 - Choose one:
   - `Install from URL` and provide addon manifest URL.
   - `Install from file (.json)` and choose local manifest file.
+
+## Changelog
+
+### v1.0.1
+
+- **New Add-ons**: SuperEmbed, TwoEmbed, VidLink, EmbedSU, FlixHQ
+- **Redesigned Home Screen**: Featured content slider with trending movies/series
+- **Improved Search**: Genre filtering, pagination, better results layout
+- **Enhanced Player**: Better subtitle support, improved controls, VLC/WebView switching
+- **Redesigned Settings**: Organized sections, better UX
+- **Addon Manager**: Improved install/remove flow, URL and file-based install
+- **Watch History**: Better progress tracking, resume playback
+- **i18n**: Updated English and Turkish translations
+- **Bug Fixes**: Various stability improvements
+
+### v1.0.0
+
+- Initial release
+- TMDB integration for movie/series discovery
+- Basic add-on system with VidSrc
+- VLC and WebView playback
+- Personal library and watch history
+- Windows and Android support
+
+## License
+
+MIT License
