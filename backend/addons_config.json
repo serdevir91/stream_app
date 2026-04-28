@@ -1,12 +1,17 @@
 {
   "enabled": {
-    "jellyfin": false,
-    "archiveorg": false,
-    "webtorrent": false,
-    "imdb.ratings.local": true,
-    "builtin.vidsrc": true
+    "builtin.vidsrc": true,
+    "builtin.twoembed": true,
+    "builtin.superembed": true,
+    "builtin.vidlink": true,
+    "builtin.embedsu": true,
+    "builtin.flixhq": true
   },
-  "custom_urls": {
-    "imdb.ratings.local": "https://stremio-ratings-v3-production.up.railway.app/manifest.json"
-  }
+  "custom_urls": {},
+  "custom_manifests": {},
+  "removed_builtins": [
+    "webtorrent",
+    "archiveorg",
+    "jellyfin"
+  ]
 }

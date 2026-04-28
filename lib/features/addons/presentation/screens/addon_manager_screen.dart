@@ -1,4 +1,7 @@
+import 'dart:convert';
+
 import 'package:dio/dio.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -79,10 +82,32 @@ class AddonsNotifier extends Notifier<List<AddonInfo>> {
   }
 
   Future<String?> installAddon(String url) async {
+    if (url.trim().isEmpty) {
+      return 'URL is empty';
+    }
+    return _installWithPayload({'url': url});
+  }
+
+  Future<String?> installAddonManifest(
+    Map<String, dynamic> manifest, {
+    String sourceLabel = 'local-manifest.json',
+  }) async {
+    return _installWithPayload(
+      {'manifest': manifest, 'source_label': sourceLabel},
+      useManifestEndpoint: true,
+    );
+  }
+
+  Future<String?> _installWithPayload(
+    Map<String, dynamic> payload, {
+    bool useManifestEndpoint = false,
+  }) async {
     try {
       final response = await _dio.post(
-        '/api/addons/install',
-        data: {'url': url},
+        useManifestEndpoint
+            ? '/api/addons/install/manifest'
+            : '/api/addons/install',
+        data: payload,
       );
       if (response.statusCode == 200 && response.data['success']) {
         await fetchAddons();
@@ -207,7 +232,7 @@ class AddonManagerScreen extends ConsumerWidget {
               ),
             )
           : ListView.builder(
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 80),
               itemCount: addons.length,
               itemBuilder: (context, index) {
                 final addon = addons[index];
@@ -324,60 +349,58 @@ class AddonManagerScreen extends ConsumerWidget {
                             ),
                           ],
                         ),
-                        if (!addon.isBuiltin) ...[
-                          const SizedBox(height: 8),
-                          Align(
-                            alignment: Alignment.centerRight,
-                            child: TextButton.icon(
-                              onPressed: () async {
-                                final confirm = await showDialog<bool>(
-                                  context: context,
-                                  builder: (ctx) => AlertDialog(
-                                    title: Text(text.t('remove_addon')),
-                                    content: Text(
-                                      '"${addon.name}" ${text.t('remove_addon_confirm')}',
+                        const SizedBox(height: 8),
+                        Align(
+                          alignment: Alignment.centerRight,
+                          child: TextButton.icon(
+                            onPressed: () async {
+                              final confirm = await showDialog<bool>(
+                                context: context,
+                                builder: (ctx) => AlertDialog(
+                                  title: Text(text.t('remove_addon')),
+                                  content: Text(
+                                    '"${addon.name}" ${text.t('remove_addon_confirm')}',
+                                  ),
+                                  actions: [
+                                    TextButton(
+                                      onPressed: () =>
+                                          Navigator.pop(ctx, false),
+                                      child: Text(text.t('cancel')),
                                     ),
-                                    actions: [
-                                      TextButton(
-                                        onPressed: () =>
-                                            Navigator.pop(ctx, false),
-                                        child: Text(text.t('cancel')),
-                                      ),
-                                      TextButton(
-                                        onPressed: () =>
-                                            Navigator.pop(ctx, true),
-                                        child: Text(
-                                          text.t('remove_button'),
-                                          style: const TextStyle(
-                                            color: Colors.red,
-                                          ),
+                                    TextButton(
+                                      onPressed: () =>
+                                          Navigator.pop(ctx, true),
+                                      child: Text(
+                                        text.t('remove_button'),
+                                        style: const TextStyle(
+                                          color: Colors.red,
                                         ),
                                       ),
-                                    ],
-                                  ),
-                                );
-                                if (confirm == true) {
-                                  ref
-                                      .read(addonsProvider.notifier)
-                                      .removeAddon(addon.id);
-                                }
-                              },
-                              icon: const Icon(
-                                Icons.delete_outline,
-                                color: Colors.redAccent,
-                                size: 18,
-                              ),
-                              label: Text(
-                                text.t('remove_button'),
-                                style: const TextStyle(
-                                  color: Colors.redAccent,
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w600,
+                                    ),
+                                  ],
                                 ),
+                              );
+                              if (confirm == true) {
+                                ref
+                                    .read(addonsProvider.notifier)
+                                    .removeAddon(addon.id);
+                              }
+                            },
+                            icon: const Icon(
+                              Icons.delete_outline,
+                              color: Colors.redAccent,
+                              size: 18,
+                            ),
+                            label: Text(
+                              text.t('remove_button'),
+                              style: const TextStyle(
+                                color: Colors.redAccent,
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
                               ),
                             ),
                           ),
-                        ],
+                        ),
                       ],
                     ),
                   ),
@@ -385,13 +408,120 @@ class AddonManagerScreen extends ConsumerWidget {
               },
             ),
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => _showInstallDialog(context, ref),
+        onPressed: () => _showInstallOptions(context, ref),
         icon: const Icon(Icons.add),
         label: Text(text.t('add_source_addon')),
         backgroundColor: Colors.deepPurple,
         foregroundColor: Colors.white,
       ),
     );
+  }
+
+  void _showInstallOptions(BuildContext context, WidgetRef ref) {
+    showModalBottomSheet<void>(
+      context: context,
+      builder: (sheetContext) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.link),
+                title: const Text('Install from URL'),
+                onTap: () {
+                  Navigator.pop(sheetContext);
+                  _showInstallDialog(context, ref);
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.upload_file),
+                title: const Text('Install from file (.json)'),
+                onTap: () {
+                  Navigator.pop(sheetContext);
+                  _pickAndInstallManifestFile(context, ref);
+                },
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _pickAndInstallManifestFile(
+    BuildContext context,
+    WidgetRef ref,
+  ) async {
+    final result = await FilePicker.platform.pickFiles(
+      allowMultiple: false,
+      type: FileType.custom,
+      allowedExtensions: ['json'],
+      withData: true,
+    );
+    if (result == null || result.files.isEmpty) {
+      return;
+    }
+
+    final file = result.files.first;
+    final bytes = file.bytes;
+    if (bytes == null || bytes.isEmpty) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('File could not be read.', style: TextStyle(fontSize: 13)),
+            backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
+            margin: EdgeInsets.fromLTRB(16, 16, 16, 0),
+            padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            duration: Duration(seconds: 3),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.all(Radius.circular(8))),
+          ),
+        );
+      }
+      return;
+    }
+
+    try {
+      final content = utf8.decode(bytes);
+      final decoded = jsonDecode(content);
+      if (decoded is! Map) {
+        throw const FormatException('Manifest must be a JSON object');
+      }
+      final manifest = Map<String, dynamic>.from(decoded);
+
+      final error = await ref.read(addonsProvider.notifier).installAddonManifest(
+        manifest,
+        sourceLabel: file.name,
+      );
+
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(error == null ? 'OK' : 'Error: $error', style: const TextStyle(fontSize: 13)),
+            backgroundColor: error == null ? Colors.green : Colors.red,
+            behavior: SnackBarBehavior.floating,
+            margin: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            duration: Duration(seconds: error == null ? 2 : 5),
+            shape: const RoundedRectangleBorder(borderRadius: BorderRadius.all(Radius.circular(8))),
+          ),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Manifest parse error: $e', style: const TextStyle(fontSize: 13)),
+            backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
+            margin: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            duration: const Duration(seconds: 5),
+            shape: const RoundedRectangleBorder(borderRadius: BorderRadius.all(Radius.circular(8))),
+          ),
+        );
+      }
+    }
   }
 
   void _showInstallDialog(BuildContext context, WidgetRef ref) {
@@ -441,9 +571,13 @@ class AddonManagerScreen extends ConsumerWidget {
               if (context.mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
-                    content: Text(error == null ? 'OK' : 'Error: $error'),
+                    content: Text(error == null ? 'OK' : 'Error: $error', style: const TextStyle(fontSize: 13)),
                     backgroundColor: error == null ? Colors.green : Colors.red,
+                    behavior: SnackBarBehavior.floating,
+                    margin: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                     duration: Duration(seconds: error == null ? 2 : 5),
+                    shape: const RoundedRectangleBorder(borderRadius: BorderRadius.all(Radius.circular(8))),
                   ),
                 );
               }

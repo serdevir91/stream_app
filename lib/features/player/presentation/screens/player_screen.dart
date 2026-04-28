@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_vlc_player/flutter_vlc_player.dart';
 import 'package:webview_flutter/webview_flutter.dart';
@@ -46,7 +47,7 @@ class PlayerScreen extends ConsumerStatefulWidget {
   ConsumerState<PlayerScreen> createState() => _PlayerScreenState();
 }
 
-class _PlayerScreenState extends ConsumerState<PlayerScreen> {
+class _PlayerScreenState extends ConsumerState<PlayerScreen> with WidgetsBindingObserver {
   VlcPlayerController? _videoPlayerController;
   WebViewController? _embedWebViewController;
   windows_webview.WebviewController? _windowsEmbedController;
@@ -54,7 +55,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
   bool _isDisposed = false;
   bool _isLoading = true;
   String? _errorMessage;
-  String _loadingStatus = 'Video kaynağı aranıyor...';
+  String _loadingStatus = 'Video kaynagi araniyor...';
   bool _initialized = false;
   String? _embedUrl;
   int _embedLoadAttempt = 0;
@@ -63,6 +64,8 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
   Timer? _progressAutosaveTimer;
   final Stopwatch _embedWatchStopwatch = Stopwatch();
   Set<String> _trustedEmbedHosts = const {};
+  bool _showOverlayControls = true;
+  Timer? _overlayControlsTimer;
 
   bool _isSeriesType(String value) {
     final type = value.trim().toLowerCase();
@@ -78,6 +81,27 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _enterFullscreenMode();
+    _armControlsAutoHide();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.detached ||
+        state == AppLifecycleState.hidden) {
+      _stopAllPlayback();
+    }
+  }
+
+  void _stopAllPlayback() {
+    try { _videoPlayerController?.setPlaybackSpeed(0); } catch (_) {}
+    try { _videoPlayerController?.pause(); } catch (_) {}
+    try { _videoPlayerController?.stop(); } catch (_) {}
+    try { _embedWebViewController?.loadRequest(Uri.parse('about:blank')); } catch (_) {}
+    try { _embedWebViewController?.runJavaScript('document.querySelectorAll("video,audio").forEach(e=>{e.pause();e.src=""});'); } catch (_) {}
+    try { _windowsEmbedController?.postWebMessage('{"action":"pause"}'); } catch (_) {}
   }
 
   @override
@@ -95,6 +119,50 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
       } else {
         _fetchStreamAndInitialize();
       }
+    }
+  }
+
+  void _enterFullscreenMode() {
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+    if (!kIsWeb &&
+        (defaultTargetPlatform == TargetPlatform.android ||
+            defaultTargetPlatform == TargetPlatform.iOS)) {
+      SystemChrome.setPreferredOrientations(const [
+        DeviceOrientation.landscapeLeft,
+        DeviceOrientation.landscapeRight,
+      ]);
+    }
+  }
+
+  void _restoreSystemUiMode() {
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+    if (!kIsWeb &&
+        (defaultTargetPlatform == TargetPlatform.android ||
+            defaultTargetPlatform == TargetPlatform.iOS)) {
+      SystemChrome.setPreferredOrientations(DeviceOrientation.values);
+    }
+  }
+
+  void _armControlsAutoHide() {
+    _overlayControlsTimer?.cancel();
+    _overlayControlsTimer = Timer(const Duration(seconds: 4), () {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _showOverlayControls = false;
+      });
+    });
+  }
+
+  void _toggleOverlayControls() {
+    setState(() {
+      _showOverlayControls = !_showOverlayControls;
+    });
+    if (_showOverlayControls) {
+      _armControlsAutoHide();
+    } else {
+      _overlayControlsTimer?.cancel();
     }
   }
 
@@ -132,7 +200,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
 
     if (isDirectLink) {
       setState(() {
-        _loadingStatus = 'Video yükleniyor...';
+        _loadingStatus = 'Video yukleniyor...';
       });
       _videoPlayerController = VlcPlayerController.network(
         streamUrl,
@@ -147,7 +215,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
       _startProgressAutosave();
     } else {
       final localizedUrl = _applyEmbedSubtitleLanguage(streamUrl);
-      // Embed URL — render inside the app with WebView
+      // Embed URL - render inside the app with WebView
       setState(() {
         _embedUrl = localizedUrl;
         _loadingStatus = 'Uygulama ici oynatici hazirlaniyor...';
@@ -158,16 +226,10 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
     }
 
     if (provider != null && provider.isNotEmpty) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Kaynak: $provider'),
-              duration: const Duration(seconds: 2),
-            ),
-          );
-        }
-      });
+      debugPrint('Playing stream from provider: $provider');
+    }
+    if (message != null && message.isNotEmpty) {
+      debugPrint('Player message: $message');
     }
 
     _initPlaybackPosition();
@@ -604,7 +666,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
       );
 
       setState(() {
-        _loadingStatus = 'Sunucuya bağlanılıyor...';
+        _loadingStatus = 'Sunucuya baglaniliyor...';
       });
 
       final response = await dio.get(
@@ -692,7 +754,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
         );
       } else {
         setState(() {
-          _errorMessage = 'Yayın kaynağı bulunamadı (Yerel hata)';
+          _errorMessage = 'Yayin kaynagi bulunamadi (Yerel hata)';
           _isLoading = false;
         });
       }
@@ -832,111 +894,231 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
     _fetchStreamAndInitialize();
   }
 
+  bool get _isTvPlayback => _normalizedMediaType == 'tv';
+
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _overlayControlsTimer?.cancel();
     _progressAutosaveTimer?.cancel();
     _embedWatchStopwatch.stop();
     _isDisposed = true;
-    _saveProgress().then((_) async {
-      if (_videoPlayerController != null) {
-        await _videoPlayerController!.stopRendererScanning();
-        await _videoPlayerController!.dispose();
-      }
-      if (_windowsEmbedController != null) {
-        await _windowsEmbedController!.dispose();
-      }
-    });
+
+    // Immediately stop all playback to prevent background audio.
+    _stopAllPlayback();
+
+    final vlc = _videoPlayerController;
+    final win = _windowsEmbedController;
+    _videoPlayerController = null;
+    _embedWebViewController = null;
+    _windowsEmbedController = null;
+
+    // Dispose controllers synchronously - do NOT wait for saveProgress.
+    if (vlc != null) {
+      try { vlc.stopRendererScanning(); } catch (_) {}
+      try { vlc.dispose(); } catch (_) {}
+    }
+    if (win != null) {
+      try { win.dispose(); } catch (_) {}
+    }
+
+    // Save progress in background (fire and forget).
+    _saveProgress();
+    _restoreSystemUiMode();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.black,
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        title: Text(widget.title),
-        elevation: 0,
-      ),
-      body: Center(
-        child: _isLoading
-            ? Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const CircularProgressIndicator(),
-                  const SizedBox(height: 16),
-                  Text(
-                    _loadingStatus,
-                    style: const TextStyle(color: Colors.white70, fontSize: 14),
-                  ),
-                ],
-              )
-            : _errorMessage != null
-            ? Padding(
-                padding: const EdgeInsets.all(24.0),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const Icon(
-                      Icons.error_outline,
-                      color: Colors.redAccent,
-                      size: 48,
-                    ),
-                    const SizedBox(height: 16),
-                    Text(
-                      _errorMessage!,
-                      style: const TextStyle(
-                        color: Colors.redAccent,
-                        fontSize: 16,
-                      ),
-                      textAlign: TextAlign.center,
-                    ),
-                    const SizedBox(height: 16),
-                    ElevatedButton.icon(
-                      onPressed: _retryCurrentPlayback,
-                      icon: const Icon(Icons.refresh),
-                      label: const Text('Tekrar Dene'),
-                    ),
-                  ],
+    final content = _isLoading
+        ? Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const CircularProgressIndicator(),
+              const SizedBox(height: 16),
+              Text(
+                _loadingStatus,
+                style: const TextStyle(color: Colors.white70, fontSize: 14),
+              ),
+            ],
+          )
+        : _errorMessage != null
+        ? Padding(
+            padding: const EdgeInsets.all(24.0),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Icon(
+                  Icons.error_outline,
+                  color: Colors.redAccent,
+                  size: 48,
                 ),
-              )
-            : !_isDirectLink && _embedUrl != null
-            // Embed (VidSrc) — show info card + open in browser button
-            ? _buildEmbedView()
-            : _videoPlayerController != null
-            ? VlcPlayer(
-                controller: _videoPlayerController!,
-                aspectRatio: 16 / 9,
-                placeholder: const Center(child: CircularProgressIndicator()),
-              )
-            : const SizedBox(),
+                const SizedBox(height: 16),
+                Text(
+                  _errorMessage!,
+                  style: const TextStyle(
+                    color: Colors.redAccent,
+                    fontSize: 16,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 16),
+                ElevatedButton.icon(
+                  onPressed: _retryCurrentPlayback,
+                  icon: const Icon(Icons.refresh),
+                  label: const Text('Tekrar Dene'),
+                ),
+              ],
+            ),
+          )
+        : !_isDirectLink && _embedUrl != null
+        ? _buildEmbedView()
+        : _videoPlayerController != null
+        ? VlcPlayer(
+            controller: _videoPlayerController!,
+            aspectRatio: MediaQuery.of(context).size.aspectRatio,
+            placeholder: const Center(child: CircularProgressIndicator()),
+          )
+        : const SizedBox();
+    final shouldBlockPlaybackSurfacePointer =
+        _showOverlayControls &&
+        !_isLoading &&
+        _errorMessage == null &&
+        ((_isDirectLink && _videoPlayerController != null) ||
+            (!_isDirectLink && _embedUrl != null));
+    final renderedContent = shouldBlockPlaybackSurfacePointer
+        ? AbsorbPointer(absorbing: true, child: content)
+        : content;
+
+    return PopScope(
+      canPop: true,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) {
+          _stopAllPlayback();
+        }
+      },
+      child: Scaffold(
+      backgroundColor: Colors.black,
+      body: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: _toggleOverlayControls,
+        child: Stack(
+          children: [
+            Positioned.fill(child: Center(child: renderedContent)),
+            if (_showOverlayControls) ...[
+              Positioned(
+                top: 0,
+                left: 0,
+                right: 0,
+                child: SafeArea(
+                  bottom: false,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 4,
+                    ),
+                    decoration: const BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [Colors.black87, Colors.transparent],
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        IconButton(
+                          onPressed: () {
+                            _stopAllPlayback();
+                            Navigator.of(context).maybePop();
+                          },
+                          icon: const Icon(Icons.arrow_back, color: Colors.white),
+                        ),
+                        Expanded(
+                          child: Text(
+                            widget.title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w600,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ),
+                        if (_isTvPlayback)
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 4,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.black45,
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Text(
+                              'S${widget.season}:E${widget.episode}',
+                              style: const TextStyle(fontSize: 12),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: 0,
+                child: SafeArea(
+                  top: false,
+                  child: Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: const BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.bottomCenter,
+                        end: Alignment.topCenter,
+                        colors: [Colors.black87, Colors.transparent],
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        if (_videoPlayerController != null)
+                          ValueListenableBuilder<VlcPlayerValue>(
+                            valueListenable: _videoPlayerController!,
+                            builder: (_, value, _) {
+                              final isPlaying = value.isPlaying;
+                              return IconButton(
+                                onPressed: () async {
+                                  final controller = _videoPlayerController;
+                                  if (controller == null) {
+                                    return;
+                                  }
+                                  if (isPlaying) {
+                                    await controller.pause();
+                                  } else {
+                                    await controller.play();
+                                  }
+                                  _armControlsAutoHide();
+                                },
+                                icon: Icon(
+                                  isPlaying
+                                      ? Icons.pause_circle_filled
+                                      : Icons.play_circle_fill,
+                                  size: 44,
+                                ),
+                              );
+                            },
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
       ),
-      floatingActionButton: _videoPlayerController != null
-          ? ValueListenableBuilder<VlcPlayerValue>(
-              valueListenable: _videoPlayerController!,
-              builder: (context, value, _) {
-                final isPlaying = value.isPlaying;
-                return FloatingActionButton(
-                  onPressed: () async {
-                    final controller = _videoPlayerController;
-                    if (controller == null) {
-                      return;
-                    }
-                    if (!value.isInitialized) {
-                      await controller.play();
-                      return;
-                    }
-                    if (isPlaying) {
-                      await controller.pause();
-                    } else {
-                      await controller.play();
-                    }
-                  },
-                  child: Icon(isPlaying ? Icons.pause : Icons.play_arrow),
-                );
-              },
-            )
-          : null,
+    ),
     );
   }
 
@@ -946,21 +1128,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
         return const Center(child: CircularProgressIndicator());
       }
 
-      return Column(
-        children: [
-          Expanded(child: windows_webview.Webview(_windowsEmbedController!)),
-          if (_embedUrl != null)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
-              child: Text(
-                _embedUrl!,
-                style: const TextStyle(color: Colors.white54, fontSize: 11),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-        ],
-      );
+      return windows_webview.Webview(_windowsEmbedController!);
     }
 
     if (_embedWebViewController == null) {
@@ -968,26 +1136,10 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
     }
 
     return Padding(
-      padding: const EdgeInsets.all(12.0),
-      child: Column(
-        children: [
-          Expanded(
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(12),
-              child: WebViewWidget(controller: _embedWebViewController!),
-            ),
-          ),
-          if (_embedUrl != null)
-            Padding(
-              padding: const EdgeInsets.only(top: 8),
-              child: Text(
-                _embedUrl!,
-                style: const TextStyle(color: Colors.white54, fontSize: 11),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-        ],
+      padding: const EdgeInsets.all(8.0),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(10),
+        child: WebViewWidget(controller: _embedWebViewController!),
       ),
     );
   }

@@ -1,8 +1,3 @@
-import 'dart:convert';
-import 'package:dio/dio.dart';
-import 'package:flutter/foundation.dart';
-import '../../features/addons/presentation/screens/addon_manager_screen.dart';
-
 /// Models for the internal backend
 class LocalStreamResult {
   final String url;
@@ -33,12 +28,6 @@ class InternalBackendService {
   static final InternalBackendService _instance = InternalBackendService._internal();
   factory InternalBackendService() => _instance;
   InternalBackendService._internal();
-
-  String? _tmdbToken;
-
-  void setTmdbToken(String? token) {
-    _tmdbToken = token;
-  }
 
   /// Mimics GET /api/addons
   Future<Map<String, dynamic>> getAddons() async {

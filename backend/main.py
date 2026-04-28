@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -10,8 +10,13 @@ from pydantic import BaseModel
 
 from addons.base import BaseAddon
 from addons.archiveorg import ArchiveOrgAddon
+from addons.embedsu import EmbedSUAddon
+from addons.flixhq import FlixHQAddon
 from addons.jellyfin import JellyfinAddon
 from addons.manager import AddonManager, set_tmdb_access_token
+from addons.superembed import SuperEmbedAddon
+from addons.twoembed import TwoEmbedAddon
+from addons.vidlink import VidLinkAddon
 from addons.vidsrc import VidSrcAddon
 from addons.webtorrent import WebTorrentAddon
 
@@ -29,12 +34,18 @@ manager = AddonManager()
 
 def _register_default_addons() -> None:
     """Register default built-in addons on backend startup."""
-    manager.register_builtin(VidSrcAddon())
+    # Embed-based addons (most reliable, TMDB/IMDB ID based)
+    for factory in (VidSrcAddon, TwoEmbedAddon, SuperEmbedAddon, VidLinkAddon, EmbedSUAddon):
+        addon = factory()
+        if not manager.is_builtin_removed(addon.get_manifest().id):
+            manager.register_builtin(addon)
 
-    # Keep other bundled providers available when their dependencies are valid.
-    for factory in (ArchiveOrgAddon, WebTorrentAddon, JellyfinAddon):
+    # API/scraping-based addons (may need working dependencies)
+    for factory in (FlixHQAddon, ArchiveOrgAddon, WebTorrentAddon, JellyfinAddon):
         try:
-            manager.register_builtin(factory())
+            addon = factory()
+            if not manager.is_builtin_removed(addon.get_manifest().id):
+                manager.register_builtin(addon)
         except Exception as exc:
             print(f"[Addon] Builtin registration failed for {factory.__name__}: {exc}")
 
@@ -46,6 +57,13 @@ class InstallAddonRequest(BaseModel):
     """Request payload for addon installation."""
 
     url: str
+
+
+class InstallManifestAddonRequest(BaseModel):
+    """Request payload for local manifest addon installation."""
+
+    manifest: Dict[str, Any]
+    source_label: str = "local-manifest.json"
 
 
 class SetEnabledRequest(BaseModel):
@@ -186,8 +204,9 @@ def _resolve_streams_fast(
         if _addon_supports_type(addon, content_type)
     ]
 
-    # VidSrc is generally the fastest embedded fallback.
-    enabled.sort(key=lambda addon: 0 if addon.get_manifest().id == "builtin.vidsrc" else 1)
+    # Embed-based addons are generally the fastest fallback.
+    embed_ids = {"builtin.vidsrc", "builtin.twoembed", "builtin.superembed", "builtin.vidlink", "builtin.embedsu"}
+    enabled.sort(key=lambda addon: 0 if addon.get_manifest().id in embed_ids else 1)
 
     for addon in enabled:
         addon_streams = _try_addon_streams(addon, query, content_type, season, episode, tmdb_id)
@@ -212,12 +231,23 @@ def install_addon(req: InstallAddonRequest):
     raise HTTPException(status_code=400, detail=error or "Addon veya kaynak eklenemedi.")
 
 
+@app.post("/api/addons/install/manifest")
+def install_manifest_addon(req: InstallManifestAddonRequest):
+    """Install custom addon from local manifest JSON data."""
+    manifest, error = manager.install_from_manifest_data(
+        req.manifest, source_label=req.source_label
+    )
+    if manifest:
+        return {"success": True, "addon": manifest.to_dict()}
+    raise HTTPException(status_code=400, detail=error or "Manifest addon eklenemedi.")
+
+
 @app.post("/api/addons/remove/{addon_id}")
 def remove_addon(addon_id: str):
     """Remove custom addon/source."""
     if manager.remove(addon_id):
         return {"success": True, "message": f"'{addon_id}' kaldırıldı."}
-    raise HTTPException(status_code=400, detail="Bu addon kaldırılamaz (yerleşik) veya bulunamadı.")
+    raise HTTPException(status_code=400, detail="Addon bulunamadı.")
 
 
 @app.post("/api/addons/toggle")

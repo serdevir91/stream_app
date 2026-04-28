@@ -9,6 +9,7 @@ watch history, a personal library, and runtime app settings.
 - Flutter client for Windows/Android (plus default Flutter platform folders).
 - Local FastAPI backend for stream resolution.
 - Add-on manager (install, enable/disable, remove custom add-ons).
+- Add-on manager supports install from URL and local `.json` manifest file.
 - Movie/series detail pages with source resolution and playback.
 - Personal library (save/remove titles).
 - Watch history with progress tracking.
@@ -16,6 +17,9 @@ watch history, a personal library, and runtime app settings.
   - App language (`English`, `Turkce`)
   - Subtitle language
   - TMDB access token (not hardcoded in repository)
+  - Source auto-selection (avoid asking source every play)
+  - Preferred source selection
+  - Source/Add-on management pages
 
 ## Tech Stack
 
@@ -88,6 +92,9 @@ uvicorn main:app --reload --host 127.0.0.1 --port 8000
 
 - Open the **Settings** tab in the app.
 - Set your **TMDB Access Token**.
+- Configure source behavior:
+  - `Auto play best source` enabled: app starts playback directly.
+  - `Preferred Source`: pick a specific add-on, or leave Auto.
 - Save settings.
 
 The token is stored locally (Hive) and synced to backend at runtime.
@@ -132,3 +139,72 @@ flutter test
 
 - If Windows build fails with file lock errors, close any running `stream_app.exe` and build again.
 - If add-ons appear empty on first use, refresh once from the Add-ons screen.
+
+## Add-on Creation Guide
+
+Other users can create and share add-ons by publishing a compatible backend API.
+
+### 1. Required Manifest JSON
+
+Create `manifest.json`:
+
+```json
+{
+  "id": "community.example",
+  "name": "Community Example Addon",
+  "description": "Sample addon for Stream App",
+  "version": "1.0.0",
+  "types": ["movie", "series"],
+  "transportUrl": "https://your-addon-domain.com",
+  "icon": "film"
+}
+```
+
+`transportUrl` is required when installing from a local file.
+
+### 2. Required API Endpoints
+
+Your backend must expose:
+
+- `GET /search?query=<text>&type=movie|series`
+- `GET /stream?id=<contentId>&type=movie|series&season=<n>&episode=<n>`
+
+`/search` response:
+
+```json
+{
+  "results": [
+    {
+      "id": "movie_123",
+      "title": "Example Movie",
+      "type": "movie",
+      "year": "2024",
+      "poster": "https://.../poster.jpg",
+      "description": "Optional"
+    }
+  ]
+}
+```
+
+`/stream` response:
+
+```json
+{
+  "streams": [
+    {
+      "url": "https://.../playlist.m3u8",
+      "title": "Example Stream",
+      "quality": "1080p",
+      "provider": "Example",
+      "is_direct_link": true
+    }
+  ]
+}
+```
+
+### 3. Install in App
+
+- Open `Settings -> Add-ons`.
+- Choose one:
+  - `Install from URL` and provide addon manifest URL.
+  - `Install from file (.json)` and choose local manifest file.

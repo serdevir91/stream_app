@@ -4,8 +4,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/i18n/app_text.dart';
 import '../../../search/presentation/screens/search_screen.dart';
 import '../../../library/presentation/screens/library_screen.dart';
-import '../../../addons/presentation/screens/addon_manager_screen.dart';
-import '../../../sources/presentation/screens/sources_screen.dart';
 import '../../../settings/presentation/screens/settings_screen.dart';
 import 'home_content.dart';
 
@@ -23,8 +21,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     const HomeContent(),
     const SearchScreen(),
     const LibraryScreen(),
-    const AddonManagerScreen(),
-    const SourcesScreen(),
     const SettingsScreen(),
   ];
 
@@ -54,14 +50,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           BottomNavigationBarItem(
             icon: const Icon(Icons.library_books),
             label: text.t('library'),
-          ),
-          BottomNavigationBarItem(
-            icon: const Icon(Icons.extension),
-            label: text.t('addons'),
-          ),
-          BottomNavigationBarItem(
-            icon: const Icon(Icons.storage_outlined),
-            label: text.t('sources'),
           ),
           BottomNavigationBarItem(
             icon: const Icon(Icons.settings),

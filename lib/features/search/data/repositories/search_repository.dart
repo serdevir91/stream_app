@@ -198,6 +198,181 @@ class SearchRepository {
     return [];
   }
 
+  Future<List<MediaItem>> getFeaturedWeeklyHighRated() async {
+    if (!_hasToken) return [];
+    try {
+      final weekly = await _dio.get(
+        'https://api.themoviedb.org/3/trending/all/week',
+        queryParameters: {'language': _tmdbLanguage},
+        options: _tmdbOptions,
+      );
+
+      final weeklyItems = (weekly.data['results'] as List<dynamic>? ?? const [])
+          .whereType<Map>()
+          .map((json) => Map<String, dynamic>.from(json))
+          .where((json) {
+            final mediaType = (json['media_type'] ?? '').toString();
+            return mediaType == 'movie' || mediaType == 'tv';
+          })
+          .map((json) => MediaItem.fromTmdbJson(json))
+          .where((item) => (item.rating ?? 0) >= 7.0)
+          .toList();
+
+      weeklyItems.sort((a, b) {
+        final aRating = a.rating ?? 0;
+        final bRating = b.rating ?? 0;
+        return bRating.compareTo(aRating);
+      });
+
+      if (weeklyItems.length >= 10) {
+        return weeklyItems.take(12).toList();
+      }
+
+      final responses = await Future.wait([
+        _dio.get(
+          'https://api.themoviedb.org/3/discover/movie',
+          queryParameters: {
+            'language': _tmdbLanguage,
+            'sort_by': 'primary_release_date.desc',
+            'vote_average.gte': 7.0,
+            'vote_count.gte': 120,
+            'include_adult': false,
+            'page': 1,
+          },
+          options: _tmdbOptions,
+        ),
+        _dio.get(
+          'https://api.themoviedb.org/3/discover/tv',
+          queryParameters: {
+            'language': _tmdbLanguage,
+            'sort_by': 'first_air_date.desc',
+            'vote_average.gte': 7.0,
+            'vote_count.gte': 80,
+            'include_adult': false,
+            'page': 1,
+          },
+          options: _tmdbOptions,
+        ),
+      ]);
+
+      final movies = (responses[0].data['results'] as List<dynamic>? ?? const [])
+          .map((json) => MediaItem.fromTmdbJson({...json, 'media_type': 'movie'}))
+          .toList();
+      final series = (responses[1].data['results'] as List<dynamic>? ?? const [])
+          .map((json) => MediaItem.fromTmdbJson({...json, 'media_type': 'tv'}))
+          .toList();
+
+      final merged = [...weeklyItems, ...movies, ...series];
+      final seen = <String>{};
+      final deduped = <MediaItem>[];
+      for (final item in merged) {
+        final key = '${item.type}:${item.id}';
+        if (seen.add(key)) {
+          deduped.add(item);
+        }
+      }
+      deduped.sort((a, b) {
+        final aRating = a.rating ?? 0;
+        final bRating = b.rating ?? 0;
+        return bRating.compareTo(aRating);
+      });
+      return deduped.take(12).toList();
+    } catch (e) {
+      developer.log(
+        'Featured weekly fetch failed: $e',
+        name: 'SearchRepository',
+      );
+    }
+    return [];
+  }
+
+  Future<List<MediaItem>> getRecommendedForMedia(
+    String mediaId, {
+    required String mediaType,
+  }) async {
+    if (!_hasToken || mediaId.trim().isEmpty) return [];
+    final type = mediaType == 'tv' ? 'tv' : 'movie';
+    try {
+      final response = await _dio.get(
+        'https://api.themoviedb.org/3/$type/$mediaId/recommendations',
+        queryParameters: {'language': _tmdbLanguage, 'page': 1},
+        options: _tmdbOptions,
+      );
+      if (response.statusCode == 200) {
+        return (response.data['results'] as List<dynamic>? ?? const [])
+            .map(
+              (json) =>
+                  MediaItem.fromTmdbJson({...json, 'media_type': type}),
+            )
+            .toList();
+      }
+    } catch (e) {
+      developer.log(
+        'Recommendation fetch failed: $e',
+        name: 'SearchRepository',
+      );
+    }
+    return [];
+  }
+
+  Future<List<MediaItem>> getClassicMovies() {
+    return getMoviesByDecade(fromYear: 1930, toYear: 1999, minVote: 7.2);
+  }
+
+  Future<List<MediaItem>> getWesternMovies() {
+    return getMoviesByDecade(
+      fromYear: 1950,
+      toYear: DateTime.now().year,
+      genreId: 37,
+      minVote: 6.8,
+    );
+  }
+
+  Future<List<MediaItem>> getMoviesByDecade({
+    required int fromYear,
+    required int toYear,
+    int? genreId,
+    double minVote = 6.5,
+  }) async {
+    if (!_hasToken) return [];
+    try {
+      final query = <String, dynamic>{
+        'language': _tmdbLanguage,
+        'primary_release_date.gte': '$fromYear-01-01',
+        'primary_release_date.lte': '$toYear-12-31',
+        'vote_average.gte': minVote,
+        'vote_count.gte': 50,
+        'sort_by': 'vote_average.desc',
+        'include_adult': false,
+        'page': 1,
+      };
+      if (genreId != null) {
+        query['with_genres'] = genreId;
+      }
+
+      final response = await _dio.get(
+        'https://api.themoviedb.org/3/discover/movie',
+        queryParameters: query,
+        options: _tmdbOptions,
+      );
+
+      if (response.statusCode == 200) {
+        return (response.data['results'] as List<dynamic>? ?? const [])
+            .map(
+              (json) =>
+                  MediaItem.fromTmdbJson({...json, 'media_type': 'movie'}),
+            )
+            .toList();
+      }
+    } catch (e) {
+      developer.log(
+        'Movies by decade fetch failed: $e',
+        name: 'SearchRepository',
+      );
+    }
+    return [];
+  }
+
   Future<List<MediaItem>> getLatestVidSrcMovies({int page = 1}) async {
     try {
       final response = await _dio.get(

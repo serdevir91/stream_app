@@ -52,18 +52,28 @@ class WatchHistoryRepository {
     required int season,
     required int episode,
   }) {
-    if (mediaType == 'tv') {
+    final normalizedMediaType = _normalizeMediaType(mediaType);
+    if (normalizedMediaType == 'tv') {
       return 'tv_${mediaId}_s${season}_e$episode';
     }
     return 'movie_$mediaId';
   }
 
+  String _normalizeMediaType(String mediaType) {
+    final normalized = mediaType.trim().toLowerCase();
+    if (normalized == 'tv' || normalized == 'series' || normalized == 'show') {
+      return 'tv';
+    }
+    return 'movie';
+  }
+
   Future<void> saveProgress(WatchHistory history) async {
+    final normalizedMediaType = _normalizeMediaType(history.mediaType);
     final historyId = history.historyId.isNotEmpty
         ? history.historyId
         : _buildHistoryId(
             mediaId: history.mediaId,
-            mediaType: history.mediaType,
+            mediaType: normalizedMediaType,
             season: history.season,
             episode: history.episode,
           );
@@ -72,7 +82,7 @@ class WatchHistoryRepository {
       historyId: historyId,
       mediaId: history.mediaId,
       title: history.title,
-      mediaType: history.mediaType,
+      mediaType: normalizedMediaType,
       season: history.season,
       episode: history.episode,
       posterUrl: history.posterUrl,
@@ -118,15 +128,18 @@ class WatchHistoryRepository {
     final latestByMediaId = <String, WatchHistory>{};
 
     for (final item in all) {
-      final existing = latestByMediaId[item.mediaId];
+      final normalizedType = _normalizeMediaType(item.mediaType);
+      final groupingKey = '${normalizedType}_${item.mediaId}';
+      final existing = latestByMediaId[groupingKey];
       if (existing == null || item.updatedAtMs > existing.updatedAtMs) {
-        latestByMediaId[item.mediaId] = item;
+        latestByMediaId[groupingKey] = item;
       }
     }
 
     final result = <ContinueWatchItem>[];
     for (final entry in latestByMediaId.values) {
-      if (entry.mediaType == 'movie') {
+      final normalizedType = _normalizeMediaType(entry.mediaType);
+      if (normalizedType == 'movie') {
         if (entry.isWatched) {
           continue;
         }

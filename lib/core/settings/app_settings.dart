@@ -1,16 +1,20 @@
 class AppSettings {
-  static const int schemaVersion = 2;
+  static const int schemaVersion = 3;
 
   final String appLanguage;
   final String subtitleLanguage;
   final String tmdbAccessToken;
   final String backendUrl;
+  final bool autoSelectSource;
+  final String preferredSourceId;
 
   const AppSettings({
     required this.appLanguage,
     required this.subtitleLanguage,
     required this.tmdbAccessToken,
     required this.backendUrl,
+    required this.autoSelectSource,
+    required this.preferredSourceId,
   });
 
   static const AppSettings defaults = AppSettings(
@@ -18,6 +22,8 @@ class AppSettings {
     subtitleLanguage: 'en',
     tmdbAccessToken: '',
     backendUrl: 'http://127.0.0.1:8000',
+    autoSelectSource: true,
+    preferredSourceId: '',
   );
 
   AppSettings copyWith({
@@ -25,12 +31,16 @@ class AppSettings {
     String? subtitleLanguage,
     String? tmdbAccessToken,
     String? backendUrl,
+    bool? autoSelectSource,
+    String? preferredSourceId,
   }) {
     return AppSettings(
       appLanguage: appLanguage ?? this.appLanguage,
       subtitleLanguage: subtitleLanguage ?? this.subtitleLanguage,
       tmdbAccessToken: tmdbAccessToken ?? this.tmdbAccessToken,
       backendUrl: backendUrl ?? this.backendUrl,
+      autoSelectSource: autoSelectSource ?? this.autoSelectSource,
+      preferredSourceId: preferredSourceId ?? this.preferredSourceId,
     );
   }
 
@@ -41,6 +51,8 @@ class AppSettings {
       'subtitleLanguage': subtitleLanguage,
       'tmdbAccessToken': tmdbAccessToken,
       'backendUrl': backendUrl,
+      'autoSelectSource': autoSelectSource,
+      'preferredSourceId': preferredSourceId,
     };
   }
 
@@ -50,6 +62,8 @@ class AppSettings {
       subtitleLanguage: (map['subtitleLanguage'] ?? 'en').toString(),
       tmdbAccessToken: (map['tmdbAccessToken'] ?? '').toString(),
       backendUrl: (map['backendUrl'] ?? 'http://127.0.0.1:8000').toString(),
+      autoSelectSource: (map['autoSelectSource'] ?? true) == true,
+      preferredSourceId: (map['preferredSourceId'] ?? '').toString(),
     );
   }
 }

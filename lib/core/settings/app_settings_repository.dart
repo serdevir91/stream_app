@@ -25,18 +25,28 @@ class AppSettingsRepository {
 
     final raw = box.get(key);
     if (raw is Map) {
-      final hasSchema = raw['schemaVersion'] is int;
-      if (!hasSchema) {
+      final schemaVersion = raw['schemaVersion'] is int
+          ? raw['schemaVersion'] as int
+          : 0;
+
+      if (schemaVersion < 2) {
         final migrated = AppSettings(
           appLanguage: 'en',
           subtitleLanguage: 'en',
           tmdbAccessToken: (raw['tmdbAccessToken'] ?? '').toString(),
           backendUrl: 'http://127.0.0.1:8000',
+          autoSelectSource: true,
+          preferredSourceId: '',
         );
         box.put(key, migrated.toMap());
         return migrated;
       }
-      return AppSettings.fromMap(raw);
+
+      final parsed = AppSettings.fromMap(raw);
+      if (schemaVersion < AppSettings.schemaVersion) {
+        box.put(key, parsed.toMap());
+      }
+      return parsed;
     }
     return AppSettings.defaults;
   }

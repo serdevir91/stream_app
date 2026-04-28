@@ -385,6 +385,8 @@ class AddonManager:
         self._addons: Dict[str, BaseAddon] = {}
         self._enabled: Dict[str, bool] = {}
         self._custom_urls: Dict[str, str] = {}
+        self._custom_manifests: Dict[str, dict] = {}
+        self._removed_builtins: set[str] = set()
         self._load_config()
 
     def register_builtin(self, addon: BaseAddon):
@@ -427,6 +429,7 @@ class AddonManager:
             self._addons[manifest.id] = addon
             self._enabled[manifest.id] = True
             self._custom_urls[manifest.id] = normalized_url
+            self._custom_manifests.pop(manifest.id, None)
             self._save_config()
             return manifest, ""
 
@@ -471,20 +474,99 @@ class AddonManager:
             self._addons[manifest.id] = addon
             self._enabled[manifest.id] = True
             self._custom_urls[manifest.id] = normalized_url
+            self._custom_manifests.pop(manifest.id, None)
             self._save_config()
             return manifest, ""
         except Exception as exc:
             return None, f"Manifest parse hatası: {str(exc)}"
 
+    def install_from_manifest_data(
+        self, manifest_data: dict, source_label: str = "local-manifest.json"
+    ) -> tuple[Optional[AddonManifest], str]:
+        """Install addon from local manifest JSON content."""
+        if not isinstance(manifest_data, dict):
+            return None, "Manifest JSON formati gecersiz."
+
+        base_url = (
+            str(
+                manifest_data.get("transportUrl")
+                or manifest_data.get("transport_url")
+                or manifest_data.get("baseUrl")
+                or ""
+            )
+            .strip()
+            .rstrip("/")
+        )
+        if not base_url:
+            return None, "Manifest dosyasinda 'transportUrl' veya 'baseUrl' alani zorunlu."
+        if not base_url.startswith("http"):
+            return None, "transportUrl/baseUrl http veya https ile baslamalidir."
+        if "id" not in manifest_data or "name" not in manifest_data:
+            return (
+                None,
+                "Manifest dosyasinda 'id' ve 'name' alanlari zorunludur.",
+            )
+
+        try:
+            manifest_types = manifest_data.get("types")
+            if not manifest_types:
+                manifest_types = []
+                for catalog in manifest_data.get("catalogs", []):
+                    if not isinstance(catalog, dict):
+                        continue
+                    catalog_type = str(catalog.get("type", "")).lower()
+                    if catalog_type == "tv":
+                        catalog_type = "series"
+                    if catalog_type in ("movie", "series") and catalog_type not in manifest_types:
+                        manifest_types.append(catalog_type)
+                if not manifest_types:
+                    manifest_types = ["movie", "series"]
+
+            manifest = AddonManifest(
+                id=manifest_data["id"],
+                name=manifest_data["name"],
+                description=manifest_data.get("description", ""),
+                version=manifest_data.get("version", "1.0"),
+                types=manifest_types,
+                icon=manifest_data.get("icon") or manifest_data.get("logo") or "??",
+                is_builtin=False,
+            )
+
+            existing = self._addons.get(manifest.id)
+            if existing and existing.get_manifest().is_builtin:
+                return None, f"'{manifest.id}' yerlesik addon oldugu icin uzerine yazilamaz."
+
+            is_stremio = _detect_stremio_manifest(manifest_data)
+            if is_stremio:
+                addon = StremioRemoteAddon(base_url, manifest, raw_manifest=manifest_data)
+            else:
+                addon = RemoteAddon(base_url, manifest)
+
+            self._addons[manifest.id] = addon
+            self._enabled[manifest.id] = True
+            self._custom_urls.pop(manifest.id, None)
+            manifest_payload = dict(manifest_data)
+            if not manifest_payload.get("transportUrl") and not manifest_payload.get("transport_url"):
+                manifest_payload["transportUrl"] = base_url
+            self._custom_manifests[manifest.id] = {
+                "manifest": manifest_payload,
+                "source_label": source_label,
+            }
+            self._save_config()
+            return manifest, ""
+        except Exception as exc:
+            return None, f"Manifest parse hatasi: {str(exc)}"
+
     def remove(self, addon_id: str) -> bool:
-        """Remove a custom addon. Built-in addons cannot be removed."""
+        """Remove an addon (built-in or custom)."""
         if addon_id in self._addons:
             manifest = self._addons[addon_id].get_manifest()
             if manifest.is_builtin:
-                return False
+                self._removed_builtins.add(addon_id)
             del self._addons[addon_id]
             self._enabled.pop(addon_id, None)
             self._custom_urls.pop(addon_id, None)
+            self._custom_manifests.pop(addon_id, None)
             self._save_config()
             return True
         return False
@@ -494,6 +576,10 @@ class AddonManager:
         if addon_id in self._addons:
             self._enabled[addon_id] = enabled
             self._save_config()
+
+    def is_builtin_removed(self, addon_id: str) -> bool:
+        """Check if a built-in addon has been removed by the user."""
+        return addon_id in self._removed_builtins
 
     def get_addon(self, addon_id: str) -> Optional[BaseAddon]:
         """Get one enabled addon by identifier."""
@@ -523,6 +609,8 @@ class AddonManager:
         config = {
             "enabled": self._enabled,
             "custom_urls": self._custom_urls,
+            "custom_manifests": self._custom_manifests,
+            "removed_builtins": list(self._removed_builtins),
         }
         try:
             with open(ADDONS_CONFIG_PATH, "w", encoding="utf-8") as file:
@@ -541,12 +629,26 @@ class AddonManager:
 
             saved_enabled = config.get("enabled", {})
             saved_urls = config.get("custom_urls", {})
+            saved_manifests = config.get("custom_manifests", {})
+            self._removed_builtins = set(config.get("removed_builtins", []))
 
             self._enabled = dict(saved_enabled)
             self._custom_urls = {}
+            self._custom_manifests = {}
 
             for url in list(saved_urls.values()):
                 manifest, _ = self.install_from_url(url)
+                if manifest and manifest.id in saved_enabled:
+                    self._enabled[manifest.id] = bool(saved_enabled[manifest.id])
+
+            for item in list(saved_manifests.values()):
+                if not isinstance(item, dict):
+                    continue
+                payload = item.get("manifest")
+                source_label = str(item.get("source_label") or "local-manifest.json")
+                if not isinstance(payload, dict):
+                    continue
+                manifest, _ = self.install_from_manifest_data(payload, source_label=source_label)
                 if manifest and manifest.id in saved_enabled:
                     self._enabled[manifest.id] = bool(saved_enabled[manifest.id])
         except Exception as exc:
