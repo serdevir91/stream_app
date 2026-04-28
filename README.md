@@ -113,8 +113,30 @@ uvicorn main:app --reload --host 127.0.0.1 --port 8000
 
 ## Settings and API Token
 
+StreamApp uses [TMDB (The Movie Database)](https://www.themoviedb.org/) API for movie/series discovery. You need a free API token to use the app.
+
+### How to Get a TMDB API Token
+
+1. **Create a TMDB account**: Go to [themoviedb.org/signup](https://www.themoviedb.org/signup) and register (free).
+
+2. **Go to API settings**: Visit [themoviedb.org/settings/api](https://www.themoviedb.org/settings/api).
+
+3. **Request an API key**:
+   - Click **"Create"** under the API section.
+   - Select **"Developer"** as the use case.
+   - Accept the terms of use.
+   - Fill in the required application details (app name, description, URL).
+
+4. **Copy your API Read Access Token**: After approval, you will see an **API Read Access Token** (a long `eyJ...` string). This is the token you need.
+
+   > **Important**: Use the **API Read Access Token**, not the API Key. They are different.
+
+5. **Paste in StreamApp**: Open the app → **Settings** tab → paste the token in the **TMDB Access Token** field → Save.
+
+### In-App Settings
+
 - Open the **Settings** tab in the app.
-- Set your **TMDB Access Token**.
+- Set your **TMDB Access Token** (see above).
 - Configure source behavior:
   - `Auto play best source` enabled: app starts playback directly.
   - `Preferred Source`: pick a specific add-on, or leave Auto.
