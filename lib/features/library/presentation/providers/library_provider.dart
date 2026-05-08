@@ -7,12 +7,18 @@ final libraryRepositoryProvider = Provider<LibraryRepository>((ref) {
   return LibraryRepository();
 });
 
+final libraryChangesProvider = StreamProvider<int>((ref) {
+  final repo = ref.watch(libraryRepositoryProvider);
+  return repo.watchChanges();
+});
+
 class LibraryNotifier extends Notifier<List<MediaItem>> {
   late LibraryRepository _repository;
 
   @override
   List<MediaItem> build() {
     _repository = ref.watch(libraryRepositoryProvider);
+    ref.watch(libraryChangesProvider);
     return _repository.getItems();
   }
 

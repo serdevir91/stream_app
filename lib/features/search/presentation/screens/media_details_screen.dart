@@ -1,10 +1,9 @@
-import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../../core/backend/addon_service_provider.dart';
 import '../../../../core/i18n/app_text.dart';
 import '../../../../core/settings/app_settings_provider.dart';
-import '../../../addons/presentation/screens/addon_manager_screen.dart';
 import '../../../library/presentation/providers/library_provider.dart';
 import '../../domain/entities/media_item.dart';
 import '../providers/search_provider.dart';
@@ -12,7 +11,6 @@ import '../../../player/data/repositories/watch_history_repository.dart';
 import '../../../player/domain/entities/watch_history.dart';
 import '../../../player/presentation/providers/player_provider.dart';
 import '../../../player/presentation/screens/player_screen.dart';
-import '../../../../core/backend/internal_backend.dart';
 
 typedef EpisodeTarget = ({int season, int episode});
 
@@ -37,10 +35,13 @@ class _MediaDetailsScreenState extends ConsumerState<MediaDetailsScreen> {
     return 'movie';
   }
 
-  ({int season, int episode})? _latestEpisodeProgress(List<WatchHistory> items) {
+  ({int season, int episode})? _latestEpisodeProgress(
+    List<WatchHistory> items,
+  ) {
     WatchHistory? latest;
     for (final item in items) {
-      if (_normalizeType(item.mediaType) != 'tv' || item.mediaId != widget.mediaItem.id) {
+      if (_normalizeType(item.mediaType) != 'tv' ||
+          item.mediaId != widget.mediaItem.id) {
         continue;
       }
       if (latest == null || item.updatedAtMs > latest.updatedAtMs) {
@@ -59,7 +60,8 @@ class _MediaDetailsScreenState extends ConsumerState<MediaDetailsScreen> {
   ) {
     WatchHistory? latest;
     for (final item in items) {
-      if (_normalizeType(item.mediaType) != _normalizeType(mediaType) || item.mediaId != widget.mediaItem.id) {
+      if (_normalizeType(item.mediaType) != _normalizeType(mediaType) ||
+          item.mediaId != widget.mediaItem.id) {
         continue;
       }
       if (latest == null || item.updatedAtMs > latest.updatedAtMs) {
@@ -72,7 +74,8 @@ class _MediaDetailsScreenState extends ConsumerState<MediaDetailsScreen> {
   Map<String, WatchHistory> _tvEpisodeProgressByKey(List<WatchHistory> items) {
     final byKey = <String, WatchHistory>{};
     for (final item in items) {
-      if (_normalizeType(item.mediaType) != 'tv' || item.mediaId != widget.mediaItem.id) {
+      if (_normalizeType(item.mediaType) != 'tv' ||
+          item.mediaId != widget.mediaItem.id) {
         continue;
       }
       final key = _episodeHistoryKey(item.season, item.episode);
@@ -113,10 +116,12 @@ class _MediaDetailsScreenState extends ConsumerState<MediaDetailsScreen> {
     final fallbackSeason = orderedSeasons.first.seasonNumber;
     final fallbackEpisode = 1;
 
-    var season = continueItem?.targetSeason ??
+    var season =
+        continueItem?.targetSeason ??
         latestEpisodeProgress?.season ??
         fallbackSeason;
-    var episode = continueItem?.targetEpisode ??
+    var episode =
+        continueItem?.targetEpisode ??
         latestEpisodeProgress?.episode ??
         fallbackEpisode;
 
@@ -165,7 +170,10 @@ class _MediaDetailsScreenState extends ConsumerState<MediaDetailsScreen> {
     return (season: previousSeason.seasonNumber, episode: previousEpisode);
   }
 
-  EpisodeTarget? _nextEpisodeTarget(List<Season> seasons, EpisodeTarget current) {
+  EpisodeTarget? _nextEpisodeTarget(
+    List<Season> seasons,
+    EpisodeTarget current,
+  ) {
     final orderedSeasons = [...seasons]
       ..sort((a, b) => a.seasonNumber.compareTo(b.seasonNumber));
     final currentIndex = orderedSeasons.indexWhere(
@@ -200,26 +208,16 @@ class _MediaDetailsScreenState extends ConsumerState<MediaDetailsScreen> {
     return sorted;
   }
 
-  Future<void> _resolveAndPickSource({int season = 1, int episode = 1}) async {
+  Future<void> _resolveAndPickSource({
+    int season = 1,
+    int episode = 1,
+    int? runtimeMinutes,
+  }) async {
     final text = ref.read(appTextProvider);
     final settings = ref.read(appSettingsProvider);
-    final addonNotifier = ref.read(addonsProvider.notifier);
-    var addons = ref
-        .read(addonsProvider)
-        .where((addon) => addon.enabled)
-        .toList();
+    final addonService = ref.read(addonServiceProvider);
 
-    if (addons.isEmpty) {
-      await addonNotifier.fetchAddons();
-      if (!mounted) {
-        return;
-      }
-      addons = ref
-          .read(addonsProvider)
-          .where((addon) => addon.enabled)
-          .toList();
-    }
-
+    var addons = addonService.enabledAddons;
     if (addons.isEmpty) {
       ScaffoldMessenger.of(
         context,
@@ -232,60 +230,21 @@ class _MediaDetailsScreenState extends ConsumerState<MediaDetailsScreen> {
     });
 
     try {
-      final dio = Dio(
-        BaseOptions(
-          baseUrl: settings.backendUrl,
-          connectTimeout: const Duration(seconds: 10),
-          receiveTimeout: const Duration(seconds: 60),
-        ),
+      final data = await addonService.resolve(
+        query: widget.mediaItem.title,
+        tmdbId: widget.mediaItem.id,
+        contentType: widget.mediaItem.type == 'tv' ? 'series' : 'movie',
+        season: season,
+        episode: episode,
       );
 
-      Response<dynamic>? response;
-      for (var attempt = 0; attempt < 2; attempt++) {
-        try {
-          response = await dio.get(
-            '/api/resolve',
-            queryParameters: {
-              'query': widget.mediaItem.title,
-              'tmdb_id': widget.mediaItem.id,
-              'type': widget.mediaItem.type == 'tv' ? 'series' : 'movie',
-              'season': season,
-              'episode': episode,
-            },
-          );
-          break;
-        } on DioException catch (error) {
-          final retryable =
-              error.response == null &&
-              (error.type == DioExceptionType.connectionError ||
-                  error.type == DioExceptionType.connectionTimeout ||
-                  error.type == DioExceptionType.receiveTimeout);
-
-          if (retryable && attempt == 0) {
-            await Future<void>.delayed(const Duration(milliseconds: 800));
-            continue;
-          }
-          rethrow;
-        }
-      }
-
-      if (response == null) {
-        throw DioException(
-          requestOptions: RequestOptions(path: '/api/resolve'),
-          message: 'Resolve response is empty',
-        );
-      }
-
-      final data = response.data;
       final streams = (data['streams'] as List<dynamic>? ?? <dynamic>[])
           .whereType<Map>()
           .map((entry) => Map<String, dynamic>.from(entry))
           .toList();
       final prioritizedStreams = _prioritizeDirectStreams(streams);
 
-      if (!mounted) {
-        return;
-      }
+      if (!mounted) return;
 
       if (prioritizedStreams.isEmpty) {
         ScaffoldMessenger.of(
@@ -307,61 +266,43 @@ class _MediaDetailsScreenState extends ConsumerState<MediaDetailsScreen> {
           }
         }
         selected ??= prioritizedStreams.first;
-        _playSelectedStream(selected, season: season, episode: episode);
+        _playSelectedStream(
+          selected,
+          season: season,
+          episode: episode,
+          runtimeMinutes: runtimeMinutes,
+        );
       } else {
+        // Compute next episode info for manual stream picker too.
+        final seasonsAsync = ref.read(
+          seriesSeasonsProvider(widget.mediaItem.id),
+        );
+        final seasons = seasonsAsync.value ?? [];
+        final currentTarget = (season: season, episode: episode);
+        final nextTarget = seasons.isNotEmpty
+            ? _nextEpisodeTarget(seasons, currentTarget)
+            : null;
+        final episodeCount = seasons.isNotEmpty
+            ? _episodeCountForSeason(seasons, season)
+            : null;
+
         _showResolvedStreamsSheet(
           context,
           prioritizedStreams,
           season: season,
           episode: episode,
+          runtimeMinutes: runtimeMinutes,
+          nextSeasonNumber: nextTarget?.season,
+          nextEpisodeNumber: nextTarget?.episode,
+          totalEpisodesInSeason: episodeCount,
         );
       }
     } catch (e) {
-      debugPrint('External resolve failed, trying internal: $e');
-      final internalBackend = InternalBackendService();
-      final data = await internalBackend.resolve(
-        query: widget.mediaItem.title,
-        tmdbId: widget.mediaItem.id,
-        type: widget.mediaItem.type == 'tv' ? 'series' : 'movie',
-        season: season,
-        episode: episode,
-      );
-
-      final streams = (data['streams'] as List<dynamic>? ?? <dynamic>[])
-          .whereType<Map>()
-          .map((entry) => Map<String, dynamic>.from(entry))
-          .toList();
-      final prioritizedStreams = _prioritizeDirectStreams(streams);
-
-      if (!mounted) return;
-
-      if (prioritizedStreams.isEmpty) {
+      debugPrint('Resolve error: $e');
+      if (mounted) {
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(SnackBar(content: Text(text.t('no_stream_found'))));
-      } else {
-        if (settings.autoSelectSource) {
-          final preferredSourceId = settings.preferredSourceId.trim();
-          Map<String, dynamic>? selected;
-
-          if (preferredSourceId.isNotEmpty) {
-            for (final stream in prioritizedStreams) {
-              if (stream['addon_id']?.toString() == preferredSourceId) {
-                selected = stream;
-                break;
-              }
-            }
-          }
-          selected ??= prioritizedStreams.first;
-          _playSelectedStream(selected, season: season, episode: episode);
-        } else {
-          _showResolvedStreamsSheet(
-            context,
-            prioritizedStreams,
-            season: season,
-            episode: episode,
-          );
-        }
       }
     } finally {
       if (mounted) {
@@ -376,6 +317,7 @@ class _MediaDetailsScreenState extends ConsumerState<MediaDetailsScreen> {
     Map<String, dynamic> stream, {
     required int season,
     required int episode,
+    int? runtimeMinutes,
   }) {
     final settings = ref.read(appSettingsProvider);
     final streamUrl = (stream['url'] ?? '').toString();
@@ -386,6 +328,17 @@ class _MediaDetailsScreenState extends ConsumerState<MediaDetailsScreen> {
     if (streamUrl.isEmpty || !mounted) {
       return;
     }
+
+    // Compute next episode info from cached seasons data.
+    final seasonsAsync = ref.read(seriesSeasonsProvider(widget.mediaItem.id));
+    final seasons = seasonsAsync.value ?? [];
+    final currentTarget = (season: season, episode: episode);
+    final nextTarget = seasons.isNotEmpty
+        ? _nextEpisodeTarget(seasons, currentTarget)
+        : null;
+    final episodeCount = seasons.isNotEmpty
+        ? _episodeCountForSeason(seasons, season)
+        : null;
 
     Navigator.of(context).push(
       MaterialPageRoute(
@@ -402,6 +355,10 @@ class _MediaDetailsScreenState extends ConsumerState<MediaDetailsScreen> {
           initialProvider: provider,
           initialIsDirectLink: isDirectLink,
           subtitleLanguage: settings.subtitleLanguage,
+          runtimeMinutes: runtimeMinutes,
+          nextSeasonNumber: nextTarget?.season,
+          nextEpisodeNumber: nextTarget?.episode,
+          totalEpisodesInSeason: episodeCount,
         ),
       ),
     );
@@ -412,6 +369,10 @@ class _MediaDetailsScreenState extends ConsumerState<MediaDetailsScreen> {
     List<Map<String, dynamic>> streams, {
     required int season,
     required int episode,
+    int? runtimeMinutes,
+    int? nextSeasonNumber,
+    int? nextEpisodeNumber,
+    int? totalEpisodesInSeason,
   }) {
     final text = ref.read(appTextProvider);
     final settings = ref.read(appSettingsProvider);
@@ -503,6 +464,10 @@ class _MediaDetailsScreenState extends ConsumerState<MediaDetailsScreen> {
                                 initialProvider: provider,
                                 initialIsDirectLink: isDirectLink as bool,
                                 subtitleLanguage: settings.subtitleLanguage,
+                                runtimeMinutes: runtimeMinutes,
+                                nextSeasonNumber: nextSeasonNumber,
+                                nextEpisodeNumber: nextEpisodeNumber,
+                                totalEpisodesInSeason: totalEpisodesInSeason,
                               ),
                             ),
                           );
@@ -523,17 +488,27 @@ class _MediaDetailsScreenState extends ConsumerState<MediaDetailsScreen> {
   Widget build(BuildContext context) {
     final text = ref.watch(appTextProvider);
     final item = widget.mediaItem;
+    final mediaDetailsAsync = ref.watch(
+      mediaDetailsProvider('${item.type}:${item.id}'),
+    );
+    final mediaDetails = mediaDetailsAsync.maybeWhen(
+      data: (value) => value,
+      orElse: () => null,
+    );
     final mediaHistoryEntries = ref
-      .watch(watchHistoryEntriesProvider)
-      .where((history) => history.mediaId == item.id)
-      .toList();
-    final latestMediaProgress = _latestMediaProgress(mediaHistoryEntries, item.type);
+        .watch(watchHistoryEntriesProvider)
+        .where((history) => history.mediaId == item.id)
+        .toList();
+    final latestMediaProgress = _latestMediaProgress(
+      mediaHistoryEntries,
+      item.type,
+    );
     final latestEpisodeProgress = item.type == 'tv'
-      ? _latestEpisodeProgress(mediaHistoryEntries)
+        ? _latestEpisodeProgress(mediaHistoryEntries)
         : null;
     final tvEpisodeHistory = item.type == 'tv'
-      ? _tvEpisodeProgressByKey(mediaHistoryEntries)
-      : const <String, WatchHistory>{};
+        ? _tvEpisodeProgressByKey(mediaHistoryEntries)
+        : const <String, WatchHistory>{};
     final continueItem = item.type == 'tv'
         ? _continueItemForMedia(ref.watch(continueWatchingProvider))
         : null;
@@ -586,7 +561,10 @@ class _MediaDetailsScreenState extends ConsumerState<MediaDetailsScreen> {
                       const Icon(Icons.star, color: Colors.amber, size: 20),
                       const SizedBox(width: 4),
                       Text(
-                        item.rating?.toStringAsFixed(1) ?? 'N/A',
+                        (item.rating ?? mediaDetails?.rating)?.toStringAsFixed(
+                              1,
+                            ) ??
+                            'N/A',
                         style: const TextStyle(fontSize: 16),
                       ),
                       const SizedBox(width: 16),
@@ -611,14 +589,63 @@ class _MediaDetailsScreenState extends ConsumerState<MediaDetailsScreen> {
                   ),
                   const SizedBox(height: 16),
                   Text(
-                    item.description ?? '',
+                    (() {
+                      final local = item.description?.trim() ?? '';
+                      if (local.isNotEmpty) {
+                        return local;
+                      }
+                      return mediaDetails?.description ?? '';
+                    })(),
                     style: const TextStyle(fontSize: 16),
                   ),
+                  if (mediaDetails != null) ...[
+                    const SizedBox(height: 16),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.blueGrey.shade900,
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: Colors.white12),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          if (mediaDetails.runtimeMinutes != null)
+                            Text(
+                              '${text.t(item.type == 'movie' ? 'movie_runtime' : 'episode_runtime')}: ${mediaDetails.runtimeMinutes} dk',
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          if (mediaDetails.castNames.isNotEmpty) ...[
+                            if (mediaDetails.runtimeMinutes != null)
+                              const SizedBox(height: 8),
+                            Text(
+                              '${text.t('cast')}: ${mediaDetails.castNames.join(', ')}',
+                              style: const TextStyle(fontSize: 13),
+                            ),
+                          ],
+                          if (mediaDetails.leadName != null) ...[
+                            const SizedBox(height: 8),
+                            Text(
+                              '${text.t(item.type == 'movie' ? 'director' : 'creator')}: ${mediaDetails.leadName}',
+                              style: const TextStyle(fontSize: 13),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                  ],
                   const SizedBox(height: 16),
                   if (item.type == 'movie' && latestMediaProgress != null) ...[
                     InkWell(
                       borderRadius: BorderRadius.circular(10),
-                      onTap: _isResolving ? null : () => _resolveAndPickSource(),
+                      onTap: _isResolving
+                          ? null
+                          : () => _resolveAndPickSource(
+                              runtimeMinutes: mediaDetails?.runtimeMinutes,
+                            ),
                       child: Container(
                         width: double.infinity,
                         padding: const EdgeInsets.all(12),
@@ -631,7 +658,9 @@ class _MediaDetailsScreenState extends ConsumerState<MediaDetailsScreen> {
                           children: [
                             Text(
                               text.t('watch_history'),
-                              style: const TextStyle(fontWeight: FontWeight.w600),
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w600,
+                              ),
                             ),
                             const SizedBox(height: 8),
                             LinearProgressIndicator(
@@ -689,7 +718,9 @@ class _MediaDetailsScreenState extends ConsumerState<MediaDetailsScreen> {
                       child: ElevatedButton.icon(
                         onPressed: _isResolving
                             ? null
-                            : () => _resolveAndPickSource(),
+                            : () => _resolveAndPickSource(
+                                runtimeMinutes: mediaDetails?.runtimeMinutes,
+                              ),
                         icon: _isResolving
                             ? const SizedBox(
                                 width: 18,
@@ -716,6 +747,7 @@ class _MediaDetailsScreenState extends ConsumerState<MediaDetailsScreen> {
                       latestEpisodeProgress: latestEpisodeProgress,
                       continueItem: continueItem,
                       tvEpisodeHistory: tvEpisodeHistory,
+                      runtimeMinutes: mediaDetails?.runtimeMinutes,
                     ),
                 ],
               ),
@@ -731,6 +763,7 @@ class _MediaDetailsScreenState extends ConsumerState<MediaDetailsScreen> {
     ({int season, int episode})? latestEpisodeProgress,
     ContinueWatchItem? continueItem,
     required Map<String, WatchHistory> tvEpisodeHistory,
+    int? runtimeMinutes,
   }) {
     final text = ref.watch(appTextProvider);
     final seasonsAsync = ref.watch(seriesSeasonsProvider(widget.mediaItem.id));
@@ -748,8 +781,27 @@ class _MediaDetailsScreenState extends ConsumerState<MediaDetailsScreen> {
         );
         final previousTarget = _previousEpisodeTarget(seasons, continueTarget);
         final nextTarget = _nextEpisodeTarget(seasons, continueTarget);
+        final continueHistory =
+            tvEpisodeHistory[_episodeHistoryKey(
+              continueTarget.season,
+              continueTarget.episode,
+            )];
+        final shouldAdvanceToNextEpisode =
+            continueHistory?.isWatched == true && nextTarget != null;
+        final primaryTarget = shouldAdvanceToNextEpisode
+            ? nextTarget
+            : continueTarget;
+        final primaryHistory =
+            tvEpisodeHistory[_episodeHistoryKey(
+              primaryTarget.season,
+              primaryTarget.episode,
+            )];
+        final primaryWatched = primaryHistory?.isWatched ?? false;
+        final primaryLabel = shouldAdvanceToNextEpisode
+            ? text.t('next_episode')
+            : text.t('last_watched_episode');
 
-        _selectedSeason ??= seasons.first.seasonNumber;
+        _selectedSeason ??= continueTarget.season;
 
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -757,22 +809,11 @@ class _MediaDetailsScreenState extends ConsumerState<MediaDetailsScreen> {
             LayoutBuilder(
               builder: (context, constraints) {
                 final stackButtons = constraints.maxWidth < 620;
-                final continueHistory = tvEpisodeHistory[
-                      _episodeHistoryKey(
-                        continueTarget.season,
-                        continueTarget.episode,
-                      )
-                    ] ??
-                    (latestEpisodeProgress == null
-                        ? null
-                        : tvEpisodeHistory[
-                            _episodeHistoryKey(
-                              latestEpisodeProgress.season,
-                              latestEpisodeProgress.episode,
-                            )
-                          ]);
                 final continueProgressValue =
-                    continueHistory?.progressRatio ?? 0.0;
+                    primaryHistory?.progressRatio ?? 0.0;
+                final continueSubtitle = primaryWatched
+                    ? text.t('completed')
+                    : '${text.t('in_progress')} • ${(continueProgressValue * 100).round()}%';
 
                 final previousButton = OutlinedButton.icon(
                   onPressed: previousTarget == null || _isResolving
@@ -780,6 +821,7 @@ class _MediaDetailsScreenState extends ConsumerState<MediaDetailsScreen> {
                       : () => _resolveAndPickSource(
                           season: previousTarget.season,
                           episode: previousTarget.episode,
+                          runtimeMinutes: runtimeMinutes,
                         ),
                   icon: const Icon(Icons.skip_previous),
                   label: Text(text.t('watch_previous_episode')),
@@ -790,8 +832,9 @@ class _MediaDetailsScreenState extends ConsumerState<MediaDetailsScreen> {
                   onTap: _isResolving
                       ? null
                       : () => _resolveAndPickSource(
-                          season: continueTarget.season,
-                          episode: continueTarget.episode,
+                          season: primaryTarget.season,
+                          episode: primaryTarget.episode,
+                          runtimeMinutes: runtimeMinutes,
                         ),
                   child: Container(
                     width: double.infinity,
@@ -809,8 +852,8 @@ class _MediaDetailsScreenState extends ConsumerState<MediaDetailsScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          '${text.t('last_watched_episode')}: '
-                          'S${continueTarget.season}:E${continueTarget.episode}',
+                          '$primaryLabel: '
+                          'S${primaryTarget.season}:E${primaryTarget.episode}',
                           style: const TextStyle(
                             fontSize: 12,
                             fontWeight: FontWeight.w600,
@@ -823,9 +866,7 @@ class _MediaDetailsScreenState extends ConsumerState<MediaDetailsScreen> {
                         ),
                         const SizedBox(height: 6),
                         Text(
-                          continueHistory?.isWatched == true
-                              ? text.t('completed')
-                              : '${text.t('in_progress')} • ${(continueProgressValue * 100).round()}%',
+                          continueSubtitle,
                           style: const TextStyle(fontSize: 12),
                         ),
                       ],
@@ -839,6 +880,7 @@ class _MediaDetailsScreenState extends ConsumerState<MediaDetailsScreen> {
                       : () => _resolveAndPickSource(
                           season: nextTarget.season,
                           episode: nextTarget.episode,
+                          runtimeMinutes: runtimeMinutes,
                         ),
                   icon: const Icon(Icons.skip_next),
                   label: Text(text.t('watch_next_episode')),
@@ -897,6 +939,7 @@ class _MediaDetailsScreenState extends ConsumerState<MediaDetailsScreen> {
                 _selectedSeason!,
                 latestEpisodeProgress: latestEpisodeProgress,
                 tvEpisodeHistory: tvEpisodeHistory,
+                runtimeMinutes: runtimeMinutes,
               ),
           ],
         );
@@ -911,6 +954,7 @@ class _MediaDetailsScreenState extends ConsumerState<MediaDetailsScreen> {
     int seasonNumber, {
     ({int season, int episode})? latestEpisodeProgress,
     required Map<String, WatchHistory> tvEpisodeHistory,
+    int? runtimeMinutes,
   }) {
     final text = ref.watch(appTextProvider);
     final episodesAsync = ref.watch(
@@ -929,14 +973,15 @@ class _MediaDetailsScreenState extends ConsumerState<MediaDetailsScreen> {
           itemCount: episodes.length,
           itemBuilder: (itemContext, index) {
             final episode = episodes[index];
-            final isLatestWatched =
-                latestEpisodeProgress != null &&
-                latestEpisodeProgress.season == seasonNumber &&
-                latestEpisodeProgress.episode == episode.episodeNumber;
-            final episodeHistory = tvEpisodeHistory[
-              _episodeHistoryKey(seasonNumber, episode.episodeNumber)
-            ];
+            final episodeRuntimeMinutes =
+                episode.runtimeMinutes ?? runtimeMinutes;
+            final episodeHistory =
+                tvEpisodeHistory[_episodeHistoryKey(
+                  seasonNumber,
+                  episode.episodeNumber,
+                )];
             final hasProgress = episodeHistory != null;
+            final bool isAired = episode.isAired;
             return ListTile(
               leading: ClipRRect(
                 borderRadius: BorderRadius.circular(4),
@@ -957,47 +1002,85 @@ class _MediaDetailsScreenState extends ConsumerState<MediaDetailsScreen> {
                         child: SizedBox(width: 100, height: 60),
                       ),
               ),
-              title: Text('${episode.episodeNumber}. ${episode.name}'),
-              subtitle: isLatestWatched || hasProgress
-                  ? Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        if (isLatestWatched)
-                        if (hasProgress) ...[
-                          const SizedBox(height: 6),
-                          LinearProgressIndicator(
-                            value: episodeHistory.progressRatio,
-                            minHeight: 4,
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            episodeHistory.isWatched
-                                ? text.t('completed')
-                                : '${text.t('in_progress')} • ${(episodeHistory.progressRatio * 100).round()}%',
-                            style: const TextStyle(fontSize: 12),
-                          ),
-                        ],
-                      ],
-                    )
-                  : null,
-              trailing: Icon(
-                hasProgress
-                    ? (episodeHistory.isWatched
-                          ? Icons.check_circle
-                          : Icons.history)
-                    : Icons.play_arrow,
-                color: hasProgress
-                    ? (episodeHistory.isWatched
-                          ? Colors.greenAccent
-                          : Colors.amber)
-                    : Colors.lightBlueAccent,
+              title: Text(
+                '${episode.episodeNumber}. ${episode.name}',
+                style: TextStyle(color: isAired ? null : Colors.white54),
               ),
-              onTap: _isResolving
+              subtitle: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (episodeRuntimeMinutes != null &&
+                      episodeRuntimeMinutes > 0)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: Text(
+                        '${text.t('episode_runtime')}: $episodeRuntimeMinutes dk',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: Colors.grey.shade400,
+                        ),
+                      ),
+                    ),
+                  if (!isAired && episode.airDate != null)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: Text(
+                        '${text.t('airs_on')}: ${episode.formattedAirDate}',
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: Colors.orangeAccent,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    )
+                  else if (isAired && episode.airDate != null && !hasProgress)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: Text(
+                        '${text.t('aired_on')}: ${episode.formattedAirDate}',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: Colors.grey.shade500,
+                        ),
+                      ),
+                    ),
+                  if (hasProgress) ...[
+                    const SizedBox(height: 6),
+                    LinearProgressIndicator(
+                      value: episodeHistory.progressRatio,
+                      minHeight: 4,
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      episodeHistory.isWatched
+                          ? text.t('completed')
+                          : '${text.t('in_progress')} • ${(episodeHistory.progressRatio * 100).round()}%',
+                      style: const TextStyle(fontSize: 12),
+                    ),
+                  ],
+                ],
+              ),
+              trailing: !isAired
+                  ? const Icon(Icons.schedule, color: Colors.orangeAccent)
+                  : Icon(
+                      hasProgress
+                          ? (episodeHistory.isWatched
+                                ? Icons.check_circle
+                                : Icons.history)
+                          : Icons.play_arrow,
+                      color: hasProgress
+                          ? (episodeHistory.isWatched
+                                ? Colors.greenAccent
+                                : Colors.amber)
+                          : Colors.lightBlueAccent,
+                    ),
+              onTap: (!isAired || _isResolving)
                   ? null
                   : () => _resolveAndPickSource(
                       season: seasonNumber,
                       episode: episode.episodeNumber,
+                      runtimeMinutes: episodeRuntimeMinutes,
                     ),
             );
           },

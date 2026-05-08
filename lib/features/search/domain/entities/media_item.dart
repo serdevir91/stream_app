@@ -80,6 +80,30 @@ class MediaItem {
   }
 }
 
+class MediaDetailsInfo {
+  final String mediaType;
+  final int? runtimeMinutes;
+  final List<String> castNames;
+  final String? directorName;
+  final String? creatorName;
+  final String? description;
+  final double? rating;
+
+  const MediaDetailsInfo({
+    required this.mediaType,
+    required this.runtimeMinutes,
+    required this.castNames,
+    required this.directorName,
+    required this.creatorName,
+    required this.description,
+    required this.rating,
+  });
+
+  bool get isMovie => mediaType == 'movie';
+
+  String? get leadName => isMovie ? directorName : creatorName;
+}
+
 class Season {
   final int seasonNumber;
   final String name;
@@ -104,8 +128,36 @@ class Episode {
   final int episodeNumber;
   final String name;
   final String? stillPath;
+  final String? airDate;
+  final int? runtimeMinutes;
 
-  Episode({required this.episodeNumber, required this.name, this.stillPath});
+  Episode({
+    required this.episodeNumber,
+    required this.name,
+    this.stillPath,
+    this.airDate,
+    this.runtimeMinutes,
+  });
+
+  bool get isAired {
+    if (airDate == null || airDate!.isEmpty) return true;
+    try {
+      final date = DateTime.parse(airDate!);
+      return !date.isAfter(DateTime.now());
+    } catch (_) {
+      return true;
+    }
+  }
+
+  String get formattedAirDate {
+    if (airDate == null || airDate!.isEmpty) return '';
+    try {
+      final date = DateTime.parse(airDate!);
+      return '${date.day.toString().padLeft(2, '0')}.${date.month.toString().padLeft(2, '0')}.${date.year}';
+    } catch (_) {
+      return airDate!;
+    }
+  }
 
   factory Episode.fromTmdbJson(Map<String, dynamic> json) {
     const String imageBaseUrl = 'https://image.tmdb.org/t/p/w500';
@@ -114,6 +166,10 @@ class Episode {
       name: json['name'] ?? 'Unknown',
       stillPath: json['still_path'] != null
           ? '$imageBaseUrl${json['still_path']}'
+          : null,
+      airDate: json['air_date'] as String?,
+      runtimeMinutes: json['runtime'] is num
+          ? (json['runtime'] as num).toInt()
           : null,
     );
   }

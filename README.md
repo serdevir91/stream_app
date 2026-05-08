@@ -33,9 +33,9 @@ watch history, a personal library, and runtime app settings.
 
 | Architecture | File | Size |
 |-------------|------|------|
-| ARM64 (most devices) | [app-arm64-v8a-release.apk](https://github.com/serdevir91/stream_app/releases/download/v1.0.1/app-arm64-v8a-release.apk) | ~61 MB |
-| ARM 32-bit (older devices) | [app-armeabi-v7a-release.apk](https://github.com/serdevir91/stream_app/releases/download/v1.0.1/app-armeabi-v7a-release.apk) | ~54 MB |
-| x86_64 (emulators) | [app-x86_64-release.apk](https://github.com/serdevir91/stream_app/releases/download/v1.0.1/app-x86_64-release.apk) | ~68 MB |
+| ARM64 (most devices) | [app-arm64-v8a-release.apk](https://github.com/serdevir91/stream_app/releases/download/v1.0.2/app-arm64-v8a-release.apk) | ~61 MB |
+| ARM 32-bit (older devices) | [app-armeabi-v7a-release.apk](https://github.com/serdevir91/stream_app/releases/download/v1.0.2/app-armeabi-v7a-release.apk) | ~54 MB |
+| x86_64 (emulators) | [app-x86_64-release.apk](https://github.com/serdevir91/stream_app/releases/download/v1.0.2/app-x86_64-release.apk) | ~68 MB |
 
 > Most modern phones use ARM64. If unsure, download the ARM64 version.
 
@@ -43,8 +43,8 @@ watch history, a personal library, and runtime app settings.
 
 | Type | File | Size |
 |------|------|------|
-| Installer (recommended) | [StreamApp-Setup-v1.0.1.exe](https://github.com/serdevir91/stream_app/releases/download/v1.0.1/StreamApp-Setup-v1.0.1.exe) | ~11 MB |
-| Portable | [stream_app-windows-x64.zip](https://github.com/serdevir91/stream_app/releases/download/v1.0.1/stream_app-windows-x64.zip) | ~13 MB |
+| Installer (recommended) | [StreamApp-Setup-v1.0.2.exe](https://github.com/serdevir91/stream_app/releases/download/v1.0.2/StreamApp-Setup-v1.0.2.exe) | ~11 MB |
+| Portable | [stream_app-windows-x64.zip](https://github.com/serdevir91/stream_app/releases/download/v1.0.2/stream_app-windows-x64.zip) | ~13 MB |
 
 **Installer**: Run the `.exe` wizard. Creates Start Menu shortcuts and an uninstaller.
 
@@ -145,6 +145,55 @@ StreamApp uses [TMDB (The Movie Database)](https://www.themoviedb.org/) API for 
 The token is stored locally (Hive) and synced to backend at runtime.
 No TMDB token is committed in source code.
 
+## In-App Usage Guide
+
+### Searching and Watching Content
+
+1. Open the **Search** tab from the bottom navigation.
+2. Type a movie or series name in the search bar and press enter.
+3. Tap on a result to open its **Detail Page**.
+4. For movies, tap **"Resolve Sources and Play"** or **"Play Now"** to start playback.
+5. For series:
+   - Select a **Season** from the season list.
+   - Tap an **Episode** to start playback.
+6. Playback opens in fullscreen. Use on-screen controls for play/pause, seek, and speed adjustment.
+
+### Library (Saving Titles)
+
+1. On any movie/series detail page, tap the **bookmark icon** or **"Add to Library"** button.
+2. Saved titles appear in the **Library** tab under **"Saved Titles"**.
+3. To remove, open the detail page again and tap **"Remove from Library"**.
+
+### Continue Watching
+
+- StreamApp automatically tracks your watch progress.
+- Partially watched titles appear in the **"Continue Watching"** row on the Home screen.
+- Tap a title to resume from where you left off.
+- To remove an item from Continue Watching, long-press on the item and confirm removal.
+
+### Add-on Management
+
+1. Go to **Settings → Add-ons** (or the **Add-ons** tab).
+2. View the list of installed and built-in add-ons.
+3. To install a new add-on:
+   - Tap **"Add Add-on"**.
+   - Enter a **Stremio manifest URL** or choose **"Install from file (.json)"** for a local manifest.
+4. To disable or remove an add-on, tap its entry and select the appropriate action.
+5. Tap **"Refresh"** if add-ons appear empty on first use.
+
+### Source Configuration
+
+1. Open **Settings**.
+2. **Auto play best source**: When enabled, the app automatically picks the best available source and starts playback without asking.
+3. **Preferred Source**: Select a specific add-on to always use, or leave as **"Auto (best available)"**.
+4. These settings are saved locally and take effect immediately.
+
+### Language Settings
+
+1. Open **Settings**.
+2. **App Language**: Switch between English and Turkish.
+3. **Subtitle Language**: Set the preferred subtitle language (used by embed players that support subtitle selection).
+
 ## Build
 
 ### Windows EXE
@@ -171,7 +220,7 @@ flutter build windows --release
 "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer\stream_app.iss
 ```
 
-Output: `output/StreamApp-Setup-v1.0.1.exe`
+Output: `output/StreamApp-Setup-v1.0.2.exe`
 
 ### Android APK
 
@@ -291,6 +340,12 @@ Your backend must expose:
   - `Install from file (.json)` and choose local manifest file.
 
 ## Changelog
+
+### v1.0.2
+
+- **Removed**: Skip Intro and Skip Recap features removed from the player
+- **Security**: Improved `.gitignore` rules for log files and database files
+- **Docs**: Added in-app usage guide to README
 
 ### v1.0.1
 

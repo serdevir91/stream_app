@@ -24,6 +24,128 @@ class SearchRepository {
     },
   );
 
+  int? _extractRuntimeMinutes(Map<String, dynamic> data, String mediaType) {
+    if (mediaType == 'movie') {
+      final runtime = data['runtime'];
+      if (runtime is num && runtime.toInt() > 0) {
+        return runtime.toInt();
+      }
+      return null;
+    }
+
+    final runtimes = data['episode_run_time'];
+    if (runtimes is List) {
+      for (final runtime in runtimes) {
+        if (runtime is num && runtime.toInt() > 0) {
+          return runtime.toInt();
+        }
+      }
+    }
+    return null;
+  }
+
+  List<String> _extractCastNames(
+    Map<String, dynamic>? credits, {
+    int limit = 5,
+  }) {
+    final cast = credits?['cast'];
+    if (cast is! List) {
+      return const [];
+    }
+
+    return cast
+        .whereType<Map>()
+        .map((entry) => (entry['name'] ?? '').toString().trim())
+        .where((name) => name.isNotEmpty)
+        .take(limit)
+        .toList();
+  }
+
+  String? _extractCrewName(
+    Map<String, dynamic>? credits, {
+    required String job,
+  }) {
+    final crew = credits?['crew'];
+    if (crew is! List) {
+      return null;
+    }
+
+    for (final entry in crew.whereType<Map>()) {
+      final entryJob = (entry['job'] ?? '').toString().trim();
+      if (entryJob.toLowerCase() == job.toLowerCase()) {
+        final name = (entry['name'] ?? '').toString().trim();
+        if (name.isNotEmpty) {
+          return name;
+        }
+      }
+    }
+    return null;
+  }
+
+  String? _extractCreatorName(Map<String, dynamic> data) {
+    final createdBy = data['created_by'];
+    if (createdBy is! List) {
+      return null;
+    }
+
+    final names = createdBy
+        .whereType<Map>()
+        .map((entry) => (entry['name'] ?? '').toString().trim())
+        .where((name) => name.isNotEmpty)
+        .toList();
+    if (names.isEmpty) {
+      return null;
+    }
+    return names.join(', ');
+  }
+
+  Future<MediaDetailsInfo?> getMediaDetails(
+    String mediaId,
+    String mediaType,
+  ) async {
+    if (!_hasToken || mediaId.trim().isEmpty) return null;
+    final type = mediaType == 'tv' ? 'tv' : 'movie';
+
+    try {
+      final response = await _dio.get(
+        'https://api.themoviedb.org/3/$type/$mediaId',
+        queryParameters: {
+          'language': _tmdbLanguage,
+          'append_to_response': 'credits',
+        },
+        options: _tmdbOptions,
+      );
+
+      if (response.statusCode == 200 && response.data is Map) {
+        final data = Map<String, dynamic>.from(response.data as Map);
+        final credits = data['credits'] is Map
+            ? Map<String, dynamic>.from(data['credits'] as Map)
+            : null;
+
+        return MediaDetailsInfo(
+          mediaType: type,
+          runtimeMinutes: _extractRuntimeMinutes(data, type),
+          castNames: _extractCastNames(credits),
+          directorName: _extractCrewName(credits, job: 'Director'),
+          creatorName: type == 'tv'
+              ? _extractCreatorName(data) ??
+                    _extractCrewName(credits, job: 'Director')
+              : null,
+          description: (data['overview'] ?? '').toString().trim().isEmpty
+              ? null
+              : (data['overview'] ?? '').toString().trim(),
+          rating: data['vote_average'] is num
+              ? (data['vote_average'] as num).toDouble()
+              : null,
+        );
+      }
+    } catch (e) {
+      developer.log('Media details fetch failed: $e', name: 'SearchRepository');
+    }
+
+    return null;
+  }
+
   Future<List<MediaItem>> search(String query) async {
     if (!_hasToken) return [];
     try {
@@ -255,12 +377,19 @@ class SearchRepository {
         ),
       ]);
 
-      final movies = (responses[0].data['results'] as List<dynamic>? ?? const [])
-          .map((json) => MediaItem.fromTmdbJson({...json, 'media_type': 'movie'}))
-          .toList();
-      final series = (responses[1].data['results'] as List<dynamic>? ?? const [])
-          .map((json) => MediaItem.fromTmdbJson({...json, 'media_type': 'tv'}))
-          .toList();
+      final movies =
+          (responses[0].data['results'] as List<dynamic>? ?? const [])
+              .map(
+                (json) =>
+                    MediaItem.fromTmdbJson({...json, 'media_type': 'movie'}),
+              )
+              .toList();
+      final series =
+          (responses[1].data['results'] as List<dynamic>? ?? const [])
+              .map(
+                (json) => MediaItem.fromTmdbJson({...json, 'media_type': 'tv'}),
+              )
+              .toList();
 
       final merged = [...weeklyItems, ...movies, ...series];
       final seen = <String>{};
@@ -301,8 +430,7 @@ class SearchRepository {
       if (response.statusCode == 200) {
         return (response.data['results'] as List<dynamic>? ?? const [])
             .map(
-              (json) =>
-                  MediaItem.fromTmdbJson({...json, 'media_type': type}),
+              (json) => MediaItem.fromTmdbJson({...json, 'media_type': type}),
             )
             .toList();
       }

@@ -5,6 +5,7 @@ class LocalStreamResult {
   final String quality;
   final String provider;
   final bool isDirectLink;
+  final String addonId;
 
   LocalStreamResult({
     required this.url,
@@ -12,6 +13,7 @@ class LocalStreamResult {
     required this.quality,
     required this.provider,
     required this.isDirectLink,
+    required this.addonId,
   });
 
   Map<String, dynamic> toJson() => {
@@ -20,6 +22,7 @@ class LocalStreamResult {
         'quality': quality,
         'provider': provider,
         'is_direct_link': isDirectLink,
+        'addon_id': addonId,
       };
 }
 
@@ -192,6 +195,7 @@ class InternalBackendService {
       quality: 'HD',
       provider: 'VidSrc',
       isDirectLink: false,
+      addonId: 'builtin.vidsrc',
     );
   }
 
@@ -217,6 +221,7 @@ class InternalBackendService {
       quality: 'HD',
       provider: '2Embed',
       isDirectLink: false,
+      addonId: 'builtin.twoembed',
     );
   }
 
@@ -243,6 +248,7 @@ class InternalBackendService {
       quality: 'HD',
       provider: 'SuperEmbed',
       isDirectLink: false,
+      addonId: 'builtin.superembed',
     );
   }
 
@@ -267,6 +273,7 @@ class InternalBackendService {
       quality: 'HD',
       provider: 'VidLink',
       isDirectLink: false,
+      addonId: 'builtin.vidlink',
     );
   }
 
@@ -291,6 +298,7 @@ class InternalBackendService {
       quality: 'HD',
       provider: 'EmbedSU',
       isDirectLink: false,
+      addonId: 'builtin.embedsu',
     );
   }
 

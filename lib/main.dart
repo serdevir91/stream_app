@@ -1,17 +1,28 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hive_flutter/hive_flutter.dart';
+import 'package:media_kit/media_kit.dart';
 
+import 'core/backend/addon_service.dart';
+import 'core/backend/addon_service_provider.dart';
+import 'core/backend/addons/addon_config_repository.dart';
 import 'core/backend_bootstrap_service.dart';
 import 'core/settings/app_settings_repository.dart';
 import 'features/sources/data/repositories/sources_repository.dart';
 
 import 'features/home/presentation/screens/home_screen.dart';
 import 'features/library/data/repositories/library_repository.dart';
+
 import 'features/player/data/repositories/watch_history_repository.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  MediaKit.ensureInitialized();
+  await SystemChrome.setPreferredOrientations([
+    DeviceOrientation.portraitUp,
+    DeviceOrientation.portraitDown,
+  ]);
   await Hive.initFlutter();
 
   final appSettingsRepository = AppSettingsRepository();
@@ -29,8 +40,21 @@ void main() async {
   final watchHistoryRepository = WatchHistoryRepository();
   await watchHistoryRepository.init();
 
+
+
   final libraryRepository = LibraryRepository();
   await libraryRepository.init();
+
+  final addonConfigRepository = AddonConfigRepository();
+  await addonConfigRepository.init();
+  initAddonConfigRepository(addonConfigRepository);
+
+  final addonService = AddonService(
+    configRepo: addonConfigRepository,
+    tmdbAccessToken: appSettings.tmdbAccessToken,
+  );
+  await addonService.init();
+  initAddonService(addonService);
 
   runApp(const ProviderScope(child: MyApp()));
 }

@@ -48,6 +48,12 @@ const Map<String, Map<String, String>> _translations = {
     'watch_previous_episode': 'Watch Previous',
     'watch_next_episode': 'Watch Next',
     'last_watched_episode': 'Last watched episode',
+
+    'cast': 'Cast',
+    'director': 'Director',
+    'creator': 'Creator',
+    'movie_runtime': 'Movie Length',
+    'episode_runtime': 'Episode Length',
     'trending_series': 'Trending Series',
     'animation_movies': 'Animation Movies',
     'anime_series': 'Anime Series',
@@ -70,8 +76,7 @@ const Map<String, Map<String, String>> _translations = {
     'in_progress': 'In Progress',
     'remove': 'Remove',
     'remove_from_continue': 'Remove from continue watching',
-    'remove_from_continue_confirm':
-        'Remove this title from Continue Watching?',
+    'remove_from_continue_confirm': 'Remove this title from Continue Watching?',
     'removed_from_continue': 'Removed from Continue Watching.',
     'addon_management': 'Add-on Management',
     'refresh': 'Refresh',
@@ -121,6 +126,9 @@ const Map<String, Map<String, String>> _translations = {
     'settings_saved_backend': 'Settings saved and backend updated.',
     'settings_saved_backend_fail': 'Settings saved, backend token sync failed.',
     'api_required': 'TMDB token is required for search/trending.',
+    'airs_on': 'Airs on',
+    'aired_on': 'Aired on',
+    'not_yet_aired': 'Not yet aired',
   },
   'tr': {
     'app_name': 'Stream App',
@@ -150,6 +158,12 @@ const Map<String, Map<String, String>> _translations = {
     'watch_previous_episode': 'Oncekiyi Izle',
     'watch_next_episode': 'Sonrakini Izle',
     'last_watched_episode': 'Son izlenen bolum',
+
+    'cast': 'Oyuncular',
+    'director': 'Yonetmen',
+    'creator': 'Yaratici',
+    'movie_runtime': 'Film Uzunlugu',
+    'episode_runtime': 'Bolum Uzunlugu',
     'trending_series': 'Trend Diziler',
     'animation_movies': 'Animasyon Filmleri',
     'anime_series': 'Anime Dizileri',
@@ -223,5 +237,8 @@ const Map<String, Map<String, String>> _translations = {
     'settings_saved_backend_fail':
         'Ayarlar kaydedildi, backend token senkronu basarisiz.',
     'api_required': 'Arama/Trend icin TMDB token gereklidir.',
+    'airs_on': 'Yayınlanacak',
+    'aired_on': 'Yayınlandı',
+    'not_yet_aired': 'Henuz yayinlanmadi',
   },
 };

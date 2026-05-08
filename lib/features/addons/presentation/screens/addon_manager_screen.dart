@@ -1,13 +1,11 @@
 import 'dart:convert';
 
-import 'package:dio/dio.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/i18n/app_text.dart';
-import '../../../../core/settings/app_settings_provider.dart';
-import '../../../../core/backend/internal_backend.dart';
+import '../../../../core/backend/addon_service_provider.dart';
 
 class AddonInfo {
   final String id;
@@ -45,125 +43,72 @@ class AddonInfo {
 }
 
 class AddonsNotifier extends Notifier<List<AddonInfo>> {
-  late Dio _dio;
-  late InternalBackendService _internalBackend;
-
   @override
   List<AddonInfo> build() {
-    final settings = ref.watch(appSettingsProvider);
-    _internalBackend = InternalBackendService();
-
-    _dio = Dio(
-      BaseOptions(
-        baseUrl: settings.backendUrl,
-        connectTimeout: const Duration(seconds: 3),
-        receiveTimeout: const Duration(seconds: 5),
-      ),
-    );
-    
     Future.microtask(() => fetchAddons());
-    
     return [];
   }
 
   Future<void> fetchAddons() async {
-    try {
-      final response = await _dio.get('/api/addons');
-      if (response.statusCode == 200) {
-        final List addons = response.data['addons'];
-        state = addons.map((a) => AddonInfo.fromJson(a)).toList();
-      }
-    } catch (e) {
-      debugPrint('External backend unreachable, using internal backend: $e');
-      final internalData = await _internalBackend.getAddons();
-      final List addons = internalData['addons'];
-      state = addons.map((a) => AddonInfo.fromJson(a)).toList();
-    }
+    final addonService = ref.read(addonServiceProvider);
+    final addons = addonService.listAddons();
+    state = addons.map((a) => AddonInfo.fromJson(a)).toList();
   }
 
   Future<String?> installAddon(String url) async {
-    if (url.trim().isEmpty) {
-      return 'URL is empty';
+    if (url.trim().isEmpty) return 'URL is empty';
+    final addonService = ref.read(addonServiceProvider);
+    final (manifest, error) = await addonService.installFromUrl(url);
+    if (manifest != null) {
+      await fetchAddons();
+      return null;
     }
-    return _installWithPayload({'url': url});
+    return error ?? 'Addon could not be installed';
   }
 
   Future<String?> installAddonManifest(
     Map<String, dynamic> manifest, {
     String sourceLabel = 'local-manifest.json',
   }) async {
-    return _installWithPayload(
-      {'manifest': manifest, 'source_label': sourceLabel},
-      useManifestEndpoint: true,
+    final addonService = ref.read(addonServiceProvider);
+    final (result, error) = await addonService.installFromManifest(
+      manifest,
+      sourceLabel: sourceLabel,
     );
-  }
-
-  Future<String?> _installWithPayload(
-    Map<String, dynamic> payload, {
-    bool useManifestEndpoint = false,
-  }) async {
-    try {
-      final response = await _dio.post(
-        useManifestEndpoint
-            ? '/api/addons/install/manifest'
-            : '/api/addons/install',
-        data: payload,
-      );
-      if (response.statusCode == 200 && response.data['success']) {
-        await fetchAddons();
-        return null;
-      }
-      return response.data['detail'] ?? 'Unknown error';
-    } on DioException catch (e) {
-      final detail = e.response?.data;
-      if (detail is Map) {
-        return detail['detail'] ?? 'Add-on could not be installed';
-      }
-      return 'Server error: ${e.message}';
-    } catch (e) {
-      return 'Unexpected error: $e';
+    if (result != null) {
+      await fetchAddons();
+      return null;
     }
+    return error ?? 'Manifest addon could not be installed';
   }
 
   Future<bool> removeAddon(String addonId) async {
-    try {
-      final response = await _dio.post('/api/addons/remove/$addonId');
-      if (response.statusCode == 200 && response.data['success']) {
-        await fetchAddons();
-        return true;
-      }
-    } catch (e) {
-      debugPrint('Error removing addon: $e');
-    }
-    return false;
+    final addonService = ref.read(addonServiceProvider);
+    final removed = addonService.remove(addonId);
+    if (removed) await fetchAddons();
+    return removed;
   }
 
   Future<void> toggleAddon(String addonId, bool enabled) async {
-    try {
-      await _dio.post(
-        '/api/addons/toggle',
-        data: {'addon_id': addonId, 'enabled': enabled},
-      );
-
-      state = [
-        for (final addon in state)
-          if (addon.id == addonId)
-            AddonInfo(
-              id: addon.id,
-              name: addon.name,
-              description: addon.description,
-              version: addon.version,
-              types: addon.types,
-              icon: addon.icon,
-              isBuiltin: addon.isBuiltin,
-              enabled: enabled,
-            )
-          else
-            addon,
-      ];
-    } catch (e) {
-      debugPrint('Error toggling addon: $e');
-    }
+    // Optimistic update.
+    state = [
+      for (final addon in state)
+        if (addon.id == addonId)
+          AddonInfo(
+            id: addon.id,
+            name: addon.name,
+            description: addon.description,
+            version: addon.version,
+            types: addon.types,
+            icon: addon.icon,
+            isBuiltin: addon.isBuiltin,
+            enabled: enabled,
+          )
+        else
+          addon,
+    ];
+    final addonService = ref.read(addonServiceProvider);
+    addonService.setEnabled(addonId, enabled);
   }
 }
 

@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/i18n/app_text.dart';
 import '../../../../core/settings/app_settings.dart';
 import '../../../../core/settings/app_settings_provider.dart';
+import '../../../../core/sync/sync_provider.dart';
 import '../../../addons/presentation/screens/addon_manager_screen.dart';
 import '../../../sources/presentation/screens/sources_screen.dart';
 
@@ -24,6 +25,13 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   bool _initialized = false;
   bool _isSaving = false;
   bool _isApiFieldsVisible = false;
+  late final TextEditingController _syncServerUrlController;
+
+  @override
+  void initState() {
+    super.initState();
+    _syncServerUrlController = TextEditingController(text: _syncServerUrl);
+  }
 
   @override
   void dispose() {
@@ -31,6 +39,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       _tmdbTokenController.dispose();
       _backendUrlController.dispose();
     }
+    _syncServerUrlController.dispose();
     super.dispose();
   }
 
@@ -131,6 +140,140 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       _isSaving = false;
       _isApiFieldsVisible = false;
     });
+  }
+
+  String _syncServerUrl = 'http://92.5.69.116:8080';
+  bool _isSyncRegistering = false;
+  bool _isSyncing = false;
+
+  Future<void> _registerSyncDevice() async {
+    setState(() => _isSyncRegistering = true);
+    final syncService = ref.read(syncServiceProvider);
+    if (syncService == null) {
+      setState(() => _isSyncRegistering = false);
+      return;
+    }
+
+    _syncServerUrl = _syncServerUrlController.text.trim();
+
+    final deviceName = 'Flutter_${DateTime.now().millisecondsSinceEpoch}';
+    final success = await syncService.register(
+      serverUrl: _syncServerUrl,
+      deviceName: deviceName,
+      tmdbAccessToken: _tmdbTokenController.text.trim(),
+    );
+
+    if (mounted) {
+      if (success) {
+        ref.invalidate(syncRegisteredProvider);
+        ref.invalidate(syncStatusProvider);
+      }
+      final error = syncService.lastRegisterError;
+      final failedMessage = error == null || error.isEmpty
+          ? 'Kayit basarisiz. Sunucu adresini kontrol edin.'
+          : 'Kayit basarisiz: $error';
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(success ? 'Cihaz basariyla kaydedildi!' : failedMessage),
+          backgroundColor: success ? Colors.green : Colors.red,
+        ),
+      );
+    }
+    setState(() => _isSyncRegistering = false);
+  }
+
+  Future<void> _manualSync() async {
+    setState(() => _isSyncing = true);
+    final syncService = ref.read(syncServiceProvider);
+    if (syncService != null) {
+      await syncService.syncNow();
+    }
+    if (mounted) {
+      ref.invalidate(syncStatusProvider);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Senkron tamamlandi!'), backgroundColor: Colors.green),
+      );
+    }
+    setState(() => _isSyncing = false);
+  }
+
+  Widget _buildSyncSection(BuildContext context, AppText text) {
+    final syncStatus = ref.watch(syncStatusProvider);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            const Icon(Icons.sync, size: 20),
+            const SizedBox(width: 8),
+            const Text(
+              'Cihazlar Arasi Senkron',
+              style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        const Text(
+          'Oracle sunucu uzerinden izleme gecmisini cihazlariniz arasinda esitleyin.',
+          style: TextStyle(color: Colors.grey, fontSize: 13),
+        ),
+        const SizedBox(height: 12),
+        TextField(
+          decoration: const InputDecoration(
+            labelText: 'Sunucu Adresi',
+            hintText: 'http://92.5.69.116:8080',
+            border: OutlineInputBorder(),
+            prefixIcon: Icon(Icons.dns),
+          ),
+          controller: _syncServerUrlController,
+          onChanged: (v) => _syncServerUrl = v.trim(),
+        ),
+        const SizedBox(height: 12),
+        syncStatus.when(
+          data: (status) {
+            if (!status.isEnabled) {
+              return Column(
+                children: [
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      onPressed: _isSyncRegistering ? null : _registerSyncDevice,
+                      icon: _isSyncRegistering
+                          ? const SizedBox(height: 16, width: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                          : const Icon(Icons.app_registration),
+                      label: const Text('Cihazi Kaydet'),
+                    ),
+                  ),
+                ],
+              );
+            }
+            return Column(
+              children: [
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.check_circle, color: Colors.green),
+                  title: const Text('Senkron Aktif'),
+                  subtitle: Text('Son senkron: ${status.lastSyncFormatted}'),
+                ),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    onPressed: _isSyncing ? null : _manualSync,
+                    icon: _isSyncing
+                        ? const SizedBox(height: 16, width: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                        : const Icon(Icons.sync),
+                    label: const Text('Simdi Senkronla'),
+                  ),
+                ),
+              ],
+            );
+          },
+          loading: () => const Center(child: CircularProgressIndicator()),
+          error: (e, _) => Text('Hata: $e', style: const TextStyle(color: Colors.red)),
+        ),
+      ],
+    );
   }
 
   @override
@@ -332,6 +475,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               );
             },
           ),
+          const SizedBox(height: 16),
+          const Divider(),
+          _buildSyncSection(context, text),
           const SizedBox(height: 16),
           SizedBox(
             height: 48,

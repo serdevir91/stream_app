@@ -60,3 +60,11 @@ backend/__pycache__/
 AGENT.md
 TASKS.md
 output/
+
+# Root log files
+backend_out.log
+backend_err.log
+
+# Database files
+*.db
+*.sqlite

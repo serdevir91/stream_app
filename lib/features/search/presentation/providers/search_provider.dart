@@ -19,6 +19,21 @@ final searchRepositoryProvider = Provider<SearchRepository>((ref) {
   );
 });
 
+final mediaDetailsProvider = FutureProvider.family<MediaDetailsInfo?, String>((
+  ref,
+  mediaKey,
+) async {
+  final repo = ref.watch(searchRepositoryProvider);
+  final parts = mediaKey.split(':');
+  if (parts.length < 2) {
+    return null;
+  }
+
+  final mediaType = parts.first;
+  final mediaId = parts.sublist(1).join(':');
+  return repo.getMediaDetails(mediaId, mediaType);
+});
+
 class SearchQueryNotifier extends Notifier<String> {
   @override
   String build() => '';
@@ -106,7 +121,10 @@ final mixedRecommendationsProvider = FutureProvider<List<MediaItem>>((
   return _dedupeAndLimit(mixed, 40);
 });
 
-List<MediaItem> _alternateMerge(List<MediaItem> movies, List<MediaItem> series) {
+List<MediaItem> _alternateMerge(
+  List<MediaItem> movies,
+  List<MediaItem> series,
+) {
   final merged = <MediaItem>[];
   final maxLen = movies.length > series.length ? movies.length : series.length;
   for (var i = 0; i < maxLen; i++) {

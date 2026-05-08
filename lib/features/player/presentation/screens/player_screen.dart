@@ -1,17 +1,21 @@
 import 'dart:async';
 
+
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutter_vlc_player/flutter_vlc_player.dart';
+import 'package:media_kit/media_kit.dart';
+import 'package:media_kit_video/media_kit_video.dart';
+import 'package:audio_session/audio_session.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:webview_windows/webview_windows.dart' as windows_webview;
-import 'package:dio/dio.dart';
+
+import '../../../../core/backend/addon_service_provider.dart';
+import '../../../../core/i18n/app_text.dart';
+
 import '../providers/player_provider.dart';
 import '../../domain/entities/watch_history.dart';
-import '../../../../core/settings/app_settings_provider.dart';
-import '../../../../core/backend/internal_backend.dart';
 
 class PlayerScreen extends ConsumerStatefulWidget {
   final String mediaId;
@@ -26,6 +30,11 @@ class PlayerScreen extends ConsumerStatefulWidget {
   final String? initialProvider;
   final bool initialIsDirectLink;
   final String subtitleLanguage;
+  final int? runtimeMinutes;
+  final int? nextSeasonNumber;
+  final int? nextEpisodeNumber;
+  final String? nextEpisodeTitle;
+  final int? totalEpisodesInSeason;
 
   const PlayerScreen({
     super.key,
@@ -41,14 +50,21 @@ class PlayerScreen extends ConsumerStatefulWidget {
     this.initialProvider,
     this.initialIsDirectLink = true,
     this.subtitleLanguage = 'tr',
+    this.runtimeMinutes,
+    this.nextSeasonNumber,
+    this.nextEpisodeNumber,
+    this.nextEpisodeTitle,
+    this.totalEpisodesInSeason,
   });
 
   @override
   ConsumerState<PlayerScreen> createState() => _PlayerScreenState();
 }
 
-class _PlayerScreenState extends ConsumerState<PlayerScreen> with WidgetsBindingObserver {
-  VlcPlayerController? _videoPlayerController;
+class _PlayerScreenState extends ConsumerState<PlayerScreen>
+    with WidgetsBindingObserver {
+  Player? _player;
+  VideoController? _videoController;
   WebViewController? _embedWebViewController;
   windows_webview.WebviewController? _windowsEmbedController;
   bool _isDirectLink = true;
@@ -63,9 +79,17 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> with WidgetsBinding
   int _directAutoplayAttempt = 0;
   Timer? _progressAutosaveTimer;
   final Stopwatch _embedWatchStopwatch = Stopwatch();
+  int _embedPositionOffsetMs = 0;
+  late final Stream<int> _embedPositionTickStream = Stream<int>.periodic(
+    const Duration(seconds: 1),
+    (tick) => tick,
+  ).asBroadcastStream();
   Set<String> _trustedEmbedHosts = const {};
   bool _showOverlayControls = true;
   Timer? _overlayControlsTimer;
+  bool _showNextEpisodeOverlay = false;
+  bool _nextEpisodeDismissed = false;
+
 
   bool _isSeriesType(String value) {
     final type = value.trim().toLowerCase();
@@ -84,24 +108,79 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> with WidgetsBinding
     WidgetsBinding.instance.addObserver(this);
     _enterFullscreenMode();
     _armControlsAutoHide();
+    _configureAudioSession();
+
+  }
+
+
+
+  Future<void> _configureAudioSession() async {
+    try {
+      final session = await AudioSession.instance;
+      await session.configure(
+        const AudioSessionConfiguration(
+          avAudioSessionCategory: AVAudioSessionCategory.playback,
+          avAudioSessionMode: AVAudioSessionMode.moviePlayback,
+          androidAudioAttributes: AndroidAudioAttributes(
+            contentType: AndroidAudioContentType.movie,
+            usage: AndroidAudioUsage.media,
+          ),
+          androidAudioFocusGainType: AndroidAudioFocusGainType.gain,
+          androidWillPauseWhenDucked: true,
+        ),
+      );
+    } catch (e) {
+      debugPrint('Audio session config failed: $e');
+    }
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.paused ||
-        state == AppLifecycleState.detached ||
-        state == AppLifecycleState.hidden) {
+    if (state == AppLifecycleState.detached) {
       _stopAllPlayback();
+      return;
+    }
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.hidden) {
+      // Only stop embed playback on background. Direct links continue playing.
+      if (!_isDirectLink) {
+        _stopEmbedPlayback();
+      }
     }
   }
 
+  void _stopEmbedPlayback() {
+    try {
+      _embedWebViewController?.loadRequest(Uri.parse('about:blank'));
+    } catch (_) {}
+    try {
+      _embedWebViewController?.runJavaScript(
+        'document.querySelectorAll("video,audio").forEach(e=>{e.pause();e.src=""});',
+      );
+    } catch (_) {}
+    try {
+      _windowsEmbedController?.postWebMessage('{"action":"pause"}');
+    } catch (_) {}
+  }
+
   void _stopAllPlayback() {
-    try { _videoPlayerController?.setPlaybackSpeed(0); } catch (_) {}
-    try { _videoPlayerController?.pause(); } catch (_) {}
-    try { _videoPlayerController?.stop(); } catch (_) {}
-    try { _embedWebViewController?.loadRequest(Uri.parse('about:blank')); } catch (_) {}
-    try { _embedWebViewController?.runJavaScript('document.querySelectorAll("video,audio").forEach(e=>{e.pause();e.src=""});'); } catch (_) {}
-    try { _windowsEmbedController?.postWebMessage('{"action":"pause"}'); } catch (_) {}
+    try {
+      _player?.pause();
+    } catch (_) {}
+    try {
+      _player?.stop();
+    } catch (_) {}
+    try {
+      _embedWebViewController?.loadRequest(Uri.parse('about:blank'));
+    } catch (_) {}
+    try {
+      _embedWebViewController?.runJavaScript(
+        'document.querySelectorAll("video,audio").forEach(e=>{e.pause();e.src=""});',
+      );
+    } catch (_) {}
+    try {
+      _windowsEmbedController?.postWebMessage('{"action":"pause"}');
+    } catch (_) {}
   }
 
   @override
@@ -139,7 +218,10 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> with WidgetsBinding
     if (!kIsWeb &&
         (defaultTargetPlatform == TargetPlatform.android ||
             defaultTargetPlatform == TargetPlatform.iOS)) {
-      SystemChrome.setPreferredOrientations(DeviceOrientation.values);
+      SystemChrome.setPreferredOrientations(const [
+        DeviceOrientation.portraitUp,
+        DeviceOrientation.portraitDown,
+      ]);
     }
   }
 
@@ -166,6 +248,95 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> with WidgetsBinding
     }
   }
 
+  int _episodeRuntimeMs() {
+    final runtimeMinutes =
+        widget.runtimeMinutes ?? (_normalizedMediaType == 'tv' ? 25 : 90);
+    return runtimeMinutes * 60 * 1000;
+  }
+
+  int get _currentEmbedPositionMs =>
+      _embedPositionOffsetMs + _embedWatchStopwatch.elapsedMilliseconds;
+
+
+
+  Future<void> _seekDirectPlayback(Duration target) async {
+    final player = _player;
+    if (player == null) return;
+
+    var nextPosition = target;
+    if (nextPosition.isNegative) {
+      nextPosition = Duration.zero;
+    }
+
+    final duration = player.state.duration;
+    if (duration.inMilliseconds > 0 && nextPosition > duration) {
+      nextPosition = duration;
+    }
+
+    await player.seek(nextPosition);
+    _armControlsAutoHide();
+  }
+
+  Future<void> _seekEmbedPlayback(Duration target) async {
+    final safeMs = target.inMilliseconds.clamp(0, _episodeRuntimeMs());
+    final targetSeconds = (safeMs / 1000).toStringAsFixed(3);
+    final script =
+        '''
+      (function() {
+        var target = $targetSeconds;
+        function seekVideos(root) {
+          try {
+            root.querySelectorAll('video').forEach(function(video) {
+              try {
+                var duration = Number(video.duration);
+                var safeTarget = isNaN(duration) || duration <= 0
+                    ? target
+                    : Math.min(Math.max(0, target), duration);
+                video.currentTime = safeTarget;
+                if (video.paused) { video.play().catch(function(){}); }
+              } catch (_) {}
+            });
+          } catch (_) {}
+        }
+        seekVideos(document);
+        document.querySelectorAll('iframe').forEach(function(frame) {
+          try {
+            if (frame.contentWindow && frame.contentWindow.document) {
+              seekVideos(frame.contentWindow.document);
+            }
+          } catch (_) {}
+        });
+      })();
+    ''';
+
+    try {
+      await _embedWebViewController?.runJavaScript(script);
+    } catch (_) {}
+    try {
+      await _windowsEmbedController?.executeScript(script);
+    } catch (_) {}
+
+    _embedPositionOffsetMs = safeMs;
+    if (_embedWatchStopwatch.isRunning) {
+      _embedWatchStopwatch.reset();
+    } else {
+      _embedWatchStopwatch
+        ..reset()
+        ..start();
+    }
+    _armControlsAutoHide();
+  }
+
+  Future<void> _seekPlayback(Duration target) async {
+    if (_isDirectLink) {
+      await _seekDirectPlayback(target);
+      return;
+    }
+    await _seekEmbedPlayback(target);
+  }
+
+
+
   void _initializePlayer(
     String streamUrl, {
     String? message,
@@ -173,14 +344,15 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> with WidgetsBinding
     bool isDirectLink = true,
   }) {
     if (_isDisposed) return;
-    final previousVideoController = _videoPlayerController;
+    final previousPlayer = _player;
     final previousWindowsController = _windowsEmbedController;
 
     setState(() {
       _isDirectLink = isDirectLink;
       _errorMessage = null;
       _embedUrl = null;
-      _videoPlayerController = null;
+      _player = null;
+      _videoController = null;
       _embedWebViewController = null;
       _windowsEmbedController = null;
     });
@@ -189,10 +361,10 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> with WidgetsBinding
     _embedWatchStopwatch
       ..stop()
       ..reset();
+    _embedPositionOffsetMs = 0;
     _directAutoplayAttempt += 1;
-    if (previousVideoController != null) {
-      unawaited(previousVideoController.stopRendererScanning());
-      unawaited(previousVideoController.dispose());
+    if (previousPlayer != null) {
+      unawaited(previousPlayer.dispose());
     }
     if (previousWindowsController != null) {
       unawaited(previousWindowsController.dispose());
@@ -202,20 +374,17 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> with WidgetsBinding
       setState(() {
         _loadingStatus = 'Video yukleniyor...';
       });
-      _videoPlayerController = VlcPlayerController.network(
-        streamUrl,
-        hwAcc: HwAcc.full,
-        autoPlay: true,
-        options: VlcPlayerOptions(),
-      );
-      _ensureDirectPlaybackStarts(_videoPlayerController!);
+      final player = Player();
+      _player = player;
+      _videoController = VideoController(player);
+      player.open(Media(streamUrl), play: true);
+      _ensureDirectPlaybackStarts(player);
       setState(() {
         _isLoading = false;
       });
       _startProgressAutosave();
     } else {
       final localizedUrl = _applyEmbedSubtitleLanguage(streamUrl);
-      // Embed URL - render inside the app with WebView
       setState(() {
         _embedUrl = localizedUrl;
         _loadingStatus = 'Uygulama ici oynatici hazirlaniyor...';
@@ -564,22 +733,51 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> with WidgetsBinding
     _progressAutosaveTimer?.cancel();
     _progressAutosaveTimer = Timer.periodic(const Duration(seconds: 15), (_) {
       unawaited(_saveProgress());
+      _checkEpisodeCompletion();
     });
   }
 
-  void _ensureDirectPlaybackStarts(VlcPlayerController controller) {
+  Future<void> _checkEpisodeCompletion() async {
+    if (!_isTvPlayback || _nextEpisodeDismissed || _showNextEpisodeOverlay) {
+      return;
+    }
+    if (widget.nextEpisodeNumber == null) return;
+
+    bool isNearEnd = false;
+    if (_isDirectLink && _player != null) {
+      try {
+        final pos = _player!.state.position;
+        final dur = _player!.state.duration;
+        if (dur.inMilliseconds > 0) {
+          isNearEnd = (dur.inMilliseconds - pos.inMilliseconds) <= 45000;
+        }
+      } catch (_) {}
+    } else {
+      final elapsed = _currentEmbedPositionMs;
+      final runtimeMs = _episodeRuntimeMs();
+      isNearEnd = elapsed >= (runtimeMs - 45000);
+    }
+
+    if (isNearEnd && mounted) {
+      setState(() {
+        _showNextEpisodeOverlay = true;
+      });
+    }
+  }
+
+  void _ensureDirectPlaybackStarts(Player player) {
     final attempt = ++_directAutoplayAttempt;
 
     Future<void> tryPlay(int retriesLeft) async {
       if (_isDisposed ||
-          _videoPlayerController != controller ||
+          _player != player ||
           attempt != _directAutoplayAttempt) {
         return;
       }
       try {
-        await controller.play();
+        await player.play();
       } catch (_) {}
-      if (controller.value.isPlaying || retriesLeft <= 0) {
+      if (player.state.playing || retriesLeft <= 0) {
         return;
       }
       await Future<void>.delayed(const Duration(milliseconds: 900));
@@ -615,14 +813,13 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> with WidgetsBinding
       if (_isDisposed || !mounted || attempt != _directFallbackAttempt) {
         return;
       }
-      if (!_isDirectLink || _videoPlayerController == null) {
+      if (!_isDirectLink || _player == null) {
         return;
       }
 
-      final value = _videoPlayerController!.value;
+      final state = _player!.state;
       final hasStartedPlayback =
-          value.isPlaying ||
-          (value.position.inMilliseconds > 0 && value.isInitialized);
+          state.playing || (state.position.inMilliseconds > 0);
       if (hasStartedPlayback) {
         return;
       }
@@ -633,8 +830,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> with WidgetsBinding
       }
 
       try {
-        await _videoPlayerController?.stopRendererScanning();
-        await _videoPlayerController?.dispose();
+        await _player?.dispose();
       } catch (_) {}
       if (_isDisposed || !mounted || attempt != _directFallbackAttempt) {
         return;
@@ -656,113 +852,56 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> with WidgetsBinding
 
   Future<void> _fetchStreamAndInitialize() async {
     try {
-      final settings = ref.read(appSettingsProvider);
-      final dio = Dio(
-        BaseOptions(
-          baseUrl: settings.backendUrl,
-          connectTimeout: const Duration(seconds: 4),
-          receiveTimeout: const Duration(seconds: 18),
-        ),
-      );
+      final addonService = ref.read(addonServiceProvider);
 
       setState(() {
-        _loadingStatus = 'Sunucuya baglaniliyor...';
+        _loadingStatus = 'Yayin cozumleniyor...';
       });
 
-      final response = await dio.get(
-        '/api/stream',
-        queryParameters: {
-          'query': widget.title,
-          'tmdb_id': widget.mediaId,
-          'type': _backendMediaType,
-          'season': widget.season,
-          'episode': widget.episode,
-          'fast': true,
-          if (widget.sourceId != null) 'addon_id': widget.sourceId,
-        },
+      final data = await addonService.resolveFast(
+        query: widget.title,
+        tmdbId: widget.mediaId,
+        contentType: _backendMediaType,
+        season: widget.season,
+        episode: widget.episode,
+        addonId: widget.sourceId,
       );
 
-      if (response.statusCode == 200 && response.data['success']) {
-        final responseMap = Map<String, dynamic>.from(response.data as Map);
-        final streams =
-            (responseMap['streams'] as List<dynamic>? ?? <dynamic>[])
-                .whereType<Map>()
-                .map((item) => Map<String, dynamic>.from(item))
-                .toList();
+      final streams = (data['streams'] as List<dynamic>? ?? <dynamic>[])
+          .whereType<Map>()
+          .map((item) => Map<String, dynamic>.from(item))
+          .toList();
+
+      if (streams.isNotEmpty) {
         final selectedStream = _selectPreferredStream(streams);
-
-        final streamUrl = selectedStream?['url'] ?? responseMap['stream_url'];
-        final message = response.data['message'];
-        final provider =
-            selectedStream?['provider']?.toString() ??
-            response.data['provider']?.toString();
-        final isDirectLink =
-            selectedStream?['is_direct_link'] ??
-            response.data['is_direct_link'] ??
-            true;
-
+        final stream = selectedStream ?? streams.first;
         if (_isDisposed) return;
-
         _initializePlayer(
-          streamUrl.toString(),
-          message: message?.toString(),
-          provider: provider,
-          isDirectLink: isDirectLink,
+          stream['url'].toString(),
+          provider: stream['provider']?.toString(),
+          isDirectLink: stream['is_direct_link'] ?? true,
         );
         _startDirectLinkFallbackIfNeeded(
           streams: streams,
           selectedStream: selectedStream,
         );
-
-        // Show fallback message if provided
-        if (message != null) {
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text(message),
-                  duration: const Duration(seconds: 5),
-                ),
-              );
-            }
-          });
-        }
-      } else {
-        throw Exception('Stream endpoint returned failure');
-      }
-    } catch (e) {
-      debugPrint('External stream fetch failed, trying internal: $e');
-
-      final internalBackend = InternalBackendService();
-      final data = await internalBackend.resolve(
-        query: widget.title,
-        tmdbId: widget.mediaId,
-        type: _backendMediaType,
-        season: widget.season,
-        episode: widget.episode,
-      );
-
-      final List streams = data['streams'] ?? [];
-      if (streams.isNotEmpty) {
-        final stream = streams.first;
-        if (_isDisposed) return;
-        _initializePlayer(
-          stream['url'].toString(),
-          message: 'Internal Resolver',
-          provider: stream['provider'],
-          isDirectLink: stream['is_direct_link'] ?? false,
-        );
       } else {
         setState(() {
-          _errorMessage = 'Yayin kaynagi bulunamadi (Yerel hata)';
+          _errorMessage = 'Yayin kaynagi bulunamadi';
           _isLoading = false;
         });
       }
+    } catch (e) {
+      debugPrint('Stream fetch failed: $e');
+      setState(() {
+        _errorMessage = 'Yayin kaynagi bulunamadi';
+        _isLoading = false;
+      });
     }
   }
 
   Future<void> _initPlaybackPosition() async {
-    if (_videoPlayerController == null) {
+    if (_player == null) {
       return;
     }
 
@@ -778,28 +917,26 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> with WidgetsBinding
     }
 
     try {
+      // Wait for player to be ready.
       for (int i = 0; i < 20; i++) {
-        if (_isDisposed || _videoPlayerController == null) {
+        if (_isDisposed || _player == null) {
           return;
         }
-        if (_videoPlayerController!.value.isInitialized) {
+        if (_player!.state.duration.inMilliseconds > 0) {
           break;
         }
         await Future<void>.delayed(const Duration(milliseconds: 250));
       }
 
-      if (_isDisposed || _videoPlayerController == null) {
+      if (_isDisposed || _player == null) {
         return;
       }
 
       final rawTarget = history.duration > 0
           ? history.lastPosition.clamp(0, history.duration - 1500)
           : history.lastPosition;
-      final seekTargetMs = rawTarget;
-      await _videoPlayerController!.seekTo(
-        Duration(milliseconds: seekTargetMs),
-      );
-      await _videoPlayerController!.play();
+      await _player!.seek(Duration(milliseconds: rawTarget));
+      await _player!.play();
     } catch (e) {
       debugPrint('Resume seek failed: $e');
     }
@@ -810,16 +947,14 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> with WidgetsBinding
 
     if (!_isDirectLink) {
       try {
-        final elapsed = _embedWatchStopwatch.elapsedMilliseconds;
+        final elapsed = _currentEmbedPositionMs;
         if (elapsed < 10000) {
           return;
         }
 
-        final defaultDuration = _normalizedMediaType == 'tv'
-            ? 45 * 60 * 1000
-            : 2 * 60 * 60 * 1000;
-        final position = elapsed.clamp(10000, defaultDuration - 1000);
-        final isWatched = position >= (defaultDuration * 0.9);
+        final runtimeMs = _episodeRuntimeMs();
+        final position = elapsed.clamp(10000, runtimeMs - 1000);
+        final isWatched = position >= (runtimeMs * 0.85);
 
         await repo.saveProgress(
           WatchHistory(
@@ -831,7 +966,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> with WidgetsBinding
             posterUrl: widget.posterUrl,
             backdropUrl: widget.backdropUrl,
             lastPosition: position,
-            duration: defaultDuration,
+            duration: runtimeMs,
             isWatched: isWatched,
           ),
         );
@@ -841,10 +976,10 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> with WidgetsBinding
       return;
     }
 
-    if (_videoPlayerController == null) return;
+    if (_player == null) return;
     try {
-      final position = await _videoPlayerController!.getPosition();
-      final duration = await _videoPlayerController!.getDuration();
+      final position = _player!.state.position;
+      final duration = _player!.state.duration;
 
       if (position.inMilliseconds > 0 && duration.inMilliseconds > 0) {
         final isWatched =
@@ -901,35 +1036,112 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> with WidgetsBinding
     WidgetsBinding.instance.removeObserver(this);
     _overlayControlsTimer?.cancel();
     _progressAutosaveTimer?.cancel();
-    _embedWatchStopwatch.stop();
     _isDisposed = true;
 
-    // Immediately stop all playback to prevent background audio.
+    // Capture progress BEFORE stopping/nulling controllers.
+    final player = _player;
+    final win = _windowsEmbedController;
+    final embedElapsedMs = _currentEmbedPositionMs;
+    _embedWatchStopwatch.stop();
+
+    int? capturedPositionMs;
+    int? capturedDurationMs;
+    if (_isDirectLink && player != null) {
+      try {
+        capturedPositionMs = player.state.position.inMilliseconds;
+        capturedDurationMs = player.state.duration.inMilliseconds;
+      } catch (_) {}
+    }
+
+    // Stop all playback to prevent background audio.
     _stopAllPlayback();
 
-    final vlc = _videoPlayerController;
-    final win = _windowsEmbedController;
-    _videoPlayerController = null;
+    _player = null;
+    _videoController = null;
     _embedWebViewController = null;
     _windowsEmbedController = null;
 
-    // Dispose controllers synchronously - do NOT wait for saveProgress.
-    if (vlc != null) {
-      try { vlc.stopRendererScanning(); } catch (_) {}
-      try { vlc.dispose(); } catch (_) {}
+    // Dispose controllers.
+    if (player != null) {
+      unawaited(player.dispose());
     }
     if (win != null) {
-      try { win.dispose(); } catch (_) {}
+      try {
+        win.dispose();
+      } catch (_) {}
     }
 
-    // Save progress in background (fire and forget).
-    _saveProgress();
+    // Save progress using captured values.
+    _saveFinalProgress(
+      capturedPositionMs: capturedPositionMs,
+      capturedDurationMs: capturedDurationMs,
+      embedElapsedMs: embedElapsedMs,
+    );
     _restoreSystemUiMode();
     super.dispose();
   }
 
+  Future<void> _saveFinalProgress({
+    int? capturedPositionMs,
+    int? capturedDurationMs,
+    required int embedElapsedMs,
+  }) async {
+    final repo = ref.read(watchHistoryRepositoryProvider);
+
+    if (_isDirectLink &&
+        capturedPositionMs != null &&
+        capturedDurationMs != null &&
+        capturedDurationMs > 0) {
+      final isWatched = capturedPositionMs >= capturedDurationMs * 0.9;
+      try {
+        await repo.saveProgress(
+          WatchHistory(
+            mediaId: widget.mediaId,
+            title: widget.title,
+            mediaType: _normalizedMediaType,
+            season: widget.season,
+            episode: widget.episode,
+            posterUrl: widget.posterUrl,
+            backdropUrl: widget.backdropUrl,
+            lastPosition: capturedPositionMs,
+            duration: capturedDurationMs,
+            isWatched: isWatched,
+          ),
+        );
+      } catch (e) {
+        debugPrint("Error saving final progress: $e");
+      }
+      return;
+    }
+
+    // Embed mode fallback.
+    if (embedElapsedMs < 10000) return;
+    final runtimeMs = _episodeRuntimeMs();
+    final position = embedElapsedMs.clamp(10000, runtimeMs - 1000);
+    final isWatched = position >= (runtimeMs * 0.85);
+    try {
+      await repo.saveProgress(
+        WatchHistory(
+          mediaId: widget.mediaId,
+          title: widget.title,
+          mediaType: _normalizedMediaType,
+          season: widget.season,
+          episode: widget.episode,
+          posterUrl: widget.posterUrl,
+          backdropUrl: widget.backdropUrl,
+          lastPosition: position,
+          duration: runtimeMs,
+          isWatched: isWatched,
+        ),
+      );
+    } catch (e) {
+      debugPrint("Error saving final embed progress: $e");
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    final text = ref.watch(appTextProvider);
     final content = _isLoading
         ? Column(
             mainAxisAlignment: MainAxisAlignment.center,
@@ -956,10 +1168,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> with WidgetsBinding
                 const SizedBox(height: 16),
                 Text(
                   _errorMessage!,
-                  style: const TextStyle(
-                    color: Colors.redAccent,
-                    fontSize: 16,
-                  ),
+                  style: const TextStyle(color: Colors.redAccent, fontSize: 16),
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 16),
@@ -973,18 +1182,14 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> with WidgetsBinding
           )
         : !_isDirectLink && _embedUrl != null
         ? _buildEmbedView()
-        : _videoPlayerController != null
-        ? VlcPlayer(
-            controller: _videoPlayerController!,
-            aspectRatio: MediaQuery.of(context).size.aspectRatio,
-            placeholder: const Center(child: CircularProgressIndicator()),
-          )
+        : _videoController != null
+        ? Video(controller: _videoController!, controls: NoVideoControls)
         : const SizedBox();
     final shouldBlockPlaybackSurfacePointer =
         _showOverlayControls &&
         !_isLoading &&
         _errorMessage == null &&
-        ((_isDirectLink && _videoPlayerController != null) ||
+        ((_isDirectLink && _player != null) ||
             (!_isDirectLink && _embedUrl != null));
     final renderedContent = shouldBlockPlaybackSurfacePointer
         ? AbsorbPointer(absorbing: true, child: content)
@@ -998,127 +1203,323 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> with WidgetsBinding
         }
       },
       child: Scaffold(
-      backgroundColor: Colors.black,
-      body: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: _toggleOverlayControls,
-        child: Stack(
-          children: [
-            Positioned.fill(child: Center(child: renderedContent)),
-            if (_showOverlayControls) ...[
-              Positioned(
-                top: 0,
-                left: 0,
-                right: 0,
-                child: SafeArea(
-                  bottom: false,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 4,
-                    ),
-                    decoration: const BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                        colors: [Colors.black87, Colors.transparent],
+        backgroundColor: Colors.black,
+        body: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: _toggleOverlayControls,
+          child: Stack(
+            children: [
+              Positioned.fill(child: Center(child: renderedContent)),
+              if (_showOverlayControls) ...[
+                Positioned(
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  child: SafeArea(
+                    bottom: false,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 4,
                       ),
-                    ),
-                    child: Row(
-                      children: [
-                        IconButton(
-                          onPressed: () {
-                            _stopAllPlayback();
-                            Navigator.of(context).maybePop();
-                          },
-                          icon: const Icon(Icons.arrow_back, color: Colors.white),
+                      decoration: const BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: [Colors.black87, Colors.transparent],
                         ),
-                        Expanded(
-                          child: Text(
-                            widget.title,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              fontWeight: FontWeight.w600,
+                      ),
+                      child: Row(
+                        children: [
+                          IconButton(
+                            onPressed: () {
+                              _stopAllPlayback();
+                              Navigator.of(context).maybePop();
+                            },
+                            icon: const Icon(
+                              Icons.arrow_back,
                               color: Colors.white,
                             ),
                           ),
-                        ),
-                        if (_isTvPlayback)
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 8,
-                              vertical: 4,
-                            ),
-                            decoration: BoxDecoration(
-                              color: Colors.black45,
-                              borderRadius: BorderRadius.circular(8),
-                            ),
+                          Expanded(
                             child: Text(
-                              'S${widget.season}:E${widget.episode}',
-                              style: const TextStyle(fontSize: 12),
+                              widget.title,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w600,
+                                color: Colors.white,
+                              ),
                             ),
                           ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-              Positioned(
-                left: 0,
-                right: 0,
-                bottom: 0,
-                child: SafeArea(
-                  top: false,
-                  child: Container(
-                    padding: const EdgeInsets.all(10),
-                    decoration: const BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.bottomCenter,
-                        end: Alignment.topCenter,
-                        colors: [Colors.black87, Colors.transparent],
+                          if (_isTvPlayback)
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 4,
+                              ),
+                              decoration: BoxDecoration(
+                                color: Colors.black45,
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Text(
+                                'S${widget.season}:E${widget.episode}',
+                                style: const TextStyle(fontSize: 12),
+                              ),
+                            ),
+                        ],
                       ),
                     ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        if (_videoPlayerController != null)
-                          ValueListenableBuilder<VlcPlayerValue>(
-                            valueListenable: _videoPlayerController!,
-                            builder: (_, value, _) {
-                              final isPlaying = value.isPlaying;
-                              return IconButton(
-                                onPressed: () async {
-                                  final controller = _videoPlayerController;
-                                  if (controller == null) {
-                                    return;
-                                  }
-                                  if (isPlaying) {
-                                    await controller.pause();
-                                  } else {
-                                    await controller.play();
-                                  }
-                                  _armControlsAutoHide();
-                                },
-                                icon: Icon(
-                                  isPlaying
-                                      ? Icons.pause_circle_filled
-                                      : Icons.play_circle_fill,
-                                  size: 44,
+                  ),
+                ),
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  child: SafeArea(
+                    top: false,
+                    child: Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: const BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.bottomCenter,
+                          end: Alignment.topCenter,
+                          colors: [Colors.black87, Colors.transparent],
+                        ),
+                      ),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (_player != null)
+                            StreamBuilder<Duration>(
+                              stream: _player!.stream.position,
+                              builder: (context, snapshot) {
+                                final position = snapshot.data ?? Duration.zero;
+                                final duration = _player!.state.duration;
+                                final max = duration.inMilliseconds > 0
+                                    ? duration.inMilliseconds.toDouble()
+                                    : 1.0;
+                                return Row(
+                                  children: [
+                                    Padding(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 12,
+                                      ),
+                                      child: Text(
+                                        _formatDuration(position),
+                                        style: const TextStyle(
+                                          color: Colors.white70,
+                                          fontSize: 12,
+                                        ),
+                                      ),
+                                    ),
+                                    Expanded(
+                                      child: Slider(
+                                        value: position.inMilliseconds
+                                            .toDouble()
+                                            .clamp(0, max),
+                                        min: 0,
+                                        max: max,
+                                        activeColor: Colors.red,
+                                        inactiveColor: Colors.white30,
+                                        onChanged: (value) {
+                                          _player!.seek(
+                                            Duration(
+                                              milliseconds: value.toInt(),
+                                            ),
+                                          );
+                                        },
+                                      ),
+                                    ),
+                                    Padding(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 12,
+                                      ),
+                                      child: Text(
+                                        _formatDuration(duration),
+                                        style: const TextStyle(
+                                          color: Colors.white70,
+                                          fontSize: 12,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                );
+                              },
+                            ),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              if (_player != null)
+                                StreamBuilder<bool>(
+                                  stream: _player!.stream.playing,
+                                  builder: (context, snapshot) {
+                                    final isPlaying = snapshot.data ?? false;
+                                    return IconButton(
+                                      onPressed: () async {
+                                        final p = _player;
+                                        if (p == null) return;
+                                        if (isPlaying) {
+                                          await p.pause();
+                                        } else {
+                                          await p.play();
+                                        }
+                                        _armControlsAutoHide();
+                                      },
+                                      icon: Icon(
+                                        isPlaying
+                                            ? Icons.pause_circle_filled
+                                            : Icons.play_circle_fill,
+                                        size: 44,
+                                      ),
+                                    );
+                                  },
                                 ),
-                              );
-                            },
+                              const SizedBox(width: 8),
+                              _buildSpeedButton(),
+                            ],
                           ),
-                      ],
+                        ],
+                      ),
                     ),
                   ),
                 ),
-              ),
+
+              ],
+              if (_showNextEpisodeOverlay)
+                Positioned.fill(
+                  child: Container(
+                    color: Colors.black87,
+                    child: Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(
+                            Icons.skip_next,
+                            color: Colors.white,
+                            size: 64,
+                          ),
+                          const SizedBox(height: 16),
+                          Text(
+                            'Sonraki Bolum',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 20,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            'S${widget.nextSeasonNumber ?? widget.season}:E${widget.nextEpisodeNumber} - ${widget.nextEpisodeTitle ?? ''}',
+                            style: const TextStyle(
+                              color: Colors.white70,
+                              fontSize: 16,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                          const SizedBox(height: 24),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              OutlinedButton(
+                                onPressed: () {
+                                  setState(() {
+                                    _showNextEpisodeOverlay = false;
+                                    _nextEpisodeDismissed = true;
+                                  });
+                                },
+                                style: OutlinedButton.styleFrom(
+                                  foregroundColor: Colors.white,
+                                  side: const BorderSide(color: Colors.white54),
+                                ),
+                                child: const Text('Iptal'),
+                              ),
+                              const SizedBox(width: 16),
+                              ElevatedButton.icon(
+                                onPressed: _playNextEpisode,
+                                icon: const Icon(Icons.play_arrow),
+                                label: const Text('Izle'),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.red,
+                                  foregroundColor: Colors.white,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
             ],
-          ],
+          ),
         ),
       ),
-    ),
+    );
+  }
+
+  void _playNextEpisode() {
+    if (widget.nextEpisodeNumber == null) return;
+    _stopAllPlayback();
+    Navigator.of(context).pushReplacement(
+      MaterialPageRoute(
+        builder: (_) => PlayerScreen(
+          mediaId: widget.mediaId,
+          title: widget.title,
+          type: widget.type,
+          season: widget.nextSeasonNumber ?? widget.season,
+          episode: widget.nextEpisodeNumber!,
+          posterUrl: widget.posterUrl,
+          backdropUrl: widget.backdropUrl,
+          subtitleLanguage: widget.subtitleLanguage,
+          runtimeMinutes: widget.runtimeMinutes,
+        ),
+      ),
+    );
+  }
+
+
+
+  String _formatDuration(Duration d) {
+    final h = d.inHours;
+    final m = d.inMinutes.remainder(60).toString().padLeft(2, '0');
+    final s = d.inSeconds.remainder(60).toString().padLeft(2, '0');
+    if (h > 0) return '$h:$m:$s';
+    return '$m:$s';
+  }
+
+  static const _speedOptions = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0];
+
+  Widget _buildSpeedButton() {
+    if (_player == null) return const SizedBox.shrink();
+    return StreamBuilder<double>(
+      stream: _player!.stream.rate,
+      builder: (context, snapshot) {
+        final speed = snapshot.data ?? 1.0;
+        return GestureDetector(
+          onTap: () {
+            final currentIndex = _speedOptions.indexOf(speed);
+            final nextIndex = (currentIndex + 1) % _speedOptions.length;
+            _player!.setRate(_speedOptions[nextIndex]);
+            _armControlsAutoHide();
+          },
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(
+              color: Colors.white24,
+              borderRadius: BorderRadius.circular(4),
+            ),
+            child: Text(
+              '${speed}x',
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 

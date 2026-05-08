@@ -67,7 +67,10 @@ class WatchHistoryRepository {
     return 'movie';
   }
 
-  Future<void> saveProgress(WatchHistory history) async {
+  Future<void> saveProgress(
+    WatchHistory history, {
+    bool useProvidedUpdatedAt = false,
+  }) async {
     final normalizedMediaType = _normalizeMediaType(history.mediaType);
     final historyId = history.historyId.isNotEmpty
         ? history.historyId
@@ -90,7 +93,9 @@ class WatchHistoryRepository {
       lastPosition: history.lastPosition,
       duration: history.duration,
       isWatched: history.isWatched,
-      updatedAtMs: DateTime.now().millisecondsSinceEpoch,
+      updatedAtMs: useProvidedUpdatedAt
+          ? history.updatedAtMs
+          : DateTime.now().millisecondsSinceEpoch,
     );
     final box = _boxOrNull ?? await Hive.openBox<WatchHistoryModel>(boxName);
     await box.put(historyId, model);
@@ -209,6 +214,15 @@ class WatchHistoryRepository {
     if (keys.isNotEmpty) {
       _emitChange();
     }
+  }
+
+  Future<void> deleteByHistoryId(String historyId) async {
+    final box = _boxOrNull;
+    if (box == null || !box.containsKey(historyId)) {
+      return;
+    }
+    await box.delete(historyId);
+    _emitChange();
   }
 
   void _emitChange() {
