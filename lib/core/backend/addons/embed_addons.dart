@@ -74,8 +74,7 @@ class TwoEmbedAddon extends BaseAddon {
     if (isMovie) {
       url = 'https://www.2embed.cc/embed/$contentId';
     } else {
-      url =
-          'https://www.2embed.cc/embed/tv?id=$contentId&s=$season&e=$episode';
+      url = 'https://www.2embed.cc/embed/tv?id=$contentId&s=$season&e=$episode';
     }
 
     return [
@@ -216,6 +215,232 @@ class EmbedSUAddon extends BaseAddon {
         title: 'EmbedSU',
         quality: 'HD',
         provider: 'EmbedSU',
+        isDirectLink: false,
+      ),
+    ];
+  }
+}
+
+class DemoDirectAddon extends BaseAddon {
+  @override
+  final AddonManifest manifest = AddonManifest(
+    id: 'builtin.demo_direct',
+    name: 'Demo Direct (Test)',
+    description: 'Native Player testleri icin dogrudan .mp4 dondurur.',
+    version: '1.0.0',
+    types: ['movie', 'series'],
+    isBuiltin: true,
+  );
+
+  @override
+  Future<List<SearchResult>> search(String query, String contentType) async =>
+      [];
+
+  @override
+  Future<List<StreamResult>> getStreams(
+    String contentId,
+    String contentType,
+    int season,
+    int episode,
+  ) async {
+    // Her zaman calisan, acik kaynakli bir test videosu dondurur.
+    return [
+      StreamResult(
+        url:
+            'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4',
+        title: 'Demo HD',
+        quality: '1080p',
+        provider: 'DemoDirect',
+        isDirectLink: true,
+      ),
+    ];
+  }
+}
+
+class VidEasyAddon extends BaseAddon {
+  @override
+  final AddonManifest manifest = AddonManifest(
+    id: 'builtin.videasy',
+    name: 'VidEasy',
+    description: 'VidEasy embed player provider.',
+    version: '1.0.0',
+    types: ['movie', 'series'],
+    isBuiltin: true,
+  );
+
+  @override
+  Future<List<SearchResult>> search(String query, String contentType) async =>
+      [];
+
+  @override
+  Future<List<StreamResult>> getStreams(
+    String contentId,
+    String contentType,
+    int season,
+    int episode,
+  ) async {
+    final isMovie = contentType == 'movie';
+    final url = isMovie
+        ? 'https://player.videasy.net/movie/$contentId'
+        : 'https://player.videasy.net/tv/$contentId/$season/$episode';
+    return [
+      StreamResult(
+        url: url,
+        title: 'VidEasy',
+        quality: 'HD',
+        provider: 'VidEasy',
+        isDirectLink: false,
+      ),
+    ];
+  }
+}
+
+class SmashyStreamAddon extends BaseAddon {
+  @override
+  final AddonManifest manifest = AddonManifest(
+    id: 'builtin.smashystream',
+    name: 'SmashyStream',
+    description: 'SmashyStream embed player provider.',
+    version: '1.0.0',
+    types: ['movie', 'series'],
+    isBuiltin: true,
+  );
+
+  @override
+  Future<List<SearchResult>> search(String query, String contentType) async =>
+      [];
+
+  @override
+  Future<List<StreamResult>> getStreams(
+    String contentId,
+    String contentType,
+    int season,
+    int episode,
+  ) async {
+    final isMovie = contentType == 'movie';
+    final url = isMovie
+        ? 'https://embed.smashystream.com/playere.php?tmdb=$contentId'
+        : 'https://embed.smashystream.com/playere.php?tmdb=$contentId&season=$season&episode=$episode';
+    return [
+      StreamResult(
+        url: url,
+        title: 'Smashy',
+        quality: 'HD',
+        provider: 'SmashyStream',
+        isDirectLink: false,
+      ),
+    ];
+  }
+}
+
+class PStreamAddon extends BaseAddon {
+  @override
+  final AddonManifest manifest = AddonManifest(
+    id: 'builtin.pstream',
+    name: 'P-Stream',
+    description: 'P-Stream embed player provider.',
+    version: '1.0.0',
+    types: ['movie', 'series'],
+    isBuiltin: true,
+  );
+
+  @override
+  Future<List<SearchResult>> search(String query, String contentType) async =>
+      [];
+
+  @override
+  Future<List<StreamResult>> getStreams(
+    String contentId,
+    String contentType,
+    int season,
+    int episode,
+  ) async {
+    final isMovie = contentType == 'movie';
+    final url = isMovie
+        ? 'https://iframe.pstream.org/embed/tmdb-movie-$contentId'
+        : 'https://iframe.pstream.org/embed/tmdb-tv-$contentId/$season/$episode';
+    return [
+      StreamResult(
+        url: url,
+        title: 'P-Stream',
+        quality: 'HD',
+        provider: 'P-Stream',
+        isDirectLink: false,
+      ),
+    ];
+  }
+}
+
+class VidSrcCcAddon extends BaseAddon {
+  @override
+  final AddonManifest manifest = AddonManifest(
+    id: 'builtin.vidsrccc',
+    name: 'VidSrc.cc',
+    description: 'VidSrc.cc embed player provider.',
+    version: '1.0.0',
+    types: ['movie', 'series'],
+    isBuiltin: true,
+  );
+
+  @override
+  Future<List<SearchResult>> search(String query, String contentType) async =>
+      [];
+
+  @override
+  Future<List<StreamResult>> getStreams(
+    String contentId,
+    String contentType,
+    int season,
+    int episode,
+  ) async {
+    final isMovie = contentType == 'movie';
+    final url = isMovie
+        ? 'https://vidsrc.cc/v2/embed/movie/$contentId'
+        : 'https://vidsrc.cc/v2/embed/tv/$contentId/$season/$episode';
+    return [
+      StreamResult(
+        url: url,
+        title: 'VidSrc.cc',
+        quality: 'HD',
+        provider: 'VidSrc.cc',
+        isDirectLink: false,
+      ),
+    ];
+  }
+}
+
+class StreamImdbAddon extends BaseAddon {
+  @override
+  final AddonManifest manifest = AddonManifest(
+    id: 'builtin.streamimdb',
+    name: 'StreamImdb',
+    description: 'StreamImdb embed provider.',
+    version: '1.0.0',
+    types: ['movie', 'series'],
+    isBuiltin: true,
+  );
+
+  @override
+  Future<List<SearchResult>> search(String query, String contentType) async =>
+      [];
+
+  @override
+  Future<List<StreamResult>> getStreams(
+    String contentId,
+    String contentType,
+    int season,
+    int episode,
+  ) async {
+    final isMovie = contentType == 'movie';
+    final url = isMovie
+        ? 'https://vaplayer.ru/embed/movie/$contentId'
+        : 'https://vaplayer.ru/embed/tv/$contentId/$season/$episode';
+    return [
+      StreamResult(
+        url: url,
+        title: 'StreamImdb',
+        quality: 'HD',
+        provider: 'StreamImdb',
         isDirectLink: false,
       ),
     ];

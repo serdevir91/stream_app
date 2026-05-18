@@ -37,6 +37,7 @@ class AppSettingsRepository {
           backendUrl: 'http://127.0.0.1:8000',
           autoSelectSource: true,
           preferredSourceId: '',
+          videoPlayer: 'native',
         );
         box.put(key, migrated.toMap());
         return migrated;

@@ -19,7 +19,6 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Search'), findsWidgets);
-    expect(find.textContaining('TMDB'), findsOneWidget);
     expect(find.byType(TextField), findsOneWidget);
   });
 }

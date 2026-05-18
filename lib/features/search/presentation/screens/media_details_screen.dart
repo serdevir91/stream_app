@@ -1010,6 +1010,27 @@ class _MediaDetailsScreenState extends ConsumerState<MediaDetailsScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
+                  if (episode.voteAverage != null &&
+                      episode.voteAverage! > 0)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 2),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.star,
+                              color: Colors.amber, size: 14),
+                          const SizedBox(width: 4),
+                          Text(
+                            'IMDb ${episode.voteAverage!.toStringAsFixed(1)}',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: Colors.amber.shade200,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                   if (episodeRuntimeMinutes != null &&
                       episodeRuntimeMinutes > 0)
                     Padding(

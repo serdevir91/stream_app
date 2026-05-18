@@ -33,9 +33,9 @@ watch history, a personal library, and runtime app settings.
 
 | Architecture | File | Size |
 |-------------|------|------|
-| ARM64 (most devices) | [app-arm64-v8a-release.apk](https://github.com/serdevir91/stream_app/releases/download/v1.0.2/app-arm64-v8a-release.apk) | ~61 MB |
-| ARM 32-bit (older devices) | [app-armeabi-v7a-release.apk](https://github.com/serdevir91/stream_app/releases/download/v1.0.2/app-armeabi-v7a-release.apk) | ~54 MB |
-| x86_64 (emulators) | [app-x86_64-release.apk](https://github.com/serdevir91/stream_app/releases/download/v1.0.2/app-x86_64-release.apk) | ~68 MB |
+| ARM64 (most devices) | [app-arm64-v8a-release.apk](https://github.com/serdevir91/stream_app/releases/download/v1.0.3/app-arm64-v8a-release.apk) | ~31.7 MB |
+| ARM 32-bit (older devices) | [app-armeabi-v7a-release.apk](https://github.com/serdevir91/stream_app/releases/download/v1.0.3/app-armeabi-v7a-release.apk) | ~28.8 MB |
+| x86_64 (emulators) | [app-x86_64-release.apk](https://github.com/serdevir91/stream_app/releases/download/v1.0.3/app-x86_64-release.apk) | ~36.4 MB |
 
 > Most modern phones use ARM64. If unsure, download the ARM64 version.
 
@@ -43,8 +43,8 @@ watch history, a personal library, and runtime app settings.
 
 | Type | File | Size |
 |------|------|------|
-| Installer (recommended) | [StreamApp-Setup-v1.0.2.exe](https://github.com/serdevir91/stream_app/releases/download/v1.0.2/StreamApp-Setup-v1.0.2.exe) | ~11 MB |
-| Portable | [stream_app-windows-x64.zip](https://github.com/serdevir91/stream_app/releases/download/v1.0.2/stream_app-windows-x64.zip) | ~13 MB |
+| Installer (recommended) | [StreamApp-Setup-v1.0.3.exe](https://github.com/serdevir91/stream_app/releases/download/v1.0.3/StreamApp-Setup-v1.0.3.exe) | ~24.7 MB |
+| Portable | [stream_app-windows-x64.zip](https://github.com/serdevir91/stream_app/releases/download/v1.0.3/stream_app-windows-x64.zip) | ~32.1 MB |
 
 **Installer**: Run the `.exe` wizard. Creates Start Menu shortcuts and an uninstaller.
 
@@ -131,7 +131,7 @@ StreamApp uses [TMDB (The Movie Database)](https://www.themoviedb.org/) API for 
 
    > **Important**: Use the **API Read Access Token**, not the API Key. They are different.
 
-5. **Paste in StreamApp**: Open the app → **Settings** tab → paste the token in the **TMDB Access Token** field → Save.
+5. **Paste in StreamApp**: Open the app -> **Settings** tab -> paste the token in the **TMDB Access Token** field -> Save.
 
 ### In-App Settings
 
@@ -173,7 +173,7 @@ No TMDB token is committed in source code.
 
 ### Add-on Management
 
-1. Go to **Settings → Add-ons** (or the **Add-ons** tab).
+1. Go to **Settings -> Add-ons** (or the **Add-ons** tab).
 2. View the list of installed and built-in add-ons.
 3. To install a new add-on:
    - Tap **"Add Add-on"**.
@@ -220,7 +220,7 @@ flutter build windows --release
 "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer\stream_app.iss
 ```
 
-Output: `output/StreamApp-Setup-v1.0.2.exe`
+Output: `output/StreamApp-Setup-v1.0.3.exe`
 
 ### Android APK
 
@@ -265,6 +265,7 @@ StreamApp ships with the following source add-ons:
 | **SuperEmbed** | Embed | SuperEmbed embed provider |
 | **VidLink** | Embed | VidLink embed provider |
 | **EmbedSU** | Embed | Embed.su streaming source |
+| **StreamIMDB / VidAPI** | Embed | Vaplayer/VidAPI embed source with subtitle language support |
 | **FlixHQ** | API/Scraping | FlixHQ movie/series source |
 | **Archive.org** | API | Internet Archive content (disabled by default) |
 | **WebTorrent** | API | WebTorrent-based streaming (disabled by default) |
@@ -340,6 +341,16 @@ Your backend must expose:
   - `Install from file (.json)` and choose local manifest file.
 
 ## Changelog
+
+### v1.0.3
+
+- **Android subtitles**: Added document-start WebView injection for StreamIMDB/VidAPI Turkish subtitle text fixes.
+- **StreamIMDB/VidAPI**: Uses Vaplayer URLs and passes subtitle language parameters for automatic subtitle selection.
+- **Player**: Fixed embed touch handling so provider controls such as subtitle language selectors can receive taps.
+- **Continue Watching**: Preserves the selected source per watch history entry, avoiding fallback to the wrong provider.
+- **Sync/Library**: Improved watch history and library sync metadata handling.
+- **Windows installer**: Packages the full Windows release folder so media playback DLLs are included.
+- **Build**: Updated Android dependency setup for current Flutter Android plugin embedding.
 
 ### v1.0.2
 

@@ -25,6 +25,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   bool _initialized = false;
   bool _isSaving = false;
   bool _isApiFieldsVisible = false;
+  String _videoPlayer = 'native';
   late final TextEditingController _syncServerUrlController;
 
   @override
@@ -51,6 +52,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     _subtitleLanguage = settings.subtitleLanguage;
     _autoSelectSource = settings.autoSelectSource;
     _preferredSourceId = settings.preferredSourceId;
+    _videoPlayer = settings.videoPlayer;
     _tmdbTokenController = TextEditingController(text: settings.tmdbAccessToken);
     _backendUrlController = TextEditingController(text: settings.backendUrl);
     _initialized = true;
@@ -97,6 +99,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       backendUrl: _backendUrlController.text.trim(),
       autoSelectSource: _autoSelectSource,
       preferredSourceId: cleanedPreferredSourceId,
+      videoPlayer: _videoPlayer,
     );
 
     final syncStatus = await notifier.saveSettings(next);
@@ -344,6 +347,30 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               if (value == null) return;
               setState(() {
                 _subtitleLanguage = value;
+              });
+            },
+            decoration: const InputDecoration(border: OutlineInputBorder()),
+          ),
+          const SizedBox(height: 16),
+          Text(
+            text.t('video_player'),
+            style: const TextStyle(fontWeight: FontWeight.w600),
+          ),
+          const SizedBox(height: 8),
+          DropdownButtonFormField<String>(
+            initialValue: _videoPlayer,
+            items: supportedVideoPlayers.entries
+                .map(
+                  (entry) => DropdownMenuItem<String>(
+                    value: entry.key,
+                    child: Text(entry.value),
+                  ),
+                )
+                .toList(),
+            onChanged: (value) {
+              if (value == null) return;
+              setState(() {
+                _videoPlayer = value;
               });
             },
             decoration: const InputDecoration(border: OutlineInputBorder()),

@@ -129,20 +129,23 @@ class SyncService {
     final allHistory = _watchHistoryRepo.getAllHistory();
     final watchHistoryMaps = allHistory
         .where((h) => h.updatedAtMs > sinceMs)
-        .map((h) => {
-              'history_id': h.historyId,
-              'media_id': h.mediaId,
-              'title': h.title,
-              'media_type': h.mediaType,
-              'season': h.season,
-              'episode': h.episode,
-              'poster_url': h.posterUrl,
-              'backdrop_url': h.backdropUrl,
-              'last_position': h.lastPosition,
-              'duration': h.duration,
-              'is_watched': h.isWatched,
-              'updated_at_ms': h.updatedAtMs,
-            })
+        .map(
+          (h) => {
+            'history_id': h.historyId,
+            'media_id': h.mediaId,
+            'title': h.title,
+            'media_type': h.mediaType,
+            'season': h.season,
+            'episode': h.episode,
+            'poster_url': h.posterUrl,
+            'backdrop_url': h.backdropUrl,
+            'source_id': h.sourceId,
+            'last_position': h.lastPosition,
+            'duration': h.duration,
+            'is_watched': h.isWatched,
+            'updated_at_ms': h.updatedAtMs,
+          },
+        )
         .toList();
     final libraryMaps = _libraryRepo
         .getSyncEntries()
@@ -189,20 +192,24 @@ class SyncService {
         continue;
       }
 
-      await _watchHistoryRepo.saveProgress(WatchHistory(
-        historyId: map['history_id'] as String? ?? '',
-        mediaId: map['media_id'] as String,
-        title: map['title'] as String? ?? '',
-        mediaType: map['media_type'] as String? ?? 'movie',
-        season: map['season'] as int? ?? 1,
-        episode: map['episode'] as int? ?? 1,
-        posterUrl: map['poster_url'] as String?,
-        backdropUrl: map['backdrop_url'] as String?,
-        lastPosition: map['last_position'] as int? ?? 0,
-        duration: map['duration'] as int? ?? 0,
-        isWatched: map['is_watched'] as bool? ?? false,
-        updatedAtMs: remoteUpdatedAt,
-      ), useProvidedUpdatedAt: true);
+      await _watchHistoryRepo.saveProgress(
+        WatchHistory(
+          historyId: map['history_id'] as String? ?? '',
+          mediaId: map['media_id'] as String,
+          title: map['title'] as String? ?? '',
+          mediaType: map['media_type'] as String? ?? 'movie',
+          season: map['season'] as int? ?? 1,
+          episode: map['episode'] as int? ?? 1,
+          posterUrl: map['poster_url'] as String?,
+          backdropUrl: map['backdrop_url'] as String?,
+          sourceId: map['source_id'] as String?,
+          lastPosition: map['last_position'] as int? ?? 0,
+          duration: map['duration'] as int? ?? 0,
+          isWatched: map['is_watched'] as bool? ?? false,
+          updatedAtMs: remoteUpdatedAt,
+        ),
+        useProvidedUpdatedAt: true,
+      );
     }
 
     final remoteLibrary = result['library'] as List<dynamic>? ?? [];
@@ -267,7 +274,10 @@ class SyncService {
     final box = await _openMetaBox();
 
     final previousWatchIds = _readStringList(box, _watchSnapshotKey).toSet();
-    final previousLibraryIds = _readStringList(box, _librarySnapshotKey).toSet();
+    final previousLibraryIds = _readStringList(
+      box,
+      _librarySnapshotKey,
+    ).toSet();
 
     final currentWatchIds = allHistory
         .map((h) => h.historyId)
@@ -336,8 +346,8 @@ class SyncService {
     final altPort = parsed.port == 8000
         ? 8080
         : parsed.port == 8080
-            ? 8000
-            : null;
+        ? 8000
+        : null;
 
     if (altPort != null) {
       final alt = parsed.replace(port: altPort).toString();

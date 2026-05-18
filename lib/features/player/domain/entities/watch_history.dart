@@ -7,6 +7,7 @@ class WatchHistory {
   final int episode;
   final String? posterUrl;
   final String? backdropUrl;
+  final String? sourceId;
   final int lastPosition; // in milliseconds
   final int duration; // in milliseconds
   final bool isWatched;
@@ -21,6 +22,7 @@ class WatchHistory {
     this.episode = 1,
     this.posterUrl,
     this.backdropUrl,
+    this.sourceId,
     required this.lastPosition,
     required this.duration,
     this.isWatched = false,
@@ -50,6 +52,7 @@ class WatchHistory {
     int? episode,
     String? posterUrl,
     String? backdropUrl,
+    String? sourceId,
     int? lastPosition,
     int? duration,
     bool? isWatched,
@@ -64,6 +67,7 @@ class WatchHistory {
       episode: episode ?? this.episode,
       posterUrl: posterUrl ?? this.posterUrl,
       backdropUrl: backdropUrl ?? this.backdropUrl,
+      sourceId: sourceId ?? this.sourceId,
       lastPosition: lastPosition ?? this.lastPosition,
       duration: duration ?? this.duration,
       isWatched: isWatched ?? this.isWatched,

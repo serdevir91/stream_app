@@ -1,12 +1,12 @@
 [Setup]
 AppName=StreamApp
-AppVersion=1.0.2
+AppVersion=1.0.3
 AppPublisher=StreamApp
 AppPublisherURL=https://github.com/serdevir91/stream_app
 DefaultDirName={autopf}\StreamApp
 DefaultGroupName=StreamApp
 OutputDir=..\output
-OutputBaseFilename=StreamApp-Setup-v1.0.2
+OutputBaseFilename=StreamApp-Setup-v1.0.3
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
@@ -24,13 +24,7 @@ Name: "turkish"; MessagesFile: "compiler:Languages\Turkish.isl"
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"
 
 [Files]
-Source: "..\build\windows\x64\runner\Release\stream_app.exe"; DestDir: "{app}"; Flags: ignoreversion
-Source: "..\build\windows\x64\runner\Release\flutter_windows.dll"; DestDir: "{app}"; Flags: ignoreversion
-Source: "..\build\windows\x64\runner\Release\WebView2Loader.dll"; DestDir: "{app}"; Flags: ignoreversion
-Source: "..\build\windows\x64\runner\Release\webview_windows_plugin.dll"; DestDir: "{app}"; Flags: ignoreversion
-Source: "..\build\windows\x64\runner\Release\url_launcher_windows_plugin.dll"; DestDir: "{app}"; Flags: ignoreversion
-Source: "..\build\windows\x64\runner\Release\dartjni.dll"; DestDir: "{app}"; Flags: ignoreversion
-Source: "..\build\windows\x64\runner\Release\data\*"; DestDir: "{app}\data"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "..\build\windows\x64\runner\Release\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
 Name: "{group}\StreamApp"; Filename: "{app}\stream_app.exe"

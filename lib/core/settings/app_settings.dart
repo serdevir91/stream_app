@@ -1,5 +1,5 @@
 class AppSettings {
-  static const int schemaVersion = 3;
+  static const int schemaVersion = 4;
 
   final String appLanguage;
   final String subtitleLanguage;
@@ -7,6 +7,7 @@ class AppSettings {
   final String backendUrl;
   final bool autoSelectSource;
   final String preferredSourceId;
+  final String videoPlayer; // 'native' or 'media_kit'
 
   const AppSettings({
     required this.appLanguage,
@@ -15,6 +16,7 @@ class AppSettings {
     required this.backendUrl,
     required this.autoSelectSource,
     required this.preferredSourceId,
+    required this.videoPlayer,
   });
 
   static const AppSettings defaults = AppSettings(
@@ -24,6 +26,7 @@ class AppSettings {
     backendUrl: 'http://127.0.0.1:8000',
     autoSelectSource: true,
     preferredSourceId: '',
+    videoPlayer: 'native',
   );
 
   AppSettings copyWith({
@@ -33,6 +36,7 @@ class AppSettings {
     String? backendUrl,
     bool? autoSelectSource,
     String? preferredSourceId,
+    String? videoPlayer,
   }) {
     return AppSettings(
       appLanguage: appLanguage ?? this.appLanguage,
@@ -41,6 +45,7 @@ class AppSettings {
       backendUrl: backendUrl ?? this.backendUrl,
       autoSelectSource: autoSelectSource ?? this.autoSelectSource,
       preferredSourceId: preferredSourceId ?? this.preferredSourceId,
+      videoPlayer: videoPlayer ?? this.videoPlayer,
     );
   }
 
@@ -53,6 +58,7 @@ class AppSettings {
       'backendUrl': backendUrl,
       'autoSelectSource': autoSelectSource,
       'preferredSourceId': preferredSourceId,
+      'videoPlayer': videoPlayer,
     };
   }
 
@@ -64,9 +70,16 @@ class AppSettings {
       backendUrl: (map['backendUrl'] ?? 'http://127.0.0.1:8000').toString(),
       autoSelectSource: (map['autoSelectSource'] ?? true) == true,
       preferredSourceId: (map['preferredSourceId'] ?? '').toString(),
+      videoPlayer: (map['videoPlayer'] ?? 'native').toString(),
     );
   }
 }
+
+const Map<String, String> supportedVideoPlayers = {
+  'native': 'Native Player (ExoPlayer)',
+  'media_kit': 'Media Kit (MPV)',
+  'webview': 'WebView (Embed)',
+};
 
 const Map<String, String> supportedAppLanguages = {
   'tr': 'Turkce',

@@ -130,6 +130,7 @@ class Episode {
   final String? stillPath;
   final String? airDate;
   final int? runtimeMinutes;
+  final double? voteAverage;
 
   Episode({
     required this.episodeNumber,
@@ -137,6 +138,7 @@ class Episode {
     this.stillPath,
     this.airDate,
     this.runtimeMinutes,
+    this.voteAverage,
   });
 
   bool get isAired {
@@ -170,6 +172,9 @@ class Episode {
       airDate: json['air_date'] as String?,
       runtimeMinutes: json['runtime'] is num
           ? (json['runtime'] as num).toInt()
+          : null,
+      voteAverage: json['vote_average'] is num
+          ? (json['vote_average'] as num).toDouble()
           : null,
     );
   }

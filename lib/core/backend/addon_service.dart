@@ -43,6 +43,12 @@ class AddonService {
       () => SuperEmbedAddon(),
       () => VidLinkAddon(),
       () => EmbedSUAddon(),
+      () => VidEasyAddon(),
+      () => SmashyStreamAddon(),
+      () => PStreamAddon(),
+      () => VidSrcCcAddon(),
+      () => StreamImdbAddon(),
+      () => DemoDirectAddon(),
     ]) {
       final addon = factory();
       final id = addon.manifest.id;
@@ -561,18 +567,18 @@ class AddonService {
     if (path.endsWith('/manifest.json')) {
       final basePath = path.substring(0, path.length - '/manifest.json'.length);
       final manifestUrl = normalizedUrl;
-      final baseUrl = parsed.replace(path: basePath, query: '', fragment: '').toString().replaceAll(RegExp(r'/+$'), '');
+      final baseUrl = Uri(scheme: parsed.scheme, userInfo: parsed.userInfo, host: parsed.host, port: parsed.port, path: basePath).toString().replaceAll(RegExp(r'/+$'), '');
       return (baseUrl, [manifestUrl]);
     }
 
     if (path.endsWith('.json')) {
       final basePath = path.substring(0, path.lastIndexOf('/'));
       final manifestUrl = normalizedUrl;
-      final baseUrl = parsed.replace(path: basePath, query: '', fragment: '').toString().replaceAll(RegExp(r'/+$'), '');
+      final baseUrl = Uri(scheme: parsed.scheme, userInfo: parsed.userInfo, host: parsed.host, port: parsed.port, path: basePath).toString().replaceAll(RegExp(r'/+$'), '');
       return (baseUrl, [manifestUrl]);
     }
 
-    final baseUrl = parsed.replace(query: '', fragment: '').toString().replaceAll(RegExp(r'/+$'), '');
+    final baseUrl = Uri(scheme: parsed.scheme, userInfo: parsed.userInfo, host: parsed.host, port: parsed.port, path: parsed.path).toString().replaceAll(RegExp(r'/+$'), '');
     return (baseUrl, [
       '$baseUrl/manifest.json',
       '$baseUrl/addon/manifest.json',

@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../search/domain/entities/media_item.dart';
+import '../../../player/presentation/providers/player_provider.dart';
 import '../../data/repositories/library_repository.dart';
 
 final libraryRepositoryProvider = Provider<LibraryRepository>((ref) {
@@ -52,3 +53,39 @@ class LibraryNotifier extends Notifier<List<MediaItem>> {
 final libraryProvider = NotifierProvider<LibraryNotifier, List<MediaItem>>(
   LibraryNotifier.new,
 );
+
+/// Library items sorted by most recently watched first.
+/// Items without watch history are placed at the end in their original order.
+final sortedLibraryProvider = Provider<List<MediaItem>>((ref) {
+  final items = ref.watch(libraryProvider);
+  ref.watch(watchHistoryChangesProvider);
+  final historyRepo = ref.watch(watchHistoryRepositoryProvider);
+  final allHistory = historyRepo.getAllHistory();
+
+  // Build a map of mediaId -> latest updatedAtMs across all episodes.
+  final lastWatchedMap = <String, int>{};
+  for (final entry in allHistory) {
+    final existing = lastWatchedMap[entry.mediaId];
+    if (existing == null || entry.updatedAtMs > existing) {
+      lastWatchedMap[entry.mediaId] = entry.updatedAtMs;
+    }
+  }
+
+  final sorted = List<MediaItem>.from(items);
+  sorted.sort((a, b) {
+    final aTime = lastWatchedMap[a.id];
+    final bTime = lastWatchedMap[b.id];
+    // Both have watch history: sort by most recent first.
+    if (aTime != null && bTime != null) {
+      return bTime.compareTo(aTime);
+    }
+    // Only one has watch history: that one comes first.
+    if (aTime != null) return -1;
+    if (bTime != null) return 1;
+    // Neither has watch history: keep original order.
+    return 0;
+  });
+
+  return sorted;
+});
+

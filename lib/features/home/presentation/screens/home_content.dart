@@ -156,9 +156,14 @@ class _HomeContentState extends ConsumerState<HomeContent> {
     BuildContext context,
     MediaItem item, {
     required String subtitleLanguage,
+    String? sourceId,
     int season = 1,
     int episode = 1,
   }) {
+    final settings = ref.read(appSettingsProvider);
+    final effectiveSourceId = (sourceId ?? '').trim().isNotEmpty
+        ? sourceId!.trim()
+        : settings.preferredSourceId.trim();
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => PlayerScreen(
@@ -169,6 +174,7 @@ class _HomeContentState extends ConsumerState<HomeContent> {
           episode: episode,
           posterUrl: item.posterUrl,
           backdropUrl: item.backdropUrl,
+          sourceId: effectiveSourceId.isEmpty ? null : effectiveSourceId,
           subtitleLanguage: subtitleLanguage,
         ),
       ),
@@ -201,13 +207,15 @@ class _HomeContentState extends ConsumerState<HomeContent> {
       return;
     }
 
-    await ref.read(watchHistoryRepositoryProvider).deleteProgress(history.mediaId);
+    await ref
+        .read(watchHistoryRepositoryProvider)
+        .deleteProgress(history.mediaId);
     if (!mounted) {
       return;
     }
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(text.t('removed_from_continue'))),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(text.t('removed_from_continue'))));
   }
 
   @override
@@ -232,7 +240,7 @@ class _HomeContentState extends ConsumerState<HomeContent> {
     final movies1980s = ref.watch(movies1980sProvider);
 
     final continueItems = ref.watch(continueWatchingProvider);
-    final libraryItems = ref.watch(libraryProvider);
+    final libraryItems = ref.watch(sortedLibraryProvider);
 
     return Scaffold(
       appBar: AppBar(
@@ -369,8 +377,10 @@ class _HomeContentState extends ConsumerState<HomeContent> {
     final text = ref.watch(appTextProvider);
     final screenWidth = MediaQuery.of(context).size.width;
     final isWideLayout = screenWidth >= 1000;
-    final sliderHeight =
-        (screenWidth * (isWideLayout ? 0.36 : 0.56)).clamp(210.0, 460.0);
+    final sliderHeight = (screenWidth * (isWideLayout ? 0.36 : 0.56)).clamp(
+      210.0,
+      460.0,
+    );
     final cardMargin = isWideLayout ? 0.0 : 6.0;
     final cardRadius = isWideLayout ? 0.0 : 16.0;
 
@@ -378,7 +388,8 @@ class _HomeContentState extends ConsumerState<HomeContent> {
       data: (items) {
         final backdropItems = items
             .where(
-              (item) => item.backdropUrl != null && item.backdropUrl!.isNotEmpty,
+              (item) =>
+                  item.backdropUrl != null && item.backdropUrl!.isNotEmpty,
             )
             .toList();
         final usable = backdropItems.isNotEmpty
@@ -451,7 +462,11 @@ class _HomeContentState extends ConsumerState<HomeContent> {
                             const SizedBox(height: 6),
                             Row(
                               children: [
-                                const Icon(Icons.star, color: Colors.amber, size: 14),
+                                const Icon(
+                                  Icons.star,
+                                  color: Colors.amber,
+                                  size: 14,
+                                ),
                                 const SizedBox(width: 4),
                                 Text(item.rating?.toStringAsFixed(1) ?? 'N/A'),
                                 const SizedBox(width: 10),
@@ -507,7 +522,9 @@ class _HomeContentState extends ConsumerState<HomeContent> {
           final item = items[index];
           final history = item.baseHistory;
           final image = history.posterUrl ?? history.backdropUrl;
-          final progress = item.startFromBeginning ? 0.0 : history.progressRatio;
+          final progress = item.startFromBeginning
+              ? 0.0
+              : history.progressRatio;
 
           String subtitle;
           if (history.mediaType == 'tv') {
@@ -525,6 +542,7 @@ class _HomeContentState extends ConsumerState<HomeContent> {
                 context,
                 _historyToMediaItem(history),
                 subtitleLanguage: subtitleLanguage,
+                sourceId: history.sourceId,
                 season: item.targetSeason,
                 episode: item.targetEpisode,
               );
@@ -575,7 +593,10 @@ class _HomeContentState extends ConsumerState<HomeContent> {
                       subtitle,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontSize: 12, color: Colors.white70),
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: Colors.white70,
+                      ),
                     ),
                   ],
                 ),
@@ -686,8 +707,11 @@ class _HomeContentState extends ConsumerState<HomeContent> {
                                     item.posterUrl!,
                                     fit: BoxFit.cover,
                                     width: double.infinity,
-                                    errorBuilder: (context, error, stackTrace) =>
-                                        const ColoredBox(color: Colors.grey),
+                                    errorBuilder:
+                                        (context, error, stackTrace) =>
+                                            const ColoredBox(
+                                              color: Colors.grey,
+                                            ),
                                   )
                                 : const ColoredBox(
                                     color: Colors.grey,
@@ -704,7 +728,11 @@ class _HomeContentState extends ConsumerState<HomeContent> {
                         ),
                         Row(
                           children: [
-                            const Icon(Icons.star, color: Colors.amber, size: 14),
+                            const Icon(
+                              Icons.star,
+                              color: Colors.amber,
+                              size: 14,
+                            ),
                             const SizedBox(width: 4),
                             Text(
                               item.rating?.toStringAsFixed(1) ?? 'N/A',
@@ -725,10 +753,8 @@ class _HomeContentState extends ConsumerState<HomeContent> {
         height: 200,
         child: Center(child: CircularProgressIndicator()),
       ),
-      error: (err, _) => SizedBox(
-        height: 200,
-        child: Center(child: Text('Error: $err')),
-      ),
+      error: (err, _) =>
+          SizedBox(height: 200, child: Center(child: Text('Error: $err'))),
     );
   }
 }

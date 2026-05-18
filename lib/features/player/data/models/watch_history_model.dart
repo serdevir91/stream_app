@@ -11,6 +11,7 @@ class WatchHistoryModel extends WatchHistory {
     super.episode,
     super.posterUrl,
     super.backdropUrl,
+    super.sourceId,
     required super.lastPosition,
     required super.duration,
     super.isWatched,
@@ -27,6 +28,7 @@ class WatchHistoryModel extends WatchHistory {
       episode: entity.episode,
       posterUrl: entity.posterUrl,
       backdropUrl: entity.backdropUrl,
+      sourceId: entity.sourceId,
       lastPosition: entity.lastPosition,
       duration: entity.duration,
       isWatched: entity.isWatched,
@@ -67,13 +69,14 @@ class WatchHistoryModelAdapter extends TypeAdapter<WatchHistoryModel> {
       updatedAtMs: fields[8] as int? ?? DateTime.now().millisecondsSinceEpoch,
       posterUrl: fields[9] as String?,
       backdropUrl: fields[10] as String?,
+      sourceId: fields[12] as String?,
     );
   }
 
   @override
   void write(BinaryWriter writer, WatchHistoryModel obj) {
     writer
-      ..writeByte(12)
+      ..writeByte(13)
       ..writeByte(0)
       ..write(obj.mediaId)
       ..writeByte(1)
@@ -97,6 +100,8 @@ class WatchHistoryModelAdapter extends TypeAdapter<WatchHistoryModel> {
       ..writeByte(10)
       ..write(obj.backdropUrl)
       ..writeByte(11)
-      ..write(obj.historyId);
+      ..write(obj.historyId)
+      ..writeByte(12)
+      ..write(obj.sourceId);
   }
 }

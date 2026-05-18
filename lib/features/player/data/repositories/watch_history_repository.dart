@@ -90,6 +90,7 @@ class WatchHistoryRepository {
       episode: history.episode,
       posterUrl: history.posterUrl,
       backdropUrl: history.backdropUrl,
+      sourceId: history.sourceId,
       lastPosition: history.lastPosition,
       duration: history.duration,
       isWatched: history.isWatched,

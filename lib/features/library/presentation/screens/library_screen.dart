@@ -11,7 +11,7 @@ class LibraryScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final text = ref.watch(appTextProvider);
-    final libraryItems = ref.watch(libraryProvider);
+    final libraryItems = ref.watch(sortedLibraryProvider);
 
     return Scaffold(
       appBar: AppBar(title: Text(text.t('library_title'))),
