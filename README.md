@@ -21,6 +21,17 @@ watch history, a personal library, and runtime app settings.
   - Preferred source selection
   - Source/Add-on management pages
 
+## Screenshots
+
+<p align="center">
+  <img src="ss/ss.png" width="45%" alt="StreamApp Screenshot 1" />
+  <img src="ss/ss2.png" width="45%" alt="StreamApp Screenshot 2" />
+</p>
+<p align="center">
+  <img src="ss/ss3.png" width="45%" alt="StreamApp Screenshot 3" />
+  <img src="ss/ss4.png" width="45%" alt="StreamApp Screenshot 4" />
+</p>
+
 ## Tech Stack
 
 - Flutter + Riverpod + Hive + Dio
