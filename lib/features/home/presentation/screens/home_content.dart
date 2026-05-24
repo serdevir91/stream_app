@@ -13,6 +13,7 @@ import '../../../player/presentation/providers/player_provider.dart';
 import '../../../player/presentation/screens/player_screen.dart';
 import '../../../search/domain/entities/media_item.dart';
 import '../../../search/presentation/screens/media_details_screen.dart';
+import '../../../settings/presentation/screens/settings_screen.dart';
 import '../providers/home_provider.dart';
 
 class HomeContent extends ConsumerStatefulWidget {
@@ -218,6 +219,68 @@ class _HomeContentState extends ConsumerState<HomeContent> {
     ).showSnackBar(SnackBar(content: Text(text.t('removed_from_continue'))));
   }
 
+  Widget _buildTokenWarningBanner(BuildContext context, AppText text) {
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 16, 16, 4),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.orange.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.orangeAccent.withValues(alpha: 0.3)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Icon(
+                Icons.warning_amber_rounded,
+                color: Colors.orangeAccent,
+                size: 24,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  text.t('tmdb_token_warning'),
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                    height: 1.3,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Align(
+            alignment: Alignment.centerRight,
+            child: ElevatedButton.icon(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.orangeAccent,
+                foregroundColor: Colors.black,
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                minimumSize: Size.zero,
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                textStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+              ),
+              onPressed: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => const SettingsScreen(),
+                  ),
+                );
+              },
+              icon: const Icon(Icons.settings, size: 16),
+              label: Text(text.t('go_to_settings')),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final text = ref.watch(appTextProvider);
@@ -260,6 +323,8 @@ class _HomeContentState extends ConsumerState<HomeContent> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            if (settings.tmdbAccessToken.trim().isEmpty)
+              _buildTokenWarningBanner(context, text),
             _buildSectionTitle(text.t('featured')),
             _buildFeaturedSlider(
               context,
@@ -609,6 +674,7 @@ class _HomeContentState extends ConsumerState<HomeContent> {
   }
 
   Widget _buildLibraryQuickList(BuildContext context, List<MediaItem> items) {
+    final text = ref.watch(appTextProvider);
     return SizedBox(
       height: 210,
       child: ListView.builder(
@@ -635,18 +701,45 @@ class _HomeContentState extends ConsumerState<HomeContent> {
                     Expanded(
                       child: ClipRRect(
                         borderRadius: BorderRadius.circular(8),
-                        child: item.posterUrl != null
-                            ? Image.network(
-                                item.posterUrl!,
-                                fit: BoxFit.cover,
-                                width: double.infinity,
-                                errorBuilder: (context, error, stackTrace) =>
-                                    const ColoredBox(color: Colors.grey),
-                              )
-                            : const ColoredBox(
-                                color: Colors.grey,
-                                child: Center(child: Icon(Icons.bookmark)),
+                        child: Stack(
+                          fit: StackFit.expand,
+                          children: [
+                            item.posterUrl != null
+                                ? Image.network(
+                                    item.posterUrl!,
+                                    fit: BoxFit.cover,
+                                    width: double.infinity,
+                                    errorBuilder: (context, error, stackTrace) =>
+                                        const ColoredBox(color: Colors.grey),
+                                  )
+                                : const ColoredBox(
+                                    color: Colors.grey,
+                                    child: Center(child: Icon(Icons.bookmark)),
+                                  ),
+                            Positioned(
+                              bottom: 6,
+                              left: 6,
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 5,
+                                  vertical: 2.5,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: Colors.black.withValues(alpha: 0.65),
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                                child: Text(
+                                  text.t(item.type).toUpperCase(),
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 8,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
                               ),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                     const SizedBox(height: 8),
@@ -673,6 +766,7 @@ class _HomeContentState extends ConsumerState<HomeContent> {
   }) {
     return asyncData.when(
       data: (items) {
+        final text = ref.watch(appTextProvider);
         if (items.isEmpty) {
           return SizedBox(height: 200, child: Center(child: Text(noDataText)));
         }
@@ -702,21 +796,48 @@ class _HomeContentState extends ConsumerState<HomeContent> {
                         Expanded(
                           child: ClipRRect(
                             borderRadius: BorderRadius.circular(8),
-                            child: item.posterUrl != null
-                                ? Image.network(
-                                    item.posterUrl!,
-                                    fit: BoxFit.cover,
-                                    width: double.infinity,
-                                    errorBuilder:
-                                        (context, error, stackTrace) =>
-                                            const ColoredBox(
-                                              color: Colors.grey,
-                                            ),
-                                  )
-                                : const ColoredBox(
-                                    color: Colors.grey,
-                                    child: Center(child: Icon(Icons.movie)),
+                            child: Stack(
+                              fit: StackFit.expand,
+                              children: [
+                                item.posterUrl != null
+                                    ? Image.network(
+                                        item.posterUrl!,
+                                        fit: BoxFit.cover,
+                                        width: double.infinity,
+                                        errorBuilder:
+                                            (context, error, stackTrace) =>
+                                                const ColoredBox(
+                                                  color: Colors.grey,
+                                                ),
+                                      )
+                                    : const ColoredBox(
+                                        color: Colors.grey,
+                                        child: Center(child: Icon(Icons.movie)),
+                                      ),
+                                Positioned(
+                                  bottom: 6,
+                                  left: 6,
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 5,
+                                      vertical: 2.5,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: Colors.black.withValues(alpha: 0.65),
+                                      borderRadius: BorderRadius.circular(4),
+                                    ),
+                                    child: Text(
+                                      text.t(item.type).toUpperCase(),
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 8,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
                                   ),
+                                ),
+                              ],
+                            ),
                           ),
                         ),
                         const SizedBox(height: 8),

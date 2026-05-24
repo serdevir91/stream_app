@@ -1,12 +1,12 @@
 [Setup]
 AppName=StreamApp
-AppVersion=1.0.3
+AppVersion=1.0.4
 AppPublisher=StreamApp
 AppPublisherURL=https://github.com/serdevir91/stream_app
 DefaultDirName={autopf}\StreamApp
 DefaultGroupName=StreamApp
 OutputDir=..\output
-OutputBaseFilename=StreamApp-Setup-v1.0.3
+OutputBaseFilename=StreamApp-Setup-v1.0.4
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern

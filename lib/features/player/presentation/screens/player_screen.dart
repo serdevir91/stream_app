@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
@@ -16,6 +17,7 @@ import 'package:webview_flutter/webview_flutter.dart';
 import 'package:webview_windows/webview_windows.dart' as windows_webview;
 
 import '../../../../core/backend/addon_service_provider.dart';
+import '../../../../core/subtitles/online_subtitle_repository.dart';
 
 import '../providers/player_provider.dart';
 import '../../domain/entities/watch_history.dart';
@@ -88,10 +90,20 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   Timer? _progressAutosaveTimer;
   final Stopwatch _embedWatchStopwatch = Stopwatch();
   int _embedPositionOffsetMs = 0;
+  int? _lastEmbedPositionMs;
+  int? _lastEmbedDurationMs;
+  bool _embedVideoPaused = true;
   String? _currentStreamUrl;
   int _savedPositionMs = 0;
   vp.VideoPlayerController? _nativeController;
   int _selectedSubtitleTrackIndex = -1;
+  OnlineSubtitleResult? _activeOnlineSubtitle;
+  bool _nativeSubtitlesEnabled = true;
+  bool _embedSubtitlesEnabled = true;
+  List<vp.Caption> _embedCaptions = const [];
+  String _embedCaptionText = '';
+  Timer? _embedSubtitleTimer;
+  bool _embedSubtitleTickRunning = false;
 
   String get _selectedVideoPlayer {
     try {
@@ -231,7 +243,12 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     if (url == null || url.isEmpty || _isDisposed) return;
 
     if (_useNativePlayer) {
-      _initNativePlayer(url, seekMs: _savedPositionMs);
+      unawaited(
+        _initNativePlayer(
+          url,
+          seekMs: _savedPositionMs,
+        ).then((_) => _attachOnlineSubtitle(url)),
+      );
     } else {
       final player = Player();
       final controller = VideoController(player);
@@ -246,6 +263,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
       if (_savedPositionMs > 0) {
         _seekAfterReady(player, _savedPositionMs);
       }
+      unawaited(_attachOnlineSubtitle(url));
     }
   }
 
@@ -299,6 +317,219 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     }
   }
 
+  Future<void> _attachOnlineSubtitle(String streamUrl) async {
+    if (_isDisposed || !_isDirectLink) return;
+    final settings = ref.read(appSettingsProvider);
+    if (!settings.autoSelectSubtitle) return;
+
+    final repo = ref.read(onlineSubtitleRepositoryProvider);
+    final imdbId = await repo.resolveImdbId(
+      mediaId: widget.mediaId,
+      mediaType: _normalizedMediaType,
+      streamUrl: streamUrl,
+    );
+    if (imdbId == null || _isDisposed || _currentStreamUrl != streamUrl) {
+      return;
+    }
+
+    final subtitle = await repo.findBestSubtitle(
+      imdbId: imdbId,
+      mediaType: _normalizedMediaType,
+      season: widget.season,
+      episode: widget.episode,
+      languageCode: widget.subtitleLanguage,
+    );
+    if (subtitle == null || _isDisposed || _currentStreamUrl != streamUrl) {
+      return;
+    }
+
+    setState(() {
+      _activeOnlineSubtitle = subtitle;
+      _nativeSubtitlesEnabled = true;
+    });
+
+    final player = _player;
+    if (player != null) {
+      try {
+        await player.setSubtitleTrack(
+          SubtitleTrack.uri(
+            subtitle.url,
+            title: subtitle.label,
+            language: subtitle.languageCode,
+          ),
+        );
+        if (mounted) {
+          setState(() {
+            _selectedSubtitleTrackIndex = -2;
+          });
+        }
+      } catch (e) {
+        debugPrint('Media Kit subtitle attach failed: $e');
+      }
+      return;
+    }
+
+    await _applyNativeSubtitle(subtitle);
+  }
+
+  Future<void> _attachOnlineSubtitleToEmbed(
+    String streamUrl,
+    String expectedEmbedUrl,
+  ) async {
+    if (_isDisposed || _isDirectLink) return;
+    final settings = ref.read(appSettingsProvider);
+    if (!settings.autoSelectSubtitle) return;
+
+    final repo = ref.read(onlineSubtitleRepositoryProvider);
+    final imdbId = await repo.resolveImdbId(
+      mediaId: widget.mediaId,
+      mediaType: _normalizedMediaType,
+      streamUrl: streamUrl,
+    );
+    if (imdbId == null || _isDisposed || _embedUrl != expectedEmbedUrl) {
+      return;
+    }
+
+    final subtitle = await repo.findBestSubtitle(
+      imdbId: imdbId,
+      mediaType: _normalizedMediaType,
+      season: widget.season,
+      episode: widget.episode,
+      languageCode: widget.subtitleLanguage,
+    );
+    if (subtitle == null || _isDisposed || _embedUrl != expectedEmbedUrl) {
+      return;
+    }
+
+    try {
+      final captionFile = await _loadClosedCaptionFile(subtitle);
+      if (_isDisposed || _embedUrl != expectedEmbedUrl) return;
+      setState(() {
+        _activeOnlineSubtitle = subtitle;
+        _embedCaptions = captionFile.captions;
+        _embedSubtitlesEnabled = true;
+        _embedCaptionText = '';
+      });
+      await _disableEmbedProviderSubtitles();
+      _startEmbedSubtitleTimer();
+    } catch (e) {
+      debugPrint('Embed subtitle attach failed: $e');
+    }
+  }
+
+  Future<void> _disableEmbedProviderSubtitles() async {
+    const script = '''
+      (function() {
+        function disableIn(root) {
+          try {
+            var doc = root.document;
+            doc.querySelectorAll('video track').forEach(function(track) {
+              try { track.track.mode = 'disabled'; } catch (e) {}
+              try { track.mode = 'disabled'; } catch (e) {}
+            });
+            doc.querySelectorAll('.subtitles,#subtitles,.subtitle-text,#subtitleText').forEach(function(el) {
+              el.style.setProperty('display', 'none', 'important');
+              el.style.setProperty('visibility', 'hidden', 'important');
+              el.style.setProperty('opacity', '0', 'important');
+            });
+          } catch (e) {}
+        }
+        disableIn(window);
+        try {
+          document.querySelectorAll('iframe').forEach(function(frame) {
+            try {
+              if (frame.contentWindow) disableIn(frame.contentWindow);
+            } catch (e) {}
+          });
+        } catch (e) {}
+      })();
+    ''';
+    try {
+      await _embedWebViewController?.runJavaScript(script);
+    } catch (_) {}
+    try {
+      await _windowsEmbedController?.executeScript(script);
+    } catch (_) {}
+  }
+
+  Future<void> _applyNativeSubtitle(OnlineSubtitleResult subtitle) async {
+    final controller = _nativeController;
+    if (controller == null) return;
+    try {
+      await controller.setClosedCaptionFile(_loadClosedCaptionFile(subtitle));
+    } catch (e) {
+      debugPrint('Native subtitle attach failed: $e');
+    }
+  }
+
+  Future<vp.ClosedCaptionFile> _loadClosedCaptionFile(
+    OnlineSubtitleResult subtitle,
+  ) async {
+    final response = await Dio().get<String>(
+      subtitle.url,
+      options: Options(
+        responseType: ResponseType.plain,
+        receiveTimeout: const Duration(seconds: 12),
+        sendTimeout: const Duration(seconds: 8),
+      ),
+    );
+    final content = response.data ?? '';
+    if (subtitle.format.toLowerCase() == 'vtt' ||
+        content.trimLeft().startsWith('WEBVTT')) {
+      return vp.WebVTTCaptionFile(content);
+    }
+    return vp.SubRipCaptionFile(content);
+  }
+
+  void _startEmbedSubtitleTimer() {
+    _embedSubtitleTimer?.cancel();
+    if (_embedCaptions.isEmpty) return;
+    _embedSubtitleTimer = Timer.periodic(const Duration(milliseconds: 500), (
+      _,
+    ) {
+      if (_embedSubtitleTickRunning || _isDisposed || _isDirectLink) {
+        return;
+      }
+      _embedSubtitleTickRunning = true;
+      unawaited(_updateEmbedSubtitleText());
+    });
+    unawaited(_updateEmbedSubtitleText());
+  }
+
+  Future<void> _updateEmbedSubtitleText() async {
+    try {
+      if (_embedCaptions.isEmpty || !_embedSubtitlesEnabled) {
+        if (mounted && _embedCaptionText.isNotEmpty) {
+          setState(() {
+            _embedCaptionText = '';
+          });
+        }
+        return;
+      }
+      final positionMs = await _getEmbedVideoPositionMs();
+      final position = Duration(milliseconds: positionMs);
+      final nextText = _captionTextAt(position);
+      if (mounted && nextText != _embedCaptionText) {
+        setState(() {
+          _embedCaptionText = nextText;
+        });
+      }
+    } catch (_) {
+      // Position polling can fail during WebView navigations; the next tick retries.
+    } finally {
+      _embedSubtitleTickRunning = false;
+    }
+  }
+
+  String _captionTextAt(Duration position) {
+    for (final caption in _embedCaptions) {
+      if (position >= caption.start && position <= caption.end) {
+        return caption.text;
+      }
+    }
+    return '';
+  }
+
   Future<void> _seekAfterReady(Player player, int positionMs) async {
     for (int i = 0; i < 30; i++) {
       if (_isDisposed || _player != player) return;
@@ -313,6 +544,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   }
 
   void _stopAllPlayback() {
+    _embedSubtitleTimer?.cancel();
     try {
       _player?.pause();
     } catch (_) {}
@@ -379,7 +611,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
 
   void _armControlsAutoHide() {
     _overlayControlsTimer?.cancel();
-    _overlayControlsTimer = Timer(const Duration(seconds: 4), () {
+    _overlayControlsTimer = Timer(const Duration(seconds: 5), () {
       if (!mounted) {
         return;
       }
@@ -410,6 +642,12 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
       _embedPositionOffsetMs + _embedWatchStopwatch.elapsedMilliseconds;
 
   Future<int> _getEmbedVideoPositionMs() async {
+    if (_embedVideoPaused && _lastEmbedPositionMs != null) {
+      return _lastEmbedPositionMs!;
+    }
+    if (_lastEmbedPositionMs != null) {
+      return _currentEmbedPositionMs;
+    }
     const js =
         '(function(){var v=document.querySelector("video");return v?v.currentTime:0;})()';
     try {
@@ -429,6 +667,9 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   }
 
   Future<int> _getEmbedVideoDurationMs() async {
+    if (_lastEmbedDurationMs != null && _lastEmbedDurationMs! > 0) {
+      return _lastEmbedDurationMs!;
+    }
     const js =
         '(function(){var v=document.querySelector("video");return v?v.duration:0;})()';
     try {
@@ -445,6 +686,51 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
       }
     } catch (_) {}
     return _episodeRuntimeMs();
+  }
+
+  void _handleEmbedMessage(dynamic messageData) {
+    try {
+      final Map<dynamic, dynamic> data;
+      if (messageData is String) {
+        final decoded = jsonDecode(messageData);
+        if (decoded is Map) {
+          data = decoded;
+        } else {
+          return;
+        }
+      } else if (messageData is Map) {
+        data = messageData;
+      } else {
+        return;
+      }
+
+      final currentTimeSec = double.tryParse(data['currentTime']?.toString() ?? '');
+      final durationSec = double.tryParse(data['duration']?.toString() ?? '');
+      final paused = data['paused'] == true;
+
+      if (currentTimeSec != null) {
+        final positionMs = (currentTimeSec * 1000).toInt();
+        _lastEmbedPositionMs = positionMs;
+        _embedPositionOffsetMs = positionMs;
+        _embedWatchStopwatch.reset();
+        if (!paused && !_isDisposed && mounted) {
+          if (!_embedWatchStopwatch.isRunning) {
+            _embedWatchStopwatch.start();
+          }
+        } else {
+          if (_embedWatchStopwatch.isRunning) {
+            _embedWatchStopwatch.stop();
+          }
+        }
+      }
+
+      if (durationSec != null && durationSec > 0) {
+        _lastEmbedDurationMs = (durationSec * 1000).toInt();
+      }
+      _embedVideoPaused = paused;
+    } catch (e) {
+      debugPrint("Error handling embed message: $e");
+    }
   }
 
   void _skipSeconds(int seconds) {
@@ -493,8 +779,16 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
       _videoController = null;
       _embedWebViewController = null;
       _windowsEmbedController = null;
-      _showOverlayControls = isDirectLink;
+      _showOverlayControls = true;
+      _selectedSubtitleTrackIndex = -1;
+      _activeOnlineSubtitle = null;
+      _nativeSubtitlesEnabled = true;
+      _embedSubtitlesEnabled = true;
+      _embedCaptions = const [];
+      _embedCaptionText = '';
     });
+    _embedSubtitleTimer?.cancel();
+    _armControlsAutoHide();
     _directFallbackAttempt += 1;
     _progressAutosaveTimer?.cancel();
     _embedWatchStopwatch
@@ -515,6 +809,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
       });
       if (_useNativePlayer) {
         await _initNativePlayer(streamUrl);
+        unawaited(_attachOnlineSubtitle(streamUrl));
       } else {
         final player = Player();
         _player = player;
@@ -525,6 +820,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
           _isLoading = false;
         });
         _startProgressAutosave();
+        unawaited(_attachOnlineSubtitle(streamUrl));
       }
     } else {
       final localizedUrl = _applyEmbedSubtitleLanguage(streamUrl);
@@ -535,6 +831,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
       });
       _initializeEmbedPlayer(localizedUrl);
       _startProgressAutosave();
+      unawaited(_attachOnlineSubtitleToEmbed(streamUrl, localizedUrl));
     }
 
     if (provider != null && provider.isNotEmpty) {
@@ -611,13 +908,14 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
         _normalizedSubtitleLanguage;
   }
 
-  String _buildStreamImdbSubtitleBootstrapScript() {
+  String _buildStreamImdbSubtitleBootstrapScript([int startAtMs = 0]) {
     final osLang = jsonEncode(_streamImdbSubtitleLanguage);
     final lang2 = jsonEncode(_normalizedSubtitleLanguage);
     return '''
       (function() {
         var osLang = $osLang;
         var lang2 = $lang2;
+        var startAtMs = $startAtMs;
         function applySubtitleLanguage() {
           try { localStorage.setItem('subtitleLang', osLang); } catch (e) {}
           try { localStorage.setItem('lastSubLang', lang2); } catch (e) {}
@@ -766,7 +1064,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
               if (!text || typeof text !== 'string') return -999;
               var score = 0;
               var good = text.match(/[ğĞıİşŞçÇöÖüÜ]/g);
-              var bad = text.match(/[ðÐýÝþÞ]|Ã.|Ä.|Å.|�/g);
+              var bad = text.match(/[ðÐýÝþÞ]|Ã.|Ä.|Å.|/g);
               if (good) score += good.length * 3;
               if (bad) score -= bad.length * 5;
               if (/\\b(ve|bir|için|değil|çok|şey|evet|hayır|öyle)\\b/i.test(text)) {
@@ -869,11 +1167,70 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
           } catch (e) {}
         }
 
+        function trackVideo(win) {
+          try {
+            var videos = win.document.querySelectorAll('video');
+            videos.forEach(function(video) {
+              if (video.__streamAppTracked) return;
+              video.__streamAppTracked = true;
+
+              if (startAtMs > 0 && !win.top.__streamAppSeeked) {
+                win.top.__streamAppSeeked = true;
+                if (video.readyState >= 1) {
+                  video.currentTime = startAtMs / 1000.0;
+                } else {
+                  video.addEventListener('loadedmetadata', function() {
+                    video.currentTime = startAtMs / 1000.0;
+                  }, { once: true });
+                }
+              }
+
+              function reportState() {
+                var msg = {
+                  currentTime: video.currentTime,
+                  duration: video.duration,
+                  paused: video.paused
+                };
+                if (win.top.StreamAppChannel && win.top.StreamAppChannel.postMessage) {
+                  win.top.StreamAppChannel.postMessage(JSON.stringify(msg));
+                }
+                if (win.top.chrome && win.top.chrome.webview && win.top.chrome.webview.postMessage) {
+                  win.top.chrome.webview.postMessage(msg);
+                }
+              }
+
+              video.addEventListener('play', reportState);
+              video.addEventListener('playing', reportState);
+              video.addEventListener('pause', reportState);
+              video.addEventListener('timeupdate', reportState);
+              video.addEventListener('durationchange', reportState);
+              video.addEventListener('ended', reportState);
+
+              reportState();
+            });
+          } catch (e) {}
+        }
+
+        function trackAllVideos() {
+          trackVideo(window);
+          try {
+            document.querySelectorAll('iframe').forEach(function(frame) {
+              try {
+                if (frame.contentWindow) {
+                  trackVideo(frame.contentWindow);
+                }
+              } catch (e) {}
+            });
+          } catch (e) {}
+        }
+
         installAllTextFixes();
+        trackAllVideos();
         setInterval(function() {
           installAllTextFixes();
           fixRoot(window);
           fixTextTracks(window);
+          trackAllVideos();
         }, 500);
       })();
     ''';
@@ -906,13 +1263,36 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
       final uri = Uri.parse(url);
       _trustedEmbedHosts = _buildTrustedEmbedHosts(uri);
 
+      // Reset embed tracking variables
+      _lastEmbedPositionMs = null;
+      _lastEmbedDurationMs = null;
+      _embedVideoPaused = true;
+
+      final repo = ref.read(watchHistoryRepositoryProvider);
+      final history = repo.getProgress(
+        widget.mediaId,
+        mediaType: _normalizedMediaType,
+        season: widget.season,
+        episode: widget.episode,
+      );
+      int startAtMs = 0;
+      if (history != null && history.lastPosition > 0 && !history.isWatched) {
+        startAtMs = history.lastPosition;
+      }
+      _embedPositionOffsetMs = startAtMs;
+
       if (defaultTargetPlatform == TargetPlatform.windows) {
         final controller = windows_webview.WebviewController();
         await controller.initialize();
         await controller.setPopupWindowPolicy(
           windows_webview.WebviewPopupWindowPolicy.deny,
         );
-        await _addWindowsDocumentStartScript(uri, controller);
+        await _addWindowsDocumentStartScript(uri, controller, startAtMs);
+
+        controller.webMessage.listen((dynamic message) {
+          _handleEmbedMessage(message);
+        });
+
         await controller.loadUrl(uri.toString());
         await _syncEmbedSubtitleLanguage(uri, windowsController: controller);
 
@@ -937,6 +1317,12 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
         ..setJavaScriptMode(JavaScriptMode.unrestricted)
         ..setBackgroundColor(Colors.black)
         ..setUserAgent(userAgent)
+        ..addJavaScriptChannel(
+          'StreamAppChannel',
+          onMessageReceived: (JavaScriptMessage message) {
+            _handleEmbedMessage(message.message);
+          },
+        )
         ..setNavigationDelegate(
           NavigationDelegate(
             onPageStarted: (_) {
@@ -990,7 +1376,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
         );
 
       _startEmbedTimeoutGuard(attemptId);
-      await _addAndroidDocumentStartScript(uri, controller);
+      await _addAndroidDocumentStartScript(uri, controller, startAtMs);
       await controller.loadRequest(uri);
 
       if (_isDisposed || !mounted) {
@@ -1012,13 +1398,14 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   Future<void> _addWindowsDocumentStartScript(
     Uri entryUri,
     windows_webview.WebviewController controller,
+    int startAtMs,
   ) async {
     if (!_isStreamImdbEmbedHost(entryUri.host)) {
       return;
     }
     try {
       await controller.addScriptToExecuteOnDocumentCreated(
-        _buildStreamImdbSubtitleBootstrapScript(),
+        _buildStreamImdbSubtitleBootstrapScript(startAtMs),
       );
     } catch (_) {}
   }
@@ -1026,6 +1413,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   Future<void> _addAndroidDocumentStartScript(
     Uri entryUri,
     WebViewController controller,
+    int startAtMs,
   ) async {
     if (defaultTargetPlatform != TargetPlatform.android ||
         !_isStreamImdbEmbedHost(entryUri.host)) {
@@ -1041,7 +1429,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
       await _androidWebViewChannel
           .invokeMethod<bool>('addDocumentStartScript', <String, Object?>{
             'webViewIdentifier': platformController.webViewIdentifier,
-            'script': _buildStreamImdbSubtitleBootstrapScript(),
+            'script': _buildStreamImdbSubtitleBootstrapScript(startAtMs),
           });
     } catch (_) {}
   }
@@ -1430,6 +1818,9 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   }
 
   Future<void> _initPlaybackPosition() async {
+    if (!ref.read(appSettingsProvider).watchHistoryEnabled) {
+      return;
+    }
     final repo = ref.read(watchHistoryRepositoryProvider);
     final history = repo.getProgress(
       widget.mediaId,
@@ -1495,7 +1886,12 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   }
 
   Future<void> _saveProgress() async {
+    if (!ref.read(appSettingsProvider).watchHistoryEnabled) {
+      return;
+    }
     final repo = ref.read(watchHistoryRepositoryProvider);
+    final completionThreshold =
+        ref.read(appSettingsProvider).completionPercentage / 100.0;
 
     if (!_isDirectLink) {
       try {
@@ -1506,7 +1902,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
 
         final runtimeMs = await _getEmbedVideoDurationMs();
         final position = elapsed.clamp(10000, runtimeMs - 1000);
-        final isWatched = position >= (runtimeMs * 0.85);
+        final isWatched = position >= (runtimeMs * completionThreshold);
 
         await repo.saveProgress(
           WatchHistory(
@@ -1535,7 +1931,8 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
         final pos = _nativeController!.value.position;
         final dur = _nativeController!.value.duration;
         if (pos.inMilliseconds > 0 && dur.inMilliseconds > 0) {
-          final isWatched = pos.inMilliseconds >= dur.inMilliseconds * 0.9;
+          final isWatched =
+              pos.inMilliseconds >= dur.inMilliseconds * completionThreshold;
           await repo.saveProgress(
             WatchHistory(
               mediaId: widget.mediaId,
@@ -1566,7 +1963,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
 
       if (position.inMilliseconds > 0 && duration.inMilliseconds > 0) {
         final isWatched =
-            position.inMilliseconds >= duration.inMilliseconds * 0.9;
+            position.inMilliseconds >= duration.inMilliseconds * completionThreshold;
 
         await repo.saveProgress(
           WatchHistory(
@@ -1620,6 +2017,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     WidgetsBinding.instance.removeObserver(this);
     _overlayControlsTimer?.cancel();
     _progressAutosaveTimer?.cancel();
+    _embedSubtitleTimer?.cancel();
     _isDisposed = true;
 
     // Capture progress BEFORE stopping/nulling controllers.
@@ -1684,13 +2082,19 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     int? capturedDurationMs,
     required int embedElapsedMs,
   }) async {
+    if (!ref.read(appSettingsProvider).watchHistoryEnabled) {
+      return;
+    }
     final repo = ref.read(watchHistoryRepositoryProvider);
+    final completionThreshold =
+        ref.read(appSettingsProvider).completionPercentage / 100.0;
 
     if (_isDirectLink &&
         capturedPositionMs != null &&
         capturedDurationMs != null &&
         capturedDurationMs > 0) {
-      final isWatched = capturedPositionMs >= capturedDurationMs * 0.9;
+      final isWatched =
+          capturedPositionMs >= capturedDurationMs * completionThreshold;
       try {
         await repo.saveProgress(
           WatchHistory(
@@ -1717,7 +2121,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     if (embedElapsedMs < 10000) return;
     final runtimeMs = _episodeRuntimeMs();
     final position = embedElapsedMs.clamp(10000, runtimeMs - 1000);
-    final isWatched = position >= (runtimeMs * 0.85);
+    final isWatched = position >= (runtimeMs * completionThreshold);
     try {
       await repo.saveProgress(
         WatchHistory(
@@ -1822,6 +2226,12 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     return Stack(
       children: [
         Positioned.fill(child: Center(child: renderedContent)),
+        if (_nativeController != null && _nativeSubtitlesEnabled)
+          _buildNativeClosedCaption(),
+        if (!_isDirectLink &&
+            _embedSubtitlesEnabled &&
+            _embedCaptionText.isNotEmpty)
+          _buildEmbedClosedCaption(),
         if (_showOverlayControls) ...[
           Positioned(
             top: 0,
@@ -1874,7 +2284,8 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                         ),
                       ),
                     const SizedBox(width: 4),
-                    if (_isDirectLink) _buildSubtitleButton(),
+                    if (_isDirectLink || _embedCaptions.isNotEmpty)
+                      _buildSubtitleButton(),
                   ],
                 ),
               ),
@@ -1909,21 +2320,20 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
         ],
         if (!_showOverlayControls && !_isDirectLink)
           Positioned(
-            top: 16,
-            left: 16,
+            top: 0,
+            left: 0,
+            right: 0,
+            height: 80,
             child: SafeArea(
-              child: Container(
-                decoration: BoxDecoration(
-                  color: Colors.black54,
-                  shape: BoxShape.circle,
-                ),
-                child: IconButton(
-                  icon: const Icon(Icons.arrow_back, color: Colors.white),
-                  onPressed: () {
-                    _stopAllPlayback();
-                    Navigator.of(context).maybePop();
-                  },
-                ),
+              child: GestureDetector(
+                behavior: HitTestBehavior.translucent,
+                onTap: () {
+                  setState(() {
+                    _showOverlayControls = true;
+                  });
+                  _armControlsAutoHide();
+                },
+                child: const SizedBox.expand(),
               ),
             ),
           ),
@@ -1989,6 +2399,85 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
             ),
           ),
       ],
+    );
+  }
+
+  Widget _buildNativeClosedCaption() {
+    final controller = _nativeController;
+    if (controller == null) {
+      return const SizedBox.shrink();
+    }
+
+    return Positioned(
+      left: 24,
+      right: 24,
+      bottom: _showOverlayControls ? 112 : 32,
+      child: IgnorePointer(
+        child: ValueListenableBuilder<vp.VideoPlayerValue>(
+          valueListenable: controller,
+          builder: (context, value, child) {
+            final caption = value.caption.text;
+            if (caption.isEmpty) {
+              return const SizedBox.shrink();
+            }
+            return Center(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: 0.72),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 6,
+                  ),
+                  child: Text(
+                    caption,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w600,
+                      height: 1.25,
+                    ),
+                  ),
+                ),
+              ),
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  Widget _buildEmbedClosedCaption() {
+    return Positioned(
+      left: 24,
+      right: 24,
+      bottom: _showOverlayControls ? 112 : 32,
+      child: IgnorePointer(
+        child: Center(
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: Colors.black.withValues(alpha: 0.72),
+              borderRadius: BorderRadius.circular(4),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              child: Text(
+                _embedCaptionText,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w600,
+                  height: 1.25,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
     );
   }
 
@@ -2260,11 +2749,14 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   }
 
   Widget _buildSubtitleButton() {
+    final subtitlesActive = _player != null
+        ? _selectedSubtitleTrackIndex != -1
+        : _isDirectLink
+        ? _activeOnlineSubtitle != null && _nativeSubtitlesEnabled
+        : _embedCaptions.isNotEmpty && _embedSubtitlesEnabled;
     return IconButton(
       icon: Icon(
-        _selectedSubtitleTrackIndex >= 0
-            ? Icons.closed_caption
-            : Icons.closed_caption_off,
+        subtitlesActive ? Icons.closed_caption : Icons.closed_caption_off,
         color: Colors.white,
         size: 24,
       ),
@@ -2276,10 +2768,88 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   }
 
   void _showSubtitleSelector() {
+    if (!_isDirectLink) {
+      final subtitle = _activeOnlineSubtitle;
+      if (subtitle == null || _embedCaptions.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Online altyazi bulunamadi')),
+        );
+        return;
+      }
+
+      showModalBottomSheet<void>(
+        context: context,
+        backgroundColor: Colors.grey.shade900,
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+        ),
+        builder: (sheetContext) {
+          return SafeArea(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Padding(
+                  padding: EdgeInsets.all(16),
+                  child: Text(
+                    'Altyazi Secimi',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
+                  ),
+                ),
+                ListTile(
+                  leading: Icon(
+                    !_embedSubtitlesEnabled
+                        ? Icons.radio_button_checked
+                        : Icons.radio_button_off,
+                    color: Colors.white,
+                  ),
+                  title: const Text(
+                    'Kapali',
+                    style: TextStyle(color: Colors.white),
+                  ),
+                  onTap: () {
+                    setState(() {
+                      _embedSubtitlesEnabled = false;
+                      _embedCaptionText = '';
+                    });
+                    Navigator.pop(sheetContext);
+                  },
+                ),
+                ListTile(
+                  leading: Icon(
+                    _embedSubtitlesEnabled
+                        ? Icons.radio_button_checked
+                        : Icons.radio_button_off,
+                    color: Colors.white,
+                  ),
+                  title: Text(
+                    subtitle.label.isEmpty ? 'Wyzie Subs' : subtitle.label,
+                    style: const TextStyle(color: Colors.white),
+                  ),
+                  onTap: () {
+                    setState(() {
+                      _embedSubtitlesEnabled = true;
+                    });
+                    unawaited(_disableEmbedProviderSubtitles());
+                    _startEmbedSubtitleTimer();
+                    Navigator.pop(sheetContext);
+                  },
+                ),
+              ],
+            ),
+          );
+        },
+      );
+      return;
+    }
+
     // media_kit subtitle tracks
     if (_player != null) {
       final tracks = _player!.state.tracks.subtitle;
-      if (tracks.isEmpty) {
+      if (tracks.isEmpty && _activeOnlineSubtitle == null) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Altyazi track bulunamadi')),
         );
@@ -2324,6 +2894,32 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                     Navigator.pop(sheetContext);
                   },
                 ),
+                if (_activeOnlineSubtitle != null)
+                  ListTile(
+                    leading: Icon(
+                      _selectedSubtitleTrackIndex == -2
+                          ? Icons.radio_button_checked
+                          : Icons.radio_button_off,
+                      color: Colors.white,
+                    ),
+                    title: Text(
+                      _activeOnlineSubtitle!.label.isEmpty
+                          ? 'Wyzie Subs'
+                          : _activeOnlineSubtitle!.label,
+                      style: const TextStyle(color: Colors.white),
+                    ),
+                    onTap: () {
+                      _player!.setSubtitleTrack(
+                        SubtitleTrack.uri(
+                          _activeOnlineSubtitle!.url,
+                          title: _activeOnlineSubtitle!.label,
+                          language: _activeOnlineSubtitle!.languageCode,
+                        ),
+                      );
+                      setState(() => _selectedSubtitleTrackIndex = -2);
+                      Navigator.pop(sheetContext);
+                    },
+                  ),
                 ...List.generate(tracks.length, (index) {
                   final track = tracks[index];
                   final label =
@@ -2354,14 +2950,86 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
       return;
     }
 
-    // Native player - limited subtitle support
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text(
-          'Altyazi secimi sadece Media Kit player ile kullanilabilir',
+    if (_nativeController != null) {
+      final subtitle = _activeOnlineSubtitle;
+      if (subtitle == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Online altyazi bulunamadi')),
+        );
+        return;
+      }
+
+      showModalBottomSheet<void>(
+        context: context,
+        backgroundColor: Colors.grey.shade900,
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
         ),
-      ),
-    );
+        builder: (sheetContext) {
+          return SafeArea(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Padding(
+                  padding: EdgeInsets.all(16),
+                  child: Text(
+                    'Altyazi Secimi',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
+                  ),
+                ),
+                ListTile(
+                  leading: Icon(
+                    !_nativeSubtitlesEnabled
+                        ? Icons.radio_button_checked
+                        : Icons.radio_button_off,
+                    color: Colors.white,
+                  ),
+                  title: const Text(
+                    'Kapali',
+                    style: TextStyle(color: Colors.white),
+                  ),
+                  onTap: () {
+                    _nativeController!.setClosedCaptionFile(null);
+                    setState(() {
+                      _nativeSubtitlesEnabled = false;
+                    });
+                    Navigator.pop(sheetContext);
+                  },
+                ),
+                ListTile(
+                  leading: Icon(
+                    _nativeSubtitlesEnabled
+                        ? Icons.radio_button_checked
+                        : Icons.radio_button_off,
+                    color: Colors.white,
+                  ),
+                  title: Text(
+                    subtitle.label.isEmpty ? 'Wyzie Subs' : subtitle.label,
+                    style: const TextStyle(color: Colors.white),
+                  ),
+                  onTap: () {
+                    setState(() {
+                      _nativeSubtitlesEnabled = true;
+                    });
+                    unawaited(_applyNativeSubtitle(subtitle));
+                    Navigator.pop(sheetContext);
+                  },
+                ),
+              ],
+            ),
+          );
+        },
+      );
+      return;
+    }
+
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('Altyazi track bulunamadi')));
   }
 
   Widget _buildEmbedView() {

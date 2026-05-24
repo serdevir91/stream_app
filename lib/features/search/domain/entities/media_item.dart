@@ -88,6 +88,7 @@ class MediaDetailsInfo {
   final String? creatorName;
   final String? description;
   final double? rating;
+  final String? releaseDate;
 
   const MediaDetailsInfo({
     required this.mediaType,
@@ -97,11 +98,69 @@ class MediaDetailsInfo {
     required this.creatorName,
     required this.description,
     required this.rating,
+    this.releaseDate,
   });
 
   bool get isMovie => mediaType == 'movie';
 
   String? get leadName => isMovie ? directorName : creatorName;
+}
+
+class LatestEpisodeInfo {
+  final int seasonNumber;
+  final int episodeNumber;
+  final String name;
+  final String? airDate;
+
+  const LatestEpisodeInfo({
+    required this.seasonNumber,
+    required this.episodeNumber,
+    required this.name,
+    this.airDate,
+  });
+
+  bool get isAired {
+    if (airDate == null || airDate!.isEmpty) return false;
+    try {
+      final date = DateTime.parse(airDate!);
+      return !date.isAfter(DateTime.now());
+    } catch (_) {
+      return false;
+    }
+  }
+
+  bool get isRecentlyAired {
+    if (!isAired || airDate == null || airDate!.isEmpty) return false;
+    try {
+      final date = DateTime.parse(airDate!);
+      return date.isAfter(DateTime.now().subtract(const Duration(days: 30)));
+    } catch (_) {
+      return false;
+    }
+  }
+
+  String get formattedAirDate {
+    if (airDate == null || airDate!.isEmpty) return '';
+    try {
+      final date = DateTime.parse(airDate!);
+      return '${date.day.toString().padLeft(2, '0')}.${date.month.toString().padLeft(2, '0')}.${date.year}';
+    } catch (_) {
+      return airDate!;
+    }
+  }
+
+  factory LatestEpisodeInfo.fromTmdbJson(Map<String, dynamic> json) {
+    return LatestEpisodeInfo(
+      seasonNumber: json['season_number'] is num
+          ? (json['season_number'] as num).toInt()
+          : 0,
+      episodeNumber: json['episode_number'] is num
+          ? (json['episode_number'] as num).toInt()
+          : 0,
+      name: (json['name'] ?? 'Unknown Episode').toString(),
+      airDate: json['air_date']?.toString(),
+    );
+  }
 }
 
 class Season {

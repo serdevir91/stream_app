@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../../../core/i18n/app_text.dart';
 import '../../../../core/settings/app_settings.dart';
@@ -17,10 +18,16 @@ class SettingsScreen extends ConsumerStatefulWidget {
 
 class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   late TextEditingController _tmdbTokenController;
+  late TextEditingController _wyzieApiKeyController;
   late TextEditingController _backendUrlController;
   String _appLanguage = 'en';
   String _subtitleLanguage = 'en';
   bool _autoSelectSource = true;
+  bool _autoSelectSubtitle = true;
+  String _librarySort = 'recent';
+  bool _watchHistoryEnabled = true;
+  bool _newEpisodeNotificationsEnabled = true;
+  int _completionPercentage = 90;
   String _preferredSourceId = '';
   bool _initialized = false;
   bool _isSaving = false;
@@ -38,6 +45,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   void dispose() {
     if (_initialized) {
       _tmdbTokenController.dispose();
+      _wyzieApiKeyController.dispose();
       _backendUrlController.dispose();
     }
     _syncServerUrlController.dispose();
@@ -51,10 +59,19 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     _appLanguage = settings.appLanguage;
     _subtitleLanguage = settings.subtitleLanguage;
     _autoSelectSource = settings.autoSelectSource;
+    _autoSelectSubtitle = settings.autoSelectSubtitle;
+    _librarySort = settings.librarySort;
+    _watchHistoryEnabled = settings.watchHistoryEnabled;
+    _newEpisodeNotificationsEnabled = settings.newEpisodeNotificationsEnabled;
+    _completionPercentage = settings.completionPercentage;
     _preferredSourceId = settings.preferredSourceId;
     _videoPlayer = settings.videoPlayer;
-    _tmdbTokenController = TextEditingController(text: settings.tmdbAccessToken);
+    _tmdbTokenController = TextEditingController(
+      text: settings.tmdbAccessToken,
+    );
+    _wyzieApiKeyController = TextEditingController(text: settings.wyzieApiKey);
     _backendUrlController = TextEditingController(text: settings.backendUrl);
+    _isApiFieldsVisible = settings.tmdbAccessToken.trim().isEmpty;
     _initialized = true;
   }
 
@@ -87,7 +104,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         .where((addon) => addon.enabled)
         .map((addon) => addon.id)
         .toSet();
-    final cleanedPreferredSourceId = _preferredSourceId.isNotEmpty &&
+    final cleanedPreferredSourceId =
+        _preferredSourceId.isNotEmpty &&
             !activeAddonIds.contains(_preferredSourceId)
         ? ''
         : _preferredSourceId;
@@ -96,8 +114,14 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       appLanguage: _appLanguage,
       subtitleLanguage: _subtitleLanguage,
       tmdbAccessToken: _tmdbTokenController.text.trim(),
+      wyzieApiKey: _wyzieApiKeyController.text.trim(),
       backendUrl: _backendUrlController.text.trim(),
       autoSelectSource: _autoSelectSource,
+      autoSelectSubtitle: _autoSelectSubtitle,
+      librarySort: _librarySort,
+      watchHistoryEnabled: _watchHistoryEnabled,
+      newEpisodeNotificationsEnabled: _newEpisodeNotificationsEnabled,
+      completionPercentage: _completionPercentage,
       preferredSourceId: cleanedPreferredSourceId,
       videoPlayer: _videoPlayer,
     );
@@ -177,7 +201,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           : 'Kayit basarisiz: $error';
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(success ? 'Cihaz basariyla kaydedildi!' : failedMessage),
+          content: Text(
+            success ? 'Cihaz basariyla kaydedildi!' : failedMessage,
+          ),
           backgroundColor: success ? Colors.green : Colors.red,
         ),
       );
@@ -194,7 +220,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     if (mounted) {
       ref.invalidate(syncStatusProvider);
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Senkron tamamlandi!'), backgroundColor: Colors.green),
+        const SnackBar(
+          content: Text('Senkron tamamlandi!'),
+          backgroundColor: Colors.green,
+        ),
       );
     }
     setState(() => _isSyncing = false);
@@ -241,9 +270,15 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   SizedBox(
                     width: double.infinity,
                     child: ElevatedButton.icon(
-                      onPressed: _isSyncRegistering ? null : _registerSyncDevice,
+                      onPressed: _isSyncRegistering
+                          ? null
+                          : _registerSyncDevice,
                       icon: _isSyncRegistering
-                          ? const SizedBox(height: 16, width: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                          ? const SizedBox(
+                              height: 16,
+                              width: 16,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
                           : const Icon(Icons.app_registration),
                       label: const Text('Cihazi Kaydet'),
                     ),
@@ -264,7 +299,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   child: ElevatedButton.icon(
                     onPressed: _isSyncing ? null : _manualSync,
                     icon: _isSyncing
-                        ? const SizedBox(height: 16, width: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                        ? const SizedBox(
+                            height: 16,
+                            width: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
                         : const Icon(Icons.sync),
                     label: const Text('Simdi Senkronla'),
                   ),
@@ -273,7 +312,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             );
           },
           loading: () => const Center(child: CircularProgressIndicator()),
-          error: (e, _) => Text('Hata: $e', style: const TextStyle(color: Colors.red)),
+          error: (e, _) =>
+              Text('Hata: $e', style: const TextStyle(color: Colors.red)),
         ),
       ],
     );
@@ -295,6 +335,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         : '';
 
     final tmdbTokenPreview = _maskToken(_tmdbTokenController.text);
+    final wyzieKeyPreview = _maskToken(_wyzieApiKeyController.text);
     final backendPreview = _backendUrlController.text.trim().isEmpty
         ? 'Not set'
         : _backendUrlController.text.trim();
@@ -332,6 +373,22 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             text.t('subtitle_language'),
             style: const TextStyle(fontWeight: FontWeight.w600),
           ),
+          const SizedBox(height: 16),
+          SwitchListTile.adaptive(
+            contentPadding: EdgeInsets.zero,
+            value: _autoSelectSubtitle,
+            onChanged: (value) {
+              setState(() {
+                _autoSelectSubtitle = value;
+              });
+            },
+            title: const Text('Otomatik Altyazı Seçici'),
+            subtitle: Text(
+              _autoSelectSubtitle
+                  ? 'Gömülü oynatıcıda dil zorlanır; direkt oynatıcıda Wyzie/OpenSubtitles altyazısı otomatik yüklenir.'
+                  : 'Oynatıcının kendi altyazı seçimine izin verilir.',
+            ),
+          ),
           const SizedBox(height: 8),
           DropdownButtonFormField<String>(
             initialValue: _subtitleLanguage,
@@ -356,7 +413,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             text.t('video_player'),
             style: const TextStyle(fontWeight: FontWeight.w600),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 16),
           DropdownButtonFormField<String>(
             initialValue: _videoPlayer,
             items: supportedVideoPlayers.entries
@@ -418,6 +475,101 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               border: const OutlineInputBorder(),
             ),
           ),
+          const SizedBox(height: 24),
+          const Text(
+            'Library & Watch History',
+            style: TextStyle(fontWeight: FontWeight.w600),
+          ),
+          const SizedBox(height: 12),
+          DropdownButtonFormField<String>(
+            initialValue: supportedLibrarySortOptions.containsKey(_librarySort)
+                ? _librarySort
+                : 'recent',
+            items: supportedLibrarySortOptions.entries
+                .map(
+                  (entry) => DropdownMenuItem<String>(
+                    value: entry.key,
+                    child: Text(entry.value),
+                  ),
+                )
+                .toList(),
+            onChanged: (value) {
+              if (value == null) return;
+              setState(() {
+                _librarySort = value;
+              });
+            },
+            decoration: const InputDecoration(
+              labelText: 'Watchlist sort order',
+              border: OutlineInputBorder(),
+            ),
+          ),
+          const SizedBox(height: 8),
+          SwitchListTile.adaptive(
+            contentPadding: EdgeInsets.zero,
+            value: _watchHistoryEnabled,
+            onChanged: (value) {
+              setState(() {
+                _watchHistoryEnabled = value;
+              });
+            },
+            title: const Text('Watch history'),
+            subtitle: Text(
+              _watchHistoryEnabled
+                  ? 'Progress and continue watching entries are saved.'
+                  : 'New playback progress will not be saved.',
+            ),
+          ),
+          if (_watchHistoryEnabled) ...[
+            const SizedBox(height: 8),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  text.t('completion_percentage'),
+                  style: const TextStyle(fontWeight: FontWeight.w500),
+                ),
+                Text(
+                  '%$_completionPercentage',
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    color: Colors.redAccent,
+                  ),
+                ),
+              ],
+            ),
+            Slider(
+              value: _completionPercentage.toDouble(),
+              min: 50,
+              max: 95,
+              divisions: 9,
+              label: '%$_completionPercentage',
+              activeColor: Colors.redAccent,
+              onChanged: (value) {
+                setState(() {
+                  _completionPercentage = value.round();
+                });
+              },
+            ),
+            Text(
+              text.t('completion_percentage_desc'),
+              style: const TextStyle(color: Colors.grey, fontSize: 12),
+            ),
+            const SizedBox(height: 12),
+          ],
+          SwitchListTile.adaptive(
+            contentPadding: EdgeInsets.zero,
+            value: _newEpisodeNotificationsEnabled,
+            onChanged: (value) {
+              setState(() {
+                _newEpisodeNotificationsEnabled = value;
+              });
+            },
+            title: const Text('New episode alerts'),
+            subtitle: const Text(
+              'Library shows recently aired, unwatched episodes from saved series.',
+            ),
+          ),
           const SizedBox(height: 16),
           ListTile(
             contentPadding: EdgeInsets.zero,
@@ -428,8 +580,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             subtitle: Text(
               _isApiFieldsVisible
                   ? 'Hide sensitive fields'
-                  : 'TMDB: $tmdbTokenPreview\nBackend: $backendPreview',
-              maxLines: 2,
+                  : 'TMDB: $tmdbTokenPreview\nWyzie: $wyzieKeyPreview\nBackend: $backendPreview',
+              maxLines: 3,
               overflow: TextOverflow.ellipsis,
             ),
             trailing: TextButton(
@@ -443,9 +595,40 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           ),
           if (_isApiFieldsVisible) ...[
             const SizedBox(height: 8),
-            Text(
-              text.t('tmdb_token'),
-              style: const TextStyle(fontWeight: FontWeight.w600),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  text.t('tmdb_token'),
+                  style: const TextStyle(fontWeight: FontWeight.w600),
+                ),
+                TextButton.icon(
+                  onPressed: () async {
+                    final Uri url = Uri.parse('https://www.themoviedb.org/settings/api');
+                    try {
+                      if (!await launchUrl(url, mode: LaunchMode.externalApplication)) {
+                        throw Exception('Could not launch $url');
+                      }
+                    } catch (e) {
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text('Hata: $e')),
+                        );
+                      }
+                    }
+                  },
+                  icon: const Icon(Icons.open_in_new, size: 14),
+                  label: Text(
+                    text.t('get_tmdb_token'),
+                    style: const TextStyle(fontSize: 12),
+                  ),
+                  style: TextButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    minimumSize: Size.zero,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                ),
+              ],
             ),
             const SizedBox(height: 8),
             TextField(
@@ -456,6 +639,20 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               ),
               minLines: 2,
               maxLines: 4,
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              'Wyzie Subs API Key',
+              style: TextStyle(fontWeight: FontWeight.w600),
+            ),
+            const SizedBox(height: 8),
+            TextField(
+              controller: _wyzieApiKeyController,
+              decoration: const InputDecoration(
+                hintText: 'wyzie-...',
+                border: OutlineInputBorder(),
+              ),
+              obscureText: true,
             ),
             const SizedBox(height: 16),
             Text(
@@ -484,9 +681,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             subtitle: Text(text.t('source_settings_nav_desc')),
             trailing: const Icon(Icons.chevron_right),
             onTap: () {
-              Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const SourcesScreen()),
-              );
+              Navigator.of(
+                context,
+              ).push(MaterialPageRoute(builder: (_) => const SourcesScreen()));
             },
           ),
           const Divider(),

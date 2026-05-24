@@ -99,6 +99,18 @@ class SearchRepository {
     return names.join(', ');
   }
 
+  String? _formatDate(dynamic rawDate) {
+    if (rawDate == null) return null;
+    final dateStr = rawDate.toString().trim();
+    if (dateStr.isEmpty) return null;
+    try {
+      final date = DateTime.parse(dateStr);
+      return '${date.day.toString().padLeft(2, '0')}.${date.month.toString().padLeft(2, '0')}.${date.year}';
+    } catch (_) {
+      return dateStr;
+    }
+  }
+
   Future<MediaDetailsInfo?> getMediaDetails(
     String mediaId,
     String mediaType,
@@ -137,6 +149,7 @@ class SearchRepository {
           rating: data['vote_average'] is num
               ? (data['vote_average'] as num).toDouble()
               : null,
+          releaseDate: _formatDate(data['release_date'] ?? data['first_air_date']),
         );
       }
     } catch (e) {
@@ -221,6 +234,35 @@ class SearchRepository {
       );
     }
     return [];
+  }
+
+  Future<LatestEpisodeInfo?> getLatestEpisodeInfo(String seriesId) async {
+    if (!_hasToken || seriesId.trim().isEmpty) return null;
+    try {
+      final response = await _dio.get(
+        'https://api.themoviedb.org/3/tv/$seriesId',
+        queryParameters: {'language': _tmdbLanguage},
+        options: _tmdbOptions,
+      );
+      if (response.statusCode == 200 && response.data is Map) {
+        final data = Map<String, dynamic>.from(response.data as Map);
+        final rawEpisode = data['last_episode_to_air'];
+        if (rawEpisode is Map) {
+          final episode = LatestEpisodeInfo.fromTmdbJson(
+            Map<String, dynamic>.from(rawEpisode),
+          );
+          if (episode.seasonNumber > 0 && episode.episodeNumber > 0) {
+            return episode;
+          }
+        }
+      }
+    } catch (e) {
+      developer.log(
+        'Latest episode fetch failed: $e',
+        name: 'SearchRepository',
+      );
+    }
+    return null;
   }
 
   Future<List<Season>> getSeriesSeasons(String seriesId) async {

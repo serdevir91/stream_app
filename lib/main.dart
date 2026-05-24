@@ -13,6 +13,7 @@ import 'features/sources/data/repositories/sources_repository.dart';
 
 import 'features/home/presentation/screens/home_screen.dart';
 import 'features/library/data/repositories/library_repository.dart';
+import 'features/library/data/repositories/watched_repository.dart';
 
 import 'features/player/data/repositories/watch_history_repository.dart';
 
@@ -40,10 +41,11 @@ void main() async {
   final watchHistoryRepository = WatchHistoryRepository();
   await watchHistoryRepository.init();
 
-
-
   final libraryRepository = LibraryRepository();
   await libraryRepository.init();
+
+  final watchedRepository = WatchedRepository();
+  await watchedRepository.init();
 
   final addonConfigRepository = AddonConfigRepository();
   await addonConfigRepository.init();

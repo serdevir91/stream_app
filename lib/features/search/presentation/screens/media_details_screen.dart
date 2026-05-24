@@ -5,6 +5,7 @@ import '../../../../core/backend/addon_service_provider.dart';
 import '../../../../core/i18n/app_text.dart';
 import '../../../../core/settings/app_settings_provider.dart';
 import '../../../library/presentation/providers/library_provider.dart';
+import '../../../library/presentation/providers/watched_provider.dart';
 import '../../domain/entities/media_item.dart';
 import '../providers/search_provider.dart';
 import '../../../player/data/repositories/watch_history_repository.dart';
@@ -211,6 +212,7 @@ class _MediaDetailsScreenState extends ConsumerState<MediaDetailsScreen> {
   Future<void> _resolveAndPickSource({
     int season = 1,
     int episode = 1,
+    String? preferredSourceId,
     int? runtimeMinutes,
   }) async {
     final text = ref.read(appTextProvider);
@@ -254,12 +256,15 @@ class _MediaDetailsScreenState extends ConsumerState<MediaDetailsScreen> {
       }
 
       if (settings.autoSelectSource) {
-        final preferredSourceId = settings.preferredSourceId.trim();
+        final preferredSourceIdToUse =
+            preferredSourceId?.trim().isNotEmpty == true
+            ? preferredSourceId!.trim()
+            : settings.preferredSourceId.trim();
         Map<String, dynamic>? selected;
 
-        if (preferredSourceId.isNotEmpty) {
+        if (preferredSourceIdToUse.isNotEmpty) {
           for (final stream in prioritizedStreams) {
-            if (stream['addon_id']?.toString() == preferredSourceId) {
+            if (stream['addon_id']?.toString() == preferredSourceIdToUse) {
               selected = stream;
               break;
             }
@@ -517,6 +522,11 @@ class _MediaDetailsScreenState extends ConsumerState<MediaDetailsScreen> {
         (items) => items.any((libraryItem) => libraryItem.id == item.id),
       ),
     );
+    final isWatched = ref.watch(
+      watchedProvider.select(
+        (items) => items.any((watchedItem) => watchedItem.id == item.id),
+      ),
+    );
 
     return Scaffold(
       body: CustomScrollView(
@@ -611,27 +621,55 @@ class _MediaDetailsScreenState extends ConsumerState<MediaDetailsScreen> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          if (mediaDetails.runtimeMinutes != null)
+                          if (mediaDetails.releaseDate != null &&
+                              mediaDetails.releaseDate!.isNotEmpty) ...[
+                            Text(
+                              '${text.t('release_date')}: ${mediaDetails.releaseDate}',
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                          ],
+                          if (mediaDetails.runtimeMinutes != null) ...[
                             Text(
                               '${text.t(item.type == 'movie' ? 'movie_runtime' : 'episode_runtime')}: ${mediaDetails.runtimeMinutes} dk',
                               style: const TextStyle(
                                 fontWeight: FontWeight.w600,
                               ),
                             ),
+                            const SizedBox(height: 8),
+                          ],
                           if (mediaDetails.castNames.isNotEmpty) ...[
-                            if (mediaDetails.runtimeMinutes != null)
-                              const SizedBox(height: 8),
                             Text(
                               '${text.t('cast')}: ${mediaDetails.castNames.join(', ')}',
                               style: const TextStyle(fontSize: 13),
                             ),
                           ],
-                          if (mediaDetails.leadName != null) ...[
-                            const SizedBox(height: 8),
-                            Text(
-                              '${text.t(item.type == 'movie' ? 'director' : 'creator')}: ${mediaDetails.leadName}',
-                              style: const TextStyle(fontSize: 13),
-                            ),
+                          if (item.type == 'movie') ...[
+                            if (mediaDetails.directorName != null) ...[
+                              const SizedBox(height: 8),
+                              Text(
+                                '${text.t('director')}: ${mediaDetails.directorName}',
+                                style: const TextStyle(fontSize: 13),
+                              ),
+                            ],
+                          ] else ...[
+                            if (mediaDetails.creatorName != null) ...[
+                              const SizedBox(height: 8),
+                              Text(
+                                '${text.t('creator')}: ${mediaDetails.creatorName}',
+                                style: const TextStyle(fontSize: 13),
+                              ),
+                            ],
+                            if (mediaDetails.directorName != null &&
+                                mediaDetails.directorName != mediaDetails.creatorName) ...[
+                              const SizedBox(height: 8),
+                              Text(
+                                '${text.t('director')}: ${mediaDetails.directorName}',
+                                style: const TextStyle(fontSize: 13),
+                              ),
+                            ],
                           ],
                         ],
                       ),
@@ -680,35 +718,81 @@ class _MediaDetailsScreenState extends ConsumerState<MediaDetailsScreen> {
                     ),
                     const SizedBox(height: 16),
                   ],
-                  SizedBox(
-                    width: double.infinity,
-                    child: OutlinedButton.icon(
-                      onPressed: () async {
-                        final added = await ref
-                            .read(libraryProvider.notifier)
-                            .toggle(item);
-                        if (!context.mounted) return;
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text(
-                              added
-                                  ? text.t('added_to_library')
-                                  : text.t('removed_from_library'),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: () async {
+                            final added = await ref
+                                .read(libraryProvider.notifier)
+                                .toggle(item);
+                            if (!context.mounted) return;
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(
+                                  added
+                                      ? text.t('added_to_library')
+                                      : text.t('removed_from_library'),
+                                ),
+                              ),
+                            );
+                          },
+                          icon: Icon(
+                            inLibrary
+                                ? Icons.bookmark_remove
+                                : Icons.bookmark_add_outlined,
+                          ),
+                          label: Text(
+                            inLibrary
+                                ? text.t('remove_from_library')
+                                : text.t('add_to_library'),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: () async {
+                            final added = await ref
+                                .read(watchedProvider.notifier)
+                                .toggle(item);
+                            if (!context.mounted) return;
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(
+                                  added
+                                      ? text.t('added_to_watched')
+                                      : text.t('removed_from_watched'),
+                                ),
+                              ),
+                            );
+                          },
+                          icon: Icon(
+                            isWatched
+                                ? Icons.visibility
+                                : Icons.visibility_outlined,
+                            color: isWatched ? const Color(0xFF00E054) : null,
+                          ),
+                          label: Text(
+                            isWatched
+                                ? text.t('watched')
+                                : text.t('mark_as_watched'),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: isWatched ? const Color(0xFF00E054) : null,
                             ),
                           ),
-                        );
-                      },
-                      icon: Icon(
-                        inLibrary
-                            ? Icons.bookmark_remove
-                            : Icons.bookmark_add_outlined,
+                          style: OutlinedButton.styleFrom(
+                            side: isWatched
+                                ? const BorderSide(color: Color(0xFF00E054), width: 1.5)
+                                : null,
+                          ),
+                        ),
                       ),
-                      label: Text(
-                        inLibrary
-                            ? text.t('remove_from_library')
-                            : text.t('add_to_library'),
-                      ),
-                    ),
+                    ],
                   ),
                   const SizedBox(height: 16),
                   if (item.type == 'movie')
@@ -821,6 +905,7 @@ class _MediaDetailsScreenState extends ConsumerState<MediaDetailsScreen> {
                       : () => _resolveAndPickSource(
                           season: previousTarget.season,
                           episode: previousTarget.episode,
+                          preferredSourceId: continueItem?.baseHistory.sourceId,
                           runtimeMinutes: runtimeMinutes,
                         ),
                   icon: const Icon(Icons.skip_previous),
@@ -834,6 +919,7 @@ class _MediaDetailsScreenState extends ConsumerState<MediaDetailsScreen> {
                       : () => _resolveAndPickSource(
                           season: primaryTarget.season,
                           episode: primaryTarget.episode,
+                          preferredSourceId: continueItem?.baseHistory.sourceId,
                           runtimeMinutes: runtimeMinutes,
                         ),
                   child: Container(
@@ -880,6 +966,7 @@ class _MediaDetailsScreenState extends ConsumerState<MediaDetailsScreen> {
                       : () => _resolveAndPickSource(
                           season: nextTarget.season,
                           episode: nextTarget.episode,
+                          preferredSourceId: continueItem?.baseHistory.sourceId,
                           runtimeMinutes: runtimeMinutes,
                         ),
                   icon: const Icon(Icons.skip_next),
@@ -1010,15 +1097,13 @@ class _MediaDetailsScreenState extends ConsumerState<MediaDetailsScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  if (episode.voteAverage != null &&
-                      episode.voteAverage! > 0)
+                  if (episode.voteAverage != null && episode.voteAverage! > 0)
                     Padding(
                       padding: const EdgeInsets.only(top: 2),
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          const Icon(Icons.star,
-                              color: Colors.amber, size: 14),
+                          const Icon(Icons.star, color: Colors.amber, size: 14),
                           const SizedBox(width: 4),
                           Text(
                             'IMDb ${episode.voteAverage!.toStringAsFixed(1)}',

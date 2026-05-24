@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/i18n/app_text.dart';
+import '../../../../core/settings/app_settings_provider.dart';
+import '../../../settings/presentation/screens/settings_screen.dart';
 import '../../domain/entities/media_item.dart';
 import '../providers/search_provider.dart';
 import 'media_details_screen.dart';
@@ -38,9 +40,73 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
     }
   }
 
+  Widget _buildTokenWarningBanner(BuildContext context, AppText text) {
+    return Container(
+      margin: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.orange.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.orangeAccent.withValues(alpha: 0.3)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Icon(
+                Icons.warning_amber_rounded,
+                color: Colors.orangeAccent,
+                size: 24,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  text.t('tmdb_token_warning'),
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                    height: 1.3,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Align(
+            alignment: Alignment.centerRight,
+            child: ElevatedButton.icon(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.orangeAccent,
+                foregroundColor: Colors.black,
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                minimumSize: Size.zero,
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                textStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+              ),
+              onPressed: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => const SettingsScreen(),
+                  ),
+                );
+              },
+              icon: const Icon(Icons.settings, size: 16),
+              label: Text(text.t('go_to_settings')),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final text = ref.watch(appTextProvider);
+    final settings = ref.watch(appSettingsProvider);
+    final isTokenMissing = settings.tmdbAccessToken.trim().isEmpty;
     final currentQuery = ref.watch(searchQueryProvider).trim();
     final searchResults = ref.watch(searchResultsProvider);
     final recentSearches = ref.watch(recentSearchesProvider);
@@ -78,13 +144,31 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
           ),
         ),
       ),
-      body: hasQuery
-          ? _buildSearchResults(searchResults, text)
-          : _buildDiscoveryContent(
-              text,
-              recentSearches: recentSearches,
-              mixedRecommendations: mixedRecommendations,
-            ),
+      body: isTokenMissing
+          ? Column(
+              children: [
+                _buildTokenWarningBanner(context, text),
+                Expanded(
+                  child: Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(16.0),
+                      child: Text(
+                        text.t('api_required'),
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(color: Colors.white70),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            )
+          : (hasQuery
+              ? _buildSearchResults(searchResults, text)
+              : _buildDiscoveryContent(
+                  text,
+                  recentSearches: recentSearches,
+                  mixedRecommendations: mixedRecommendations,
+                )),
     );
   }
 
@@ -186,6 +270,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
     bool shrinkWrap = false,
     ScrollPhysics? physics,
   }) {
+    final text = ref.watch(appTextProvider);
     return ListView.builder(
       shrinkWrap: shrinkWrap,
       physics: physics,
@@ -230,7 +315,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                         borderRadius: BorderRadius.circular(4),
                       ),
                       child: Text(
-                        item.type.toUpperCase(),
+                        text.t(item.type).toUpperCase(),
                         style: const TextStyle(fontSize: 10, color: Colors.white),
                       ),
                     ),

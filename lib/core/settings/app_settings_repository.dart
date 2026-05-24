@@ -34,10 +34,16 @@ class AppSettingsRepository {
           appLanguage: 'en',
           subtitleLanguage: 'en',
           tmdbAccessToken: (raw['tmdbAccessToken'] ?? '').toString(),
+          wyzieApiKey: (raw['wyzieApiKey'] ?? '').toString(),
           backendUrl: 'http://127.0.0.1:8000',
           autoSelectSource: true,
           preferredSourceId: '',
           videoPlayer: 'native',
+          autoSelectSubtitle: true,
+          librarySort: 'recent',
+          watchHistoryEnabled: true,
+          newEpisodeNotificationsEnabled: true,
+          completionPercentage: 90,
         );
         box.put(key, migrated.toMap());
         return migrated;
