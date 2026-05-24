@@ -44,9 +44,9 @@ watch history, a personal library, and runtime app settings.
 
 | Architecture | File | Size |
 |-------------|------|------|
-| ARM64 (most devices) | [app-arm64-v8a-release.apk](https://github.com/serdevir91/stream_app/releases/download/v1.0.3/app-arm64-v8a-release.apk) | ~31.7 MB |
-| ARM 32-bit (older devices) | [app-armeabi-v7a-release.apk](https://github.com/serdevir91/stream_app/releases/download/v1.0.3/app-armeabi-v7a-release.apk) | ~28.8 MB |
-| x86_64 (emulators) | [app-x86_64-release.apk](https://github.com/serdevir91/stream_app/releases/download/v1.0.3/app-x86_64-release.apk) | ~36.4 MB |
+| ARM64 (most devices) | [app-arm64-v8a-release.apk](https://github.com/serdevir91/stream_app/releases/download/v1.0.4/app-arm64-v8a-release.apk) | ~32.4 MB |
+| ARM 32-bit (older devices) | [app-armeabi-v7a-release.apk](https://github.com/serdevir91/stream_app/releases/download/v1.0.4/app-armeabi-v7a-release.apk) | ~29.6 MB |
+| x86_64 (emulators) | [app-x86_64-release.apk](https://github.com/serdevir91/stream_app/releases/download/v1.0.4/app-x86_64-release.apk) | ~37.1 MB |
 
 > Most modern phones use ARM64. If unsure, download the ARM64 version.
 
@@ -54,8 +54,8 @@ watch history, a personal library, and runtime app settings.
 
 | Type | File | Size |
 |------|------|------|
-| Installer (recommended) | [StreamApp-Setup-v1.0.3.exe](https://github.com/serdevir91/stream_app/releases/download/v1.0.3/StreamApp-Setup-v1.0.3.exe) | ~24.7 MB |
-| Portable | [stream_app-windows-x64.zip](https://github.com/serdevir91/stream_app/releases/download/v1.0.3/stream_app-windows-x64.zip) | ~32.1 MB |
+| Installer (recommended) | [StreamApp-Setup-v1.0.4.exe](https://github.com/serdevir91/stream_app/releases/download/v1.0.4/StreamApp-Setup-v1.0.4.exe) | ~24.7 MB |
+| Portable | [stream_app-windows-x64.zip](https://github.com/serdevir91/stream_app/releases/download/v1.0.4/stream_app-windows-x64.zip) | ~32.1 MB |
 
 **Installer**: Run the `.exe` wizard. Creates Start Menu shortcuts and an uninstaller.
 
@@ -231,7 +231,7 @@ flutter build windows --release
 "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer\stream_app.iss
 ```
 
-Output: `output/StreamApp-Setup-v1.0.3.exe`
+Output: `output/StreamApp-Setup-v1.0.4.exe`
 
 ### Android APK
 
@@ -352,6 +352,13 @@ Your backend must expose:
   - `Install from file (.json)` and choose local manifest file.
 
 ## Changelog
+
+### v1.0.4
+
+- **Auto-remove Watched Content**: Automatically removes movies/series from "My List" once marked as watched or when progress reaches 100% completion.
+- **TV Show Completion Tracking**: TV shows are automatically marked as completed and removed from "My List" only when all episodes across all seasons have been watched.
+- **Release Date & Director Info**: Displays release dates on details pages and explicitly lists both Creator and Director names for TV shows when available.
+- **Localized Type Badges**: Displays a small type badge ("DİZİ" / "FİLM") on the bottom-left corner of all cover posters.
 
 ### v1.0.3
 
