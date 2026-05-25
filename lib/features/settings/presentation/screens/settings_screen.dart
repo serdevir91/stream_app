@@ -376,7 +376,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         ),
         const SizedBox(height: 8),
         const Text(
-          'Izleme verisini cihazlar arasinda sadece kendi girdiginiz sunucuda esitleyin. Paylasilan varsayilan sunucu kullanilmaz.',
+          'Uygulama varsayilan bir sync sunucusu kullanmaz. Buraya girdiginiz adres kullanilir.',
           style: TextStyle(color: Colors.grey, fontSize: 13),
         ),
         const SizedBox(height: 12),
