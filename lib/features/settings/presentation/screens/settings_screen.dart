@@ -1,12 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../../../core/backup/local_backup_service.dart';
 import '../../../../core/i18n/app_text.dart';
 import '../../../../core/settings/app_settings.dart';
 import '../../../../core/settings/app_settings_provider.dart';
+import '../../../../core/sync/device_identity.dart';
 import '../../../../core/sync/sync_provider.dart';
+import '../../../library/presentation/providers/library_provider.dart';
+import '../../../library/presentation/providers/watched_provider.dart';
 import '../../../addons/presentation/screens/addon_manager_screen.dart';
+import '../../../sources/presentation/providers/sources_provider.dart';
 import '../../../sources/presentation/screens/sources_screen.dart';
 
 class SettingsScreen extends ConsumerStatefulWidget {
@@ -39,6 +45,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   void initState() {
     super.initState();
     _syncServerUrlController = TextEditingController(text: _syncServerUrl);
+    _loadSavedSyncServerUrl();
   }
 
   @override
@@ -169,9 +176,23 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     });
   }
 
-  String _syncServerUrl = 'http://92.5.69.116:8080';
+  String _syncServerUrl = '';
   bool _isSyncRegistering = false;
   bool _isSyncing = false;
+  bool _isExportingBackup = false;
+  bool _isImportingBackup = false;
+
+  Future<void> _loadSavedSyncServerUrl() async {
+    final savedUrl = await DeviceIdentity.getServerUrl();
+    if (!mounted || savedUrl == null || savedUrl.isEmpty) {
+      return;
+    }
+
+    setState(() {
+      _syncServerUrl = savedUrl;
+      _syncServerUrlController.text = savedUrl;
+    });
+  }
 
   Future<void> _registerSyncDevice() async {
     setState(() => _isSyncRegistering = true);
@@ -182,6 +203,18 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     }
 
     _syncServerUrl = _syncServerUrlController.text.trim();
+    if (_syncServerUrl.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Lutfen kendi sync sunucu adresinizi girin.'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      setState(() => _isSyncRegistering = false);
+      return;
+    }
 
     final deviceName = 'Flutter_${DateTime.now().millisecondsSinceEpoch}';
     final success = await syncService.register(
@@ -209,6 +242,102 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       );
     }
     setState(() => _isSyncRegistering = false);
+  }
+
+  Future<void> _exportLocalBackup() async {
+    if (_isExportingBackup) {
+      return;
+    }
+    setState(() => _isExportingBackup = true);
+
+    try {
+      final now = DateTime.now();
+      final fileName =
+          'stream_app_backup_${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}_${now.hour.toString().padLeft(2, '0')}${now.minute.toString().padLeft(2, '0')}.json';
+      final outputPath = await FilePicker.platform.saveFile(
+        dialogTitle: 'Yedek dosya konumunu secin',
+        fileName: fileName,
+        type: FileType.custom,
+        allowedExtensions: const ['json'],
+      );
+      if (outputPath == null || outputPath.trim().isEmpty) {
+        return;
+      }
+
+      final savedPath = await LocalBackupService.exportToPath(outputPath);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Yedek disa aktarildi: $savedPath'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Yedek disa aktarma basarisiz: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isExportingBackup = false);
+      }
+    }
+  }
+
+  Future<void> _importLocalBackup() async {
+    if (_isImportingBackup) {
+      return;
+    }
+    setState(() => _isImportingBackup = true);
+    try {
+      final picked = await FilePicker.platform.pickFiles(
+        dialogTitle: 'Geri yuklenecek yedek dosyasini secin',
+        type: FileType.custom,
+        allowedExtensions: const ['json'],
+        allowMultiple: false,
+      );
+      final inputPath = picked?.files.single.path;
+      if (inputPath == null || inputPath.trim().isEmpty) {
+        return;
+      }
+
+      final result = await LocalBackupService.importFromPath(inputPath);
+
+      ref.invalidate(appSettingsProvider);
+      ref.invalidate(libraryProvider);
+      ref.invalidate(watchedProvider);
+      ref.invalidate(sourcesProvider);
+      ref.invalidate(addonsProvider);
+      ref.invalidate(syncRegisteredProvider);
+      ref.invalidate(syncStatusProvider);
+
+      await _loadSavedSyncServerUrl();
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Yedek geri yuklendi. Kaynak: ${result.sourceCount}, Gecmis: ${result.watchHistoryCount}, Kutuphane: ${result.libraryCount}, Izlenen: ${result.watchedCount}',
+          ),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Yedek geri yukleme basarisiz: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isImportingBackup = false);
+      }
+    }
   }
 
   Future<void> _manualSync() async {
@@ -247,14 +376,14 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         ),
         const SizedBox(height: 8),
         const Text(
-          'Oracle sunucu uzerinden izleme gecmisini cihazlariniz arasinda esitleyin.',
+          'Izleme verisini cihazlar arasinda sadece kendi girdiginiz sunucuda esitleyin. Paylasilan varsayilan sunucu kullanilmaz.',
           style: TextStyle(color: Colors.grey, fontSize: 13),
         ),
         const SizedBox(height: 12),
         TextField(
           decoration: const InputDecoration(
             labelText: 'Sunucu Adresi',
-            hintText: 'http://92.5.69.116:8080',
+            hintText: 'http://kendi-sunucun:8000',
             border: OutlineInputBorder(),
             prefixIcon: Icon(Icons.dns),
           ),
@@ -314,6 +443,59 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           loading: () => const Center(child: CircularProgressIndicator()),
           error: (e, _) =>
               Text('Hata: $e', style: const TextStyle(color: Colors.red)),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildLocalBackupSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: const [
+            Icon(Icons.folder_zip_outlined, size: 20),
+            SizedBox(width: 8),
+            Text(
+              'Lokal Yedekleme',
+              style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        const Text(
+          'Veriyi JSON olarak disa aktarabilir ve ayni formatla geri yukleyebilirsiniz.',
+          style: TextStyle(color: Colors.grey, fontSize: 13),
+        ),
+        const SizedBox(height: 12),
+        SizedBox(
+          width: double.infinity,
+          child: OutlinedButton.icon(
+            onPressed: _isExportingBackup ? null : _exportLocalBackup,
+            icon: _isExportingBackup
+                ? const SizedBox(
+                    height: 16,
+                    width: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.upload_file),
+            label: const Text('Veriyi Disa Aktar (JSON)'),
+          ),
+        ),
+        const SizedBox(height: 8),
+        SizedBox(
+          width: double.infinity,
+          child: OutlinedButton.icon(
+            onPressed: _isImportingBackup ? null : _importLocalBackup,
+            icon: _isImportingBackup
+                ? const SizedBox(
+                    height: 16,
+                    width: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.download_for_offline_outlined),
+            label: const Text('Yedekten Geri Yukle (JSON)'),
+          ),
         ),
       ],
     );
@@ -604,16 +786,21 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 ),
                 TextButton.icon(
                   onPressed: () async {
-                    final Uri url = Uri.parse('https://www.themoviedb.org/settings/api');
+                    final Uri url = Uri.parse(
+                      'https://www.themoviedb.org/settings/api',
+                    );
                     try {
-                      if (!await launchUrl(url, mode: LaunchMode.externalApplication)) {
+                      if (!await launchUrl(
+                        url,
+                        mode: LaunchMode.externalApplication,
+                      )) {
                         throw Exception('Could not launch $url');
                       }
                     } catch (e) {
                       if (context.mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text('Hata: $e')),
-                        );
+                        ScaffoldMessenger.of(
+                          context,
+                        ).showSnackBar(SnackBar(content: Text('Hata: $e')));
                       }
                     }
                   },
@@ -623,7 +810,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     style: const TextStyle(fontSize: 12),
                   ),
                   style: TextButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 4,
+                    ),
                     minimumSize: Size.zero,
                     tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                   ),
@@ -699,6 +889,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               );
             },
           ),
+          const SizedBox(height: 16),
+          const Divider(),
+          _buildLocalBackupSection(),
           const SizedBox(height: 16),
           const Divider(),
           _buildSyncSection(context, text),

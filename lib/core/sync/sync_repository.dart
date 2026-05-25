@@ -14,16 +14,22 @@ class SyncRepository {
   final Dio _dio;
   final String baseUrl;
 
-  SyncRepository({required this.baseUrl, String? authToken})
-      : _dio = Dio(BaseOptions(
-          baseUrl: baseUrl,
-          connectTimeout: const Duration(seconds: 10),
-          receiveTimeout: const Duration(seconds: 30),
-          headers: {
-            if (authToken != null) 'Authorization': 'Bearer $authToken',
-            'Content-Type': 'application/json',
-          },
-        ));
+  SyncRepository({
+    required this.baseUrl,
+    String? authToken,
+    Duration connectTimeout = const Duration(seconds: 10),
+    Duration receiveTimeout = const Duration(seconds: 30),
+  }) : _dio = Dio(
+         BaseOptions(
+           baseUrl: baseUrl,
+           connectTimeout: connectTimeout,
+           receiveTimeout: receiveTimeout,
+           headers: {
+             if (authToken != null) 'Authorization': 'Bearer $authToken',
+             'Content-Type': 'application/json',
+           },
+         ),
+       );
 
   Future<Map<String, dynamic>> registerDevice({
     required String deviceId,
@@ -31,11 +37,14 @@ class SyncRepository {
     required String tmdbAccessToken,
   }) async {
     try {
-      final response = await _dio.post('/api/sync/register', data: {
-        'device_id': deviceId,
-        'device_name': deviceName,
-        'tmdb_token': tmdbAccessToken,
-      });
+      final response = await _dio.post(
+        '/api/sync/register',
+        data: {
+          'device_id': deviceId,
+          'device_name': deviceName,
+          'tmdb_token': tmdbAccessToken,
+        },
+      );
       return response.data as Map<String, dynamic>;
     } on DioException catch (e) {
       final readable = _buildReadableError(e);
@@ -52,13 +61,16 @@ class SyncRepository {
     required int sinceMs,
   }) async {
     try {
-      final response = await _dio.post('/api/sync/push', data: {
-        'device_id': deviceId,
-        'watch_history': watchHistory,
-        'library': library,
-        'deleted_ids': deletedIds,
-        'since_ms': sinceMs,
-      });
+      final response = await _dio.post(
+        '/api/sync/push',
+        data: {
+          'device_id': deviceId,
+          'watch_history': watchHistory,
+          'library': library,
+          'deleted_ids': deletedIds,
+          'since_ms': sinceMs,
+        },
+      );
       return response.data as Map<String, dynamic>;
     } on DioException catch (e) {
       final readable = _buildReadableError(e);
@@ -72,10 +84,10 @@ class SyncRepository {
     required int sinceMs,
   }) async {
     try {
-      final response = await _dio.get('/api/sync/pull', queryParameters: {
-        'device_id': deviceId,
-        'since_ms': sinceMs,
-      });
+      final response = await _dio.get(
+        '/api/sync/pull',
+        queryParameters: {'device_id': deviceId, 'since_ms': sinceMs},
+      );
       return response.data as Map<String, dynamic>;
     } on DioException catch (e) {
       final readable = _buildReadableError(e);

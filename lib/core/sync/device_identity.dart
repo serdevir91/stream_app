@@ -11,7 +11,8 @@ class DeviceIdentity {
   static const String _serverUrlKey = 'server_url';
 
   static String generateDeviceId() {
-    final raw = '${DateTime.now().millisecondsSinceEpoch}_${Platform.environment['USERNAME'] ?? 'device'}';
+    final raw =
+        '${DateTime.now().millisecondsSinceEpoch}_${Platform.environment['USERNAME'] ?? 'device'}';
     return sha256.convert(utf8.encode(raw)).toString().substring(0, 16);
   }
 
@@ -59,5 +60,11 @@ class DeviceIdentity {
   static Future<bool> isRegistered() async {
     final token = await getAuthToken();
     return token != null && token.isNotEmpty;
+  }
+
+  static Future<void> clearRegistration() async {
+    final box = await _openBox();
+    await box.delete(_authTokenKey);
+    await box.delete(_serverUrlKey);
   }
 }

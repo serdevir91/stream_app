@@ -1,6 +1,6 @@
 """
 Stream App Sync Server
-Deploy on Oracle server (92.5.69.116) for cross-device sync.
+Deploy on your own private server for cross-device sync.
 
 Setup:
   pip install fastapi uvicorn

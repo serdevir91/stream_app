@@ -16,6 +16,7 @@ class SyncService {
   static const String _librarySnapshotKey = 'library_snapshot_ids';
   static const String _watchDeletePrefix = 'wh:';
   static const String _libraryDeletePrefix = 'lib:';
+  static const Set<String> _blockedSharedHosts = {'92.5.69.116'};
 
   SyncRepository? _repo;
   Timer? _periodicTimer;
@@ -36,6 +37,10 @@ class SyncService {
 
     final resolvedServerUrl = serverUrl ?? await DeviceIdentity.getServerUrl();
     if (resolvedServerUrl == null || resolvedServerUrl.isEmpty) return;
+    if (_isBlockedSharedEndpoint(resolvedServerUrl)) {
+      await DeviceIdentity.clearRegistration();
+      return;
+    }
 
     final token = await DeviceIdentity.getAuthToken();
     _repo = SyncRepository(baseUrl: resolvedServerUrl, authToken: token);
@@ -68,8 +73,18 @@ class SyncService {
     }
 
     for (final candidate in candidates) {
-      final repo = SyncRepository(baseUrl: candidate);
+      final repo = SyncRepository(
+        baseUrl: candidate,
+        connectTimeout: const Duration(seconds: 5),
+        receiveTimeout: const Duration(seconds: 10),
+      );
       try {
+        final isHealthy = await repo.checkHealth();
+        if (!isHealthy) {
+          _lastRegisterError =
+              'Sunucuya erisilemiyor [$candidate]. Sunucunun acik oldugunu ve portun dis erisime acik oldugunu kontrol edin.';
+          continue;
+        }
         final result = await repo.registerDevice(
           deviceId: deviceId,
           deviceName: deviceName,
@@ -341,6 +356,11 @@ class SyncService {
 
     final parsed = Uri.tryParse(normalized);
     if (parsed == null || parsed.host.isEmpty) return const [];
+    if (_isBlockedSharedHost(parsed.host)) {
+      _lastRegisterError =
+          'Paylasilan varsayilan sunucu engellendi (${parsed.host}). Lutfen kendi bulut/sunucunuzu kullanin.';
+      return const [];
+    }
 
     final candidates = <String>[normalized];
     final altPort = parsed.port == 8000
@@ -379,5 +399,17 @@ class SyncService {
       return normalized.substring(0, normalized.length - 1);
     }
     return normalized;
+  }
+
+  bool _isBlockedSharedEndpoint(String serverUrl) {
+    final parsed = Uri.tryParse(serverUrl);
+    if (parsed == null || parsed.host.isEmpty) {
+      return false;
+    }
+    return _isBlockedSharedHost(parsed.host);
+  }
+
+  bool _isBlockedSharedHost(String host) {
+    return _blockedSharedHosts.contains(host.trim().toLowerCase());
   }
 }
