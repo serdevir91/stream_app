@@ -159,32 +159,244 @@ class SearchRepository {
     return null;
   }
 
-  Future<List<MediaItem>> search(String query) async {
+  Future<List<MediaItem>> _getPersonCredits(dynamic personId, String personName) async {
     if (!_hasToken) return [];
     try {
       final response = await _dio.get(
-        'https://api.themoviedb.org/3/search/multi',
-        queryParameters: {'query': query, 'language': _tmdbLanguage, 'page': 1},
+        'https://api.themoviedb.org/3/person/$personId/combined_credits',
+        queryParameters: {'language': _tmdbLanguage},
         options: _tmdbOptions,
       );
 
-      if (response.statusCode == 200) {
-        final data = response.data;
+      if (response.statusCode == 200 && response.data is Map) {
+        final data = Map<String, dynamic>.from(response.data as Map);
+        final cast = data['cast'] as List? ?? [];
+        final crew = data['crew'] as List? ?? [];
+
+        final List<MediaItem> items = [];
+
+        for (final json in cast) {
+          if (json is Map) {
+            final map = Map<String, dynamic>.from(json);
+            final mediaType = map['media_type'];
+            if (mediaType == 'movie' || mediaType == 'tv') {
+              items.add(MediaItem.fromTmdbJson({...map, 'media_type': mediaType}));
+            }
+          }
+        }
+
+        for (final json in crew) {
+          if (json is Map) {
+            final map = Map<String, dynamic>.from(json);
+            final job = map['job'] as String? ?? '';
+            final isDirectorOrWriter = job.toLowerCase() == 'director' || 
+                                       job.toLowerCase() == 'writer' || 
+                                       job.toLowerCase() == 'producer';
+            if (isDirectorOrWriter) {
+              final mediaType = map['media_type'];
+              if (mediaType == 'movie' || mediaType == 'tv') {
+                items.add(MediaItem.fromTmdbJson({...map, 'media_type': mediaType}));
+              }
+            }
+          }
+        }
+
+        items.sort((a, b) {
+          final aRating = a.rating ?? 0.0;
+          final bRating = b.rating ?? 0.0;
+          return bRating.compareTo(aRating);
+        });
+
+        return items.take(25).toList();
+      }
+    } catch (e) {
+      developer.log('Error fetching person credits: $e', name: 'SearchRepository');
+    }
+    return [];
+  }
+
+  Future<List<MediaItem>> search(String query) async {
+    if (!_hasToken) return [];
+    final trimmedQuery = query.trim();
+    if (trimmedQuery.isEmpty) return [];
+
+    try {
+      final response = await _dio.get(
+        'https://api.themoviedb.org/3/search/multi',
+        queryParameters: {'query': trimmedQuery, 'language': _tmdbLanguage, 'page': 1},
+        options: _tmdbOptions,
+      );
+
+      if (response.statusCode == 200 && response.data is Map) {
+        final data = Map<String, dynamic>.from(response.data as Map);
         if (data['results'] != null) {
-          final List<dynamic> items = data['results'];
-          return items
-              .where(
-                (json) =>
-                    json['media_type'] == 'movie' || json['media_type'] == 'tv',
-              )
-              .map((json) => MediaItem.fromTmdbJson(json))
-              .toList();
+          final List<dynamic> rawItems = data['results'];
+          final List<MediaItem> results = [];
+          final List<Map<String, dynamic>> people = [];
+
+          for (final json in rawItems) {
+            if (json is Map) {
+              final map = Map<String, dynamic>.from(json);
+              final mediaType = map['media_type'];
+              if (mediaType == 'movie' || mediaType == 'tv') {
+                results.add(MediaItem.fromTmdbJson(map));
+              } else if (mediaType == 'person') {
+                people.add(map);
+              }
+            }
+          }
+
+          final Map<String, String> itemToPersonMap = {};
+
+          if (people.isNotEmpty) {
+            final topPeople = people.take(2).toList();
+            final List<Future<List<MediaItem>>> creditFutures = [];
+
+            for (final person in topPeople) {
+              final personId = person['id'];
+              final personName = person['name'] ?? '';
+              creditFutures.add(_getPersonCredits(personId, personName));
+            }
+
+            final creditsLists = await Future.wait(creditFutures);
+            for (var i = 0; i < topPeople.length; i++) {
+              final personName = topPeople[i]['name'] ?? '';
+              final credits = creditsLists[i];
+              for (final item in credits) {
+                final key = '${item.type}:${item.id}';
+                itemToPersonMap[key] = personName;
+                results.add(item);
+              }
+            }
+          }
+
+          final seen = <String>{};
+          final deduped = <MediaItem>[];
+          for (final item in results) {
+            if (item.id.isEmpty) continue;
+            final key = '${item.type}:${item.id}';
+            if (seen.add(key)) {
+              deduped.add(item);
+            }
+          }
+
+          return _fuzzySortResults(trimmedQuery, deduped, itemToPersonMap);
         }
       }
     } catch (e) {
       developer.log('Error searching TMDB: $e', name: 'SearchRepository');
     }
     return [];
+  }
+
+  List<MediaItem> _fuzzySortResults(
+    String query,
+    List<MediaItem> items,
+    Map<String, String> itemToPersonMap,
+  ) {
+    if (query.isEmpty) return items;
+
+    final scoredItems = <MapEntry<MediaItem, double>>[];
+
+    for (final item in items) {
+      final key = '${item.type}:${item.id}';
+      final matchedPerson = itemToPersonMap[key];
+
+      final titleScore = _calculateFuzzyScore(query, item.title);
+      
+      var descScore = 0.0;
+      if (item.description != null && item.description!.isNotEmpty) {
+        descScore = _calculateFuzzyScore(query, item.description!) * 0.4;
+      }
+
+      var personScore = 0.0;
+      if (matchedPerson != null && matchedPerson.isNotEmpty) {
+        personScore = _calculateFuzzyScore(query, matchedPerson) * 0.95;
+      }
+
+      final finalScore = [titleScore, descScore, personScore].reduce((a, b) => a > b ? a : b);
+
+      scoredItems.add(MapEntry(item, finalScore));
+    }
+
+    scoredItems.sort((a, b) => b.value.compareTo(a.value));
+    return scoredItems.map((entry) => entry.key).toList();
+  }
+
+  double _calculateFuzzyScore(String query, String target) {
+    final q = query.trim().toLowerCase();
+    final t = target.trim().toLowerCase();
+    if (q == t) return 1.0;
+
+    if (t.contains(q)) {
+      return 0.8 + (q.length / t.length) * 0.2;
+    }
+
+    final words = t.split(RegExp(r'\s+'));
+    for (final word in words) {
+      if (word.startsWith(q)) {
+        return 0.75 + (q.length / word.length) * 0.15;
+      }
+    }
+
+    return _jaroWinkler(q, t);
+  }
+
+  double _jaroWinkler(String s1, String s2) {
+    if (s1 == s2) return 1.0;
+
+    final len1 = s1.length;
+    final len2 = s2.length;
+    if (len1 == 0 || len2 == 0) return 0.0;
+
+    final matchDistance = (len1 > len2 ? len1 : len2) ~/ 2 - 1;
+    final matchDistanceVal = matchDistance < 0 ? 0 : matchDistance;
+
+    final s1Matches = List<bool>.filled(len1, false);
+    final s2Matches = List<bool>.filled(len2, false);
+
+    var matches = 0;
+    var transpositions = 0;
+
+    for (var i = 0; i < len1; i++) {
+      final start = (i - matchDistanceVal).clamp(0, len1);
+      final end = (i + matchDistanceVal + 1).clamp(0, len2);
+      for (var j = start; j < end; j++) {
+        if (s2Matches[j]) continue;
+        if (s1[i] != s2[j]) continue;
+        s1Matches[i] = true;
+        s2Matches[j] = true;
+        matches++;
+        break;
+      }
+    }
+
+    if (matches == 0) return 0.0;
+
+    var k = 0;
+    for (var i = 0; i < len1; i++) {
+      if (!s1Matches[i]) continue;
+      while (!s2Matches[k]) {
+        k++;
+      }
+      if (s1[i] != s2[k]) transpositions++;
+      k++;
+    }
+
+    final m = matches.toDouble();
+    final jaro = (m / len1 + m / len2 + (m - transpositions / 2.0) / m) / 3.0;
+
+    var prefix = 0;
+    final maxPrefix = len1 < len2 ? (len1 < 4 ? len1 : 4) : (len2 < 4 ? len2 : 4);
+    for (var i = 0; i < maxPrefix; i++) {
+      if (s1[i] == s2[i]) {
+        prefix++;
+      } else {
+        break;
+      }
+    }
+
+    return jaro + prefix * 0.1 * (1.0 - jaro);
   }
 
   Future<List<MediaItem>> getTrendingMovies() async {

@@ -14,6 +14,7 @@ import '../../../library/presentation/providers/watched_provider.dart';
 import '../../../addons/presentation/screens/addon_manager_screen.dart';
 import '../../../sources/presentation/providers/sources_provider.dart';
 import '../../../sources/presentation/screens/sources_screen.dart';
+import 'home_categories_manager_screen.dart';
 
 class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
@@ -864,6 +865,21 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             style: TextStyle(color: Colors.orange.shade300, fontSize: 12),
           ),
           const SizedBox(height: 24),
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: const Icon(Icons.dashboard_customize_outlined),
+            title: Text(text.t('homepage_categories')),
+            subtitle: Text(text.t('homepage_categories_desc')),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => const HomeCategoriesManagerScreen(),
+                ),
+              );
+            },
+          ),
+          const Divider(),
           ListTile(
             contentPadding: EdgeInsets.zero,
             leading: const Icon(Icons.storage_outlined),

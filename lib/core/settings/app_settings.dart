@@ -1,5 +1,22 @@
+const List<String> defaultHomeCategories = [
+  'recommended_for_you',
+  'trending_movies',
+  'trending_series',
+  'animation_movies',
+  'anime_series',
+  'horror_movies',
+  'drama_movies',
+  'thriller_movies',
+  'classic_movies',
+  'western_movies',
+  'movies_1950s',
+  'movies_1960s',
+  'movies_1970s',
+  'movies_1980s',
+];
+
 class AppSettings {
-  static const int schemaVersion = 8;
+  static const int schemaVersion = 9;
 
   final String appLanguage;
   final String subtitleLanguage;
@@ -14,6 +31,7 @@ class AppSettings {
   final bool watchHistoryEnabled;
   final bool newEpisodeNotificationsEnabled;
   final int completionPercentage;
+  final List<String> homeCategories;
 
   const AppSettings({
     required this.appLanguage,
@@ -29,6 +47,7 @@ class AppSettings {
     required this.watchHistoryEnabled,
     required this.newEpisodeNotificationsEnabled,
     required this.completionPercentage,
+    required this.homeCategories,
   });
 
   static const AppSettings defaults = AppSettings(
@@ -45,6 +64,7 @@ class AppSettings {
     watchHistoryEnabled: true,
     newEpisodeNotificationsEnabled: true,
     completionPercentage: 90,
+    homeCategories: defaultHomeCategories,
   );
 
   AppSettings copyWith({
@@ -61,6 +81,7 @@ class AppSettings {
     bool? watchHistoryEnabled,
     bool? newEpisodeNotificationsEnabled,
     int? completionPercentage,
+    List<String>? homeCategories,
   }) {
     return AppSettings(
       appLanguage: appLanguage ?? this.appLanguage,
@@ -77,6 +98,7 @@ class AppSettings {
       newEpisodeNotificationsEnabled:
           newEpisodeNotificationsEnabled ?? this.newEpisodeNotificationsEnabled,
       completionPercentage: completionPercentage ?? this.completionPercentage,
+      homeCategories: homeCategories ?? this.homeCategories,
     );
   }
 
@@ -96,6 +118,7 @@ class AppSettings {
       'watchHistoryEnabled': watchHistoryEnabled,
       'newEpisodeNotificationsEnabled': newEpisodeNotificationsEnabled,
       'completionPercentage': completionPercentage,
+      'homeCategories': homeCategories,
     };
   }
 
@@ -117,6 +140,10 @@ class AppSettings {
       completionPercentage: map['completionPercentage'] is int
           ? map['completionPercentage'] as int
           : 90,
+      homeCategories: (map['homeCategories'] as List?)
+              ?.map((e) => e.toString())
+              .toList() ??
+          defaultHomeCategories,
     );
   }
 }

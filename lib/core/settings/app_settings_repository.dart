@@ -44,6 +44,7 @@ class AppSettingsRepository {
           watchHistoryEnabled: true,
           newEpisodeNotificationsEnabled: true,
           completionPercentage: 90,
+          homeCategories: defaultHomeCategories,
         );
         box.put(key, migrated.toMap());
         return migrated;

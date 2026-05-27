@@ -13,8 +13,8 @@ import '../../../player/presentation/providers/player_provider.dart';
 import '../../../player/presentation/screens/player_screen.dart';
 import '../../../search/domain/entities/media_item.dart';
 import '../../../search/presentation/screens/media_details_screen.dart';
-import '../../../settings/presentation/screens/settings_screen.dart';
 import '../providers/home_provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class HomeContent extends ConsumerStatefulWidget {
   const HomeContent({super.key});
@@ -25,12 +25,14 @@ class HomeContent extends ConsumerStatefulWidget {
 
 class _HomeContentState extends ConsumerState<HomeContent> {
   late final PageController _featuredController;
+  late final TextEditingController _tokenController;
   Timer? _featuredTimer;
   int _featuredCount = 0;
 
   @override
   void initState() {
     super.initState();
+    _tokenController = TextEditingController();
     _featuredController = PageController(
       viewportFraction: _featuredViewportFraction(),
     );
@@ -49,6 +51,7 @@ class _HomeContentState extends ConsumerState<HomeContent> {
 
   @override
   void dispose() {
+    _tokenController.dispose();
     _featuredTimer?.cancel();
     _featuredController.dispose();
     super.dispose();
@@ -220,6 +223,7 @@ class _HomeContentState extends ConsumerState<HomeContent> {
   }
 
   Widget _buildTokenWarningBanner(BuildContext context, AppText text) {
+    final settings = ref.read(appSettingsProvider);
     return Container(
       margin: const EdgeInsets.fromLTRB(16, 16, 16, 4),
       padding: const EdgeInsets.all(16),
@@ -253,32 +257,119 @@ class _HomeContentState extends ConsumerState<HomeContent> {
               ),
             ],
           ),
-          const SizedBox(height: 12),
-          Align(
-            alignment: Alignment.centerRight,
-            child: ElevatedButton.icon(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.orangeAccent,
-                foregroundColor: Colors.black,
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                minimumSize: Size.zero,
-                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                textStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+          const SizedBox(height: 16),
+          TextField(
+            controller: _tokenController,
+            style: const TextStyle(fontSize: 13),
+            decoration: InputDecoration(
+              isDense: true,
+              hintText: text.t('paste_token_here'),
+              hintStyle: const TextStyle(color: Colors.white38),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(8),
+                borderSide: const BorderSide(color: Colors.orangeAccent),
               ),
-              onPressed: () {
-                Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (_) => const SettingsScreen(),
-                  ),
-                );
-              },
-              icon: const Icon(Icons.settings, size: 16),
-              label: Text(text.t('go_to_settings')),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(8),
+                borderSide: BorderSide(color: Colors.orangeAccent.withValues(alpha: 0.5)),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(8),
+                borderSide: const BorderSide(color: Colors.orangeAccent),
+              ),
+              prefixIcon: const Icon(Icons.key, color: Colors.orangeAccent, size: 18),
             ),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              TextButton.icon(
+                onPressed: () async {
+                  final Uri url = Uri.parse('https://www.themoviedb.org/settings/api');
+                  try {
+                    await launchUrl(url, mode: LaunchMode.externalApplication);
+                  } catch (_) {}
+                },
+                icon: const Icon(Icons.open_in_new, size: 14, color: Colors.orangeAccent),
+                label: Text(
+                  text.t('get_tmdb_token'),
+                  style: const TextStyle(color: Colors.orangeAccent, fontSize: 13),
+                ),
+              ),
+              const SizedBox(width: 8),
+              ElevatedButton.icon(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.orangeAccent,
+                  foregroundColor: Colors.black,
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  minimumSize: Size.zero,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  textStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                ),
+                onPressed: () async {
+                  final token = _tokenController.text.trim();
+                  if (token.isEmpty) return;
+
+                  final next = settings.copyWith(tmdbAccessToken: token);
+                  final status = await ref.read(appSettingsProvider.notifier).saveSettings(next);
+                  
+                  if (!context.mounted) return;
+
+                  final success = status == TmdbSyncStatus.synced || status == TmdbSyncStatus.skipped;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(
+                        success ? text.t('token_saved_success') : text.t('token_saved_fail'),
+                        style: const TextStyle(fontSize: 13),
+                      ),
+                      backgroundColor: success ? Colors.green : Colors.red,
+                    ),
+                  );
+                },
+                icon: const Icon(Icons.save, size: 16),
+                label: Text(text.t('save_token')),
+              ),
+            ],
           ),
         ],
       ),
     );
+  }
+
+  AsyncValue<List<MediaItem>> _getCategoryData(WidgetRef ref, String key) {
+    switch (key) {
+      case 'recommended_for_you':
+        return ref.watch(recommendedForYouProvider);
+      case 'trending_movies':
+        return ref.watch(trendingMoviesProvider);
+      case 'trending_series':
+        return ref.watch(trendingSeriesProvider);
+      case 'animation_movies':
+        return ref.watch(animationMoviesProvider);
+      case 'anime_series':
+        return ref.watch(animeSeriesProvider);
+      case 'horror_movies':
+        return ref.watch(horrorMoviesProvider);
+      case 'drama_movies':
+        return ref.watch(dramaMoviesProvider);
+      case 'thriller_movies':
+        return ref.watch(thrillerMoviesProvider);
+      case 'classic_movies':
+        return ref.watch(classicsProvider);
+      case 'western_movies':
+        return ref.watch(westernProvider);
+      case 'movies_1950s':
+        return ref.watch(movies1950sProvider);
+      case 'movies_1960s':
+        return ref.watch(movies1960sProvider);
+      case 'movies_1970s':
+        return ref.watch(movies1970sProvider);
+      case 'movies_1980s':
+        return ref.watch(movies1980sProvider);
+      default:
+        return const AsyncValue.data([]);
+    }
   }
 
   @override
@@ -287,21 +378,6 @@ class _HomeContentState extends ConsumerState<HomeContent> {
     final settings = ref.watch(appSettingsProvider);
 
     final featuredWeekly = ref.watch(featuredWeeklyProvider);
-    final trendingMovies = ref.watch(trendingMoviesProvider);
-    final trendingSeries = ref.watch(trendingSeriesProvider);
-    final animationMovies = ref.watch(animationMoviesProvider);
-    final horrorMovies = ref.watch(horrorMoviesProvider);
-    final dramaMovies = ref.watch(dramaMoviesProvider);
-    final thrillerMovies = ref.watch(thrillerMoviesProvider);
-    final animeSeries = ref.watch(animeSeriesProvider);
-    final recommended = ref.watch(recommendedForYouProvider);
-    final classics = ref.watch(classicsProvider);
-    final western = ref.watch(westernProvider);
-    final movies1950s = ref.watch(movies1950sProvider);
-    final movies1960s = ref.watch(movies1960sProvider);
-    final movies1970s = ref.watch(movies1970sProvider);
-    final movies1980s = ref.watch(movies1980sProvider);
-
     final continueItems = ref.watch(continueWatchingProvider);
     final libraryItems = ref.watch(sortedLibraryProvider);
 
@@ -343,90 +419,20 @@ class _HomeContentState extends ConsumerState<HomeContent> {
               _buildSectionTitle(text.t('my_list')),
               _buildLibraryQuickList(context, libraryItems),
             ],
-            _buildSectionTitle(text.t('recommended_for_you')),
-            _buildHorizontalList(
-              context,
-              recommended,
-              noDataText: text.t('no_data'),
-            ),
-            _buildSectionTitle(text.t('trending_movies')),
-            _buildHorizontalList(
-              context,
-              trendingMovies,
-              noDataText: text.t('no_data'),
-            ),
-            _buildSectionTitle(text.t('trending_series')),
-            _buildHorizontalList(
-              context,
-              trendingSeries,
-              noDataText: text.t('no_data'),
-            ),
-            _buildSectionTitle(text.t('animation_movies')),
-            _buildHorizontalList(
-              context,
-              animationMovies,
-              noDataText: text.t('no_data'),
-            ),
-            _buildSectionTitle(text.t('anime_series')),
-            _buildHorizontalList(
-              context,
-              animeSeries,
-              noDataText: text.t('no_data'),
-            ),
-            _buildSectionTitle(text.t('horror_movies')),
-            _buildHorizontalList(
-              context,
-              horrorMovies,
-              noDataText: text.t('no_data'),
-            ),
-            _buildSectionTitle(text.t('drama_movies')),
-            _buildHorizontalList(
-              context,
-              dramaMovies,
-              noDataText: text.t('no_data'),
-            ),
-            _buildSectionTitle(text.t('thriller_movies')),
-            _buildHorizontalList(
-              context,
-              thrillerMovies,
-              noDataText: text.t('no_data'),
-            ),
-            _buildSectionTitle(text.t('classic_movies')),
-            _buildHorizontalList(
-              context,
-              classics,
-              noDataText: text.t('no_data'),
-            ),
-            _buildSectionTitle(text.t('western_movies')),
-            _buildHorizontalList(
-              context,
-              western,
-              noDataText: text.t('no_data'),
-            ),
-            _buildSectionTitle(text.t('movies_1950s')),
-            _buildHorizontalList(
-              context,
-              movies1950s,
-              noDataText: text.t('no_data'),
-            ),
-            _buildSectionTitle(text.t('movies_1960s')),
-            _buildHorizontalList(
-              context,
-              movies1960s,
-              noDataText: text.t('no_data'),
-            ),
-            _buildSectionTitle(text.t('movies_1970s')),
-            _buildHorizontalList(
-              context,
-              movies1970s,
-              noDataText: text.t('no_data'),
-            ),
-            _buildSectionTitle(text.t('movies_1980s')),
-            _buildHorizontalList(
-              context,
-              movies1980s,
-              noDataText: text.t('no_data'),
-            ),
+            ...settings.homeCategories.map((key) {
+              final asyncData = _getCategoryData(ref, key);
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _buildSectionTitle(text.t(key)),
+                  _buildHorizontalList(
+                    context,
+                    asyncData,
+                    noDataText: text.t('no_data'),
+                  ),
+                ],
+              );
+            }),
             const SizedBox(height: 30),
           ],
         ),

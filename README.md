@@ -44,9 +44,9 @@ watch history, a personal library, and runtime app settings.
 
 | Architecture | File | Size |
 |-------------|------|------|
-| ARM64 (most devices) | [app-arm64-v8a-release.apk](https://github.com/serdevir91/stream_app/releases/download/v1.0.5/app-arm64-v8a-release.apk) | ~32.4 MB |
-| ARM 32-bit (older devices) | [app-armeabi-v7a-release.apk](https://github.com/serdevir91/stream_app/releases/download/v1.0.5/app-armeabi-v7a-release.apk) | ~29.6 MB |
-| x86_64 (emulators) | [app-x86_64-release.apk](https://github.com/serdevir91/stream_app/releases/download/v1.0.5/app-x86_64-release.apk) | ~37.1 MB |
+| ARM64 (most devices) | [app-arm64-v8a-release.apk](https://github.com/serdevir91/stream_app/releases/download/v1.0.6/app-arm64-v8a-release.apk) | ~32.4 MB |
+| ARM 32-bit (older devices) | [app-armeabi-v7a-release.apk](https://github.com/serdevir91/stream_app/releases/download/v1.0.6/app-armeabi-v7a-release.apk) | ~29.6 MB |
+| x86_64 (emulators) | [app-x86_64-release.apk](https://github.com/serdevir91/stream_app/releases/download/v1.0.6/app-x86_64-release.apk) | ~37.1 MB |
 
 > Most modern phones use ARM64. If unsure, download the ARM64 version.
 
@@ -54,8 +54,8 @@ watch history, a personal library, and runtime app settings.
 
 | Type | File | Size |
 |------|------|------|
-| Installer (recommended) | [StreamApp-Setup-v1.0.5.exe](https://github.com/serdevir91/stream_app/releases/download/v1.0.5/StreamApp-Setup-v1.0.5.exe) | ~24.9 MB |
-| Portable | [stream_app-windows-x64.zip](https://github.com/serdevir91/stream_app/releases/download/v1.0.5/stream_app-windows-x64.zip) | ~32.4 MB |
+| Installer (recommended) | [StreamApp-Setup-v1.0.6.exe](https://github.com/serdevir91/stream_app/releases/download/v1.0.6/StreamApp-Setup-v1.0.6.exe) | ~24.9 MB |
+| Portable | [stream_app-windows-x64.zip](https://github.com/serdevir91/stream_app/releases/download/v1.0.6/stream_app-windows-x64.zip) | ~32.4 MB |
 
 **Installer**: Run the `.exe` wizard. Creates Start Menu shortcuts and an uninstaller.
 
@@ -352,6 +352,13 @@ Your backend must expose:
   - `Install from file (.json)` and choose local manifest file.
 
 ## Changelog
+
+### v1.0.6
+
+- **Search**: Added credits lookup (movies/series directed or acted in) when searching for directors or actors, and implemented a Jaro-Winkler fuzzy sorting system to rank matches and correct spelling typos.
+- **Homepage Categories**: Implemented customizable homepage category rows, allowing users to reorder, add, or remove rows via a new Settings manager.
+- **Quick Setup**: Integrated direct TMDB Access Token input directly within the homepage warning banner to make initial setup significantly faster and more convenient.
+- **Build**: Updated split-per-ABI APKs and Windows installer scripts for the new release.
 
 ### v1.0.5
 
