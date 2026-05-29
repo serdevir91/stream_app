@@ -561,43 +561,121 @@ class _MediaDetailsScreenState extends ConsumerState<MediaDetailsScreen> {
                   Text(
                     item.title,
                     style: const TextStyle(
-                      fontSize: 24,
-                      fontWeight: FontWeight.bold,
+                      fontSize: 28,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: -0.5,
                     ),
                   ),
-                  const SizedBox(height: 8),
-                  Row(
+                  const SizedBox(height: 10),
+                  // Badges Row
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    crossAxisAlignment: WrapCrossAlignment.center,
                     children: [
-                      const Icon(Icons.star, color: Colors.amber, size: 20),
-                      const SizedBox(width: 4),
-                      Text(
-                        (item.rating ?? mediaDetails?.rating)?.toStringAsFixed(
-                              1,
-                            ) ??
-                            'N/A',
-                        style: const TextStyle(fontSize: 16),
-                      ),
-                      const SizedBox(width: 16),
                       Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 4,
-                        ),
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                         decoration: BoxDecoration(
-                          color: Colors.blueGrey,
-                          borderRadius: BorderRadius.circular(4),
+                          color: Colors.amber.withValues(alpha: 0.15),
+                          borderRadius: BorderRadius.circular(6),
+                          border: Border.all(color: Colors.amber.withValues(alpha: 0.4), width: 1),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(Icons.star, color: Colors.amber, size: 14),
+                            const SizedBox(width: 4),
+                            Text(
+                              (item.rating ?? mediaDetails?.rating)?.toStringAsFixed(1) ?? 'N/A',
+                              style: const TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.amber,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: Colors.blueAccent.withValues(alpha: 0.15),
+                          borderRadius: BorderRadius.circular(6),
+                          border: Border.all(color: Colors.blueAccent.withValues(alpha: 0.4), width: 1),
                         ),
                         child: Text(
-                          item.type.toUpperCase(),
+                          text.t(item.type).toUpperCase(),
                           style: const TextStyle(
-                            color: Colors.white,
+                            color: Colors.blueAccent,
+                            fontSize: 12,
                             fontWeight: FontWeight.bold,
                           ),
                         ),
                       ),
+                      if (mediaDetails?.releaseDate != null && mediaDetails!.releaseDate!.isNotEmpty)
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: Colors.white10,
+                            borderRadius: BorderRadius.circular(6),
+                            border: Border.all(color: Colors.white24, width: 1),
+                          ),
+                          child: Text(
+                            mediaDetails.releaseDate!, // Show full date (day.month.year)
+                            style: const TextStyle(
+                              color: Colors.white70,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      if (mediaDetails?.runtimeMinutes != null)
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: Colors.white10,
+                            borderRadius: BorderRadius.circular(6),
+                            border: Border.all(color: Colors.white24, width: 1),
+                          ),
+                          child: Text(
+                            '${mediaDetails!.runtimeMinutes} ${text.t('minutes_suffix')}',
+                            style: const TextStyle(
+                              color: Colors.white70,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
                     ],
                   ),
+                  // Genres Row
+                  if (mediaDetails != null && mediaDetails.genres.isNotEmpty) ...[
+                    const SizedBox(height: 12),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: mediaDetails.genres.map((genre) {
+                        return Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+                          decoration: BoxDecoration(
+                            color: Colors.redAccent.withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(color: Colors.redAccent.withValues(alpha: 0.35), width: 1),
+                          ),
+                          child: Text(
+                            genre,
+                            style: const TextStyle(
+                              fontSize: 11,
+                              color: Colors.redAccent,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        );
+                      }).toList(),
+                    ),
+                  ],
                   const SizedBox(height: 16),
+                  // Description
                   Text(
                     (() {
                       final local = item.description?.trim() ?? '';
@@ -606,70 +684,133 @@ class _MediaDetailsScreenState extends ConsumerState<MediaDetailsScreen> {
                       }
                       return mediaDetails?.description ?? '';
                     })(),
-                    style: const TextStyle(fontSize: 16),
+                    style: TextStyle(
+                      fontSize: 15,
+                      color: Colors.grey.shade300,
+                      height: 1.4,
+                    ),
                   ),
                   if (mediaDetails != null) ...[
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 20),
                     Container(
                       width: double.infinity,
-                      padding: const EdgeInsets.all(12),
+                      padding: const EdgeInsets.all(16),
                       decoration: BoxDecoration(
-                        color: Colors.blueGrey.shade900,
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: Colors.white12),
+                        color: Colors.white.withValues(alpha: 0.04),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: Colors.white10, width: 1.5),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.2),
+                            blurRadius: 10,
+                            offset: const Offset(0, 4),
+                          ),
+                        ],
                       ),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          if (mediaDetails.releaseDate != null &&
-                              mediaDetails.releaseDate!.isNotEmpty) ...[
-                            Text(
-                              '${text.t('release_date')}: ${mediaDetails.releaseDate}',
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                          ],
-                          if (mediaDetails.runtimeMinutes != null) ...[
-                            Text(
-                              '${text.t(item.type == 'movie' ? 'movie_runtime' : 'episode_runtime')}: ${mediaDetails.runtimeMinutes} dk',
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                          ],
-                          if (mediaDetails.castNames.isNotEmpty) ...[
-                            Text(
-                              '${text.t('cast')}: ${mediaDetails.castNames.join(', ')}',
-                              style: const TextStyle(fontSize: 13),
-                            ),
-                          ],
+
                           if (item.type == 'movie') ...[
                             if (mediaDetails.directorName != null) ...[
-                              const SizedBox(height: 8),
-                              Text(
-                                '${text.t('director')}: ${mediaDetails.directorName}',
-                                style: const TextStyle(fontSize: 13),
+                              Row(
+                                children: [
+                                  const Icon(Icons.movie_creation_outlined, size: 15, color: Colors.grey),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    '${text.t('director')}: ',
+                                    style: const TextStyle(fontWeight: FontWeight.w600, color: Colors.grey),
+                                  ),
+                                  Text(
+                                    mediaDetails.directorName!,
+                                    style: const TextStyle(color: Colors.white),
+                                  ),
+                                ],
                               ),
+                              const SizedBox(height: 10),
                             ],
                           ] else ...[
                             if (mediaDetails.creatorName != null) ...[
-                              const SizedBox(height: 8),
-                              Text(
-                                '${text.t('creator')}: ${mediaDetails.creatorName}',
-                                style: const TextStyle(fontSize: 13),
+                              Row(
+                                children: [
+                                  const Icon(Icons.create_outlined, size: 15, color: Colors.grey),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    '${text.t('creator')}: ',
+                                    style: const TextStyle(fontWeight: FontWeight.w600, color: Colors.grey),
+                                  ),
+                                  Text(
+                                    mediaDetails.creatorName!,
+                                    style: const TextStyle(color: Colors.white),
+                                  ),
+                                ],
                               ),
+                              const SizedBox(height: 10),
                             ],
-                            if (mediaDetails.directorName != null &&
-                                mediaDetails.directorName != mediaDetails.creatorName) ...[
-                              const SizedBox(height: 8),
-                              Text(
-                                '${text.t('director')}: ${mediaDetails.directorName}',
-                                style: const TextStyle(fontSize: 13),
+                          ],
+                          if (mediaDetails.castNames.isNotEmpty) ...[
+                            const Divider(color: Colors.white10, height: 20),
+                            Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Padding(
+                                  padding: EdgeInsets.only(top: 2),
+                                  child: Icon(Icons.people_outline, size: 15, color: Colors.grey),
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: RichText(
+                                    text: TextSpan(
+                                      text: '${text.t('cast')}: ',
+                                      style: const TextStyle(fontWeight: FontWeight.w600, color: Colors.grey, fontSize: 13),
+                                      children: [
+                                        TextSpan(
+                                          text: mediaDetails.castNames.join(', '),
+                                          style: const TextStyle(color: Colors.white70, fontWeight: FontWeight.normal),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                          if (mediaDetails.productionCompanies.isNotEmpty) ...[
+                            const Divider(color: Colors.white10, height: 20),
+                            Text(
+                              text.t('production_companies'),
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 13,
+                                color: Colors.grey,
                               ),
-                            ],
+                            ),
+                            const SizedBox(height: 8),
+                            Wrap(
+                              spacing: 6,
+                              runSpacing: 6,
+                              children: mediaDetails.productionCompanies.map((company) {
+                                return Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white.withValues(alpha: 0.04),
+                                    borderRadius: BorderRadius.circular(6),
+                                    border: Border.all(color: Colors.white12),
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      const Icon(Icons.business_center_outlined, size: 11, color: Colors.grey),
+                                      const SizedBox(width: 4),
+                                      Text(
+                                        company,
+                                        style: const TextStyle(fontSize: 11, color: Colors.white70),
+                                      ),
+                                    ],
+                                  ),
+                                );
+                              }).toList(),
+                            ),
                           ],
                         ],
                       ),
@@ -1121,7 +1262,7 @@ class _MediaDetailsScreenState extends ConsumerState<MediaDetailsScreen> {
                     Padding(
                       padding: const EdgeInsets.only(top: 4),
                       child: Text(
-                        '${text.t('episode_runtime')}: $episodeRuntimeMinutes dk',
+                        '${text.t('episode_runtime')}: $episodeRuntimeMinutes ${text.t('minutes_suffix')}',
                         style: TextStyle(
                           fontSize: 11,
                           color: Colors.grey.shade400,

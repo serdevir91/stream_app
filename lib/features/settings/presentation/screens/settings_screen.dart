@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../../../core/updater/app_updater_service.dart';
+
 import '../../../../core/backup/local_backup_service.dart';
 import '../../../../core/i18n/app_text.dart';
 import '../../../../core/settings/app_settings.dart';
@@ -41,6 +43,13 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   bool _isApiFieldsVisible = false;
   String _videoPlayer = 'native';
   late final TextEditingController _syncServerUrlController;
+
+  final AppUpdaterService _updaterService = AppUpdaterService();
+  AppUpdateInfo? _updateInfo;
+  bool _isCheckingForUpdates = false;
+  bool _isDownloadingUpdate = false;
+  double _downloadProgress = 0.0;
+  String _updateError = '';
 
   @override
   void initState() {
@@ -502,6 +511,178 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     );
   }
 
+  Future<void> _checkUpdates() async {
+    setState(() {
+      _isCheckingForUpdates = true;
+      _updateError = '';
+    });
+
+    try {
+      final info = await _updaterService.checkForUpdate();
+      setState(() {
+        _updateInfo = info;
+      });
+      if (mounted) {
+        if (info == null) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Uygulamanız güncel!'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Yeni güncelleme bulundu: ${info.latestVersion}'),
+              backgroundColor: Colors.blueAccent,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      setState(() {
+        _updateError = e.toString();
+      });
+    } finally {
+      setState(() {
+        _isCheckingForUpdates = false;
+      });
+    }
+  }
+
+  Future<void> _installUpdate() async {
+    if (_updateInfo == null) return;
+
+    setState(() {
+      _isDownloadingUpdate = true;
+      _downloadProgress = 0.0;
+    });
+
+    await _updaterService.performUpdate(
+      _updateInfo!,
+      onProgress: (progress) {
+        setState(() {
+          _downloadProgress = progress;
+        });
+      },
+      onComplete: () {
+        setState(() {
+          _isDownloadingUpdate = false;
+        });
+      },
+      onError: (err) {
+        setState(() {
+          _isDownloadingUpdate = false;
+          _updateError = err;
+        });
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Hata: $err'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      },
+    );
+  }
+
+  Widget _buildUpdateSection(BuildContext context, AppText text) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: const [
+            Icon(Icons.system_update_outlined, size: 20),
+            SizedBox(width: 8),
+            Text(
+              'Uygulama Güncellemesi',
+              style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Text(
+          'Mevcut Sürüm: $currentAppVersion',
+          style: const TextStyle(color: Colors.grey, fontSize: 13),
+        ),
+        const SizedBox(height: 12),
+        if (_isCheckingForUpdates)
+          const Center(
+            child: Padding(
+              padding: EdgeInsets.all(8.0),
+              child: CircularProgressIndicator(),
+            ),
+          )
+        else if (_isDownloadingUpdate)
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Güncelleme indiriliyor: %${(_downloadProgress * 100).toStringAsFixed(1)}'),
+              const SizedBox(height: 8),
+              LinearProgressIndicator(value: _downloadProgress),
+            ],
+          )
+        else if (_updateInfo != null)
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.04),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: Colors.white12),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Yeni Sürüm: ${_updateInfo!.latestVersion}',
+                  style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.greenAccent),
+                ),
+                if (_updateInfo!.releaseNotes.isNotEmpty) ...[
+                  const SizedBox(height: 6),
+                  Text(
+                    _updateInfo!.releaseNotes,
+                    maxLines: 4,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 12, color: Colors.white70),
+                  ),
+                ],
+                const SizedBox(height: 12),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    onPressed: _installUpdate,
+                    icon: const Icon(Icons.download),
+                    label: const Text('Şimdi Güncelle'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.green,
+                      foregroundColor: Colors.white,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          )
+        else
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: _checkUpdates,
+              icon: const Icon(Icons.refresh),
+              label: const Text('Güncellemeleri Denetle'),
+            ),
+          ),
+        if (_updateError.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          Text(
+            'Hata: $_updateError',
+            style: const TextStyle(color: Colors.redAccent, fontSize: 12),
+          ),
+        ],
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final settings = ref.watch(appSettingsProvider);
@@ -911,6 +1092,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           const SizedBox(height: 16),
           const Divider(),
           _buildSyncSection(context, text),
+          const SizedBox(height: 16),
+          const Divider(),
+          _buildUpdateSection(context, text),
           const SizedBox(height: 16),
           SizedBox(
             height: 48,

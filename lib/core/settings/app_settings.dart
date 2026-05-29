@@ -2,6 +2,17 @@ const List<String> defaultHomeCategories = [
   'recommended_for_you',
   'trending_movies',
   'trending_series',
+  'studio_marvel',
+  'studio_disney',
+  'studio_dc',
+  'studio_dreamworks',
+  'studio_paramount',
+  'studio_netflix',
+  'studio_hbo',
+  'studio_prime',
+  'studio_pixar',
+  'studio_warnerbros',
+  'studio_universal',
   'animation_movies',
   'anime_series',
   'horror_movies',
@@ -16,7 +27,7 @@ const List<String> defaultHomeCategories = [
 ];
 
 class AppSettings {
-  static const int schemaVersion = 9;
+  static const int schemaVersion = 10;
 
   final String appLanguage;
   final String subtitleLanguage;

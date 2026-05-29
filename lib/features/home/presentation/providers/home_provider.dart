@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../search/domain/entities/media_item.dart';
 import '../../../search/presentation/providers/search_provider.dart';
+import '../../../search/data/repositories/search_repository.dart';
 import '../../../player/presentation/providers/player_provider.dart';
 
 final trendingMoviesProvider = FutureProvider<List<MediaItem>>((ref) async {
@@ -120,4 +121,13 @@ final recommendedForYouProvider = FutureProvider<List<MediaItem>>((ref) async {
   }
 
   return merged;
+});
+
+final studioMediaProvider = FutureProvider.family<List<MediaItem>, String>((ref, studioKey) async {
+  final repo = ref.watch(searchRepositoryProvider);
+  final studio = studios.firstWhere(
+    (s) => s.key == studioKey,
+    orElse: () => studios.first,
+  );
+  return repo.getMediaByStudio(studio);
 });

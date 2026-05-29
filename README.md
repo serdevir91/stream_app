@@ -44,9 +44,9 @@ watch history, a personal library, and runtime app settings.
 
 | Architecture | File | Size |
 |-------------|------|------|
-| ARM64 (most devices) | [app-arm64-v8a-release.apk](https://github.com/serdevir91/stream_app/releases/download/v1.0.6/app-arm64-v8a-release.apk) | ~32.4 MB |
-| ARM 32-bit (older devices) | [app-armeabi-v7a-release.apk](https://github.com/serdevir91/stream_app/releases/download/v1.0.6/app-armeabi-v7a-release.apk) | ~29.6 MB |
-| x86_64 (emulators) | [app-x86_64-release.apk](https://github.com/serdevir91/stream_app/releases/download/v1.0.6/app-x86_64-release.apk) | ~37.1 MB |
+| ARM64 (most devices) | [app-arm64-v8a-release.apk](https://github.com/serdevir91/stream_app/releases/download/v1.0.7/app-arm64-v8a-release.apk) | ~32.5 MB |
+| ARM 32-bit (older devices) | [app-armeabi-v7a-release.apk](https://github.com/serdevir91/stream_app/releases/download/v1.0.7/app-armeabi-v7a-release.apk) | ~29.8 MB |
+| x86_64 (emulators) | [app-x86_64-release.apk](https://github.com/serdevir91/stream_app/releases/download/v1.0.7/app-x86_64-release.apk) | ~37.2 MB |
 
 > Most modern phones use ARM64. If unsure, download the ARM64 version.
 
@@ -54,8 +54,8 @@ watch history, a personal library, and runtime app settings.
 
 | Type | File | Size |
 |------|------|------|
-| Installer (recommended) | [StreamApp-Setup-v1.0.6.exe](https://github.com/serdevir91/stream_app/releases/download/v1.0.6/StreamApp-Setup-v1.0.6.exe) | ~24.9 MB |
-| Portable | [stream_app-windows-x64.zip](https://github.com/serdevir91/stream_app/releases/download/v1.0.6/stream_app-windows-x64.zip) | ~32.4 MB |
+| Installer (recommended) | [StreamApp-Setup-v1.0.7.exe](https://github.com/serdevir91/stream_app/releases/download/v1.0.7/StreamApp-Setup-v1.0.7.exe) | ~25.1 MB |
+| Portable | [stream_app-windows-x64.zip](https://github.com/serdevir91/stream_app/releases/download/v1.0.7/stream_app-windows-x64.zip) | ~34.0 MB |
 
 **Installer**: Run the `.exe` wizard. Creates Start Menu shortcuts and an uninstaller.
 
@@ -352,6 +352,14 @@ Your backend must expose:
   - `Install from file (.json)` and choose local manifest file.
 
 ## Changelog
+
+### v1.0.7
+
+- **UI/UX Refinements**: Replaced the separate brand cards hub with fully integrated, customizable homepage categories for major studio brands (Marvel, Disney, DC Studios, DreamWorks, Paramount, Netflix, HBO, Prime Video, Pixar, Warner Bros., Universal), allowing users to reorder them in the Settings and click category headers to view the full brand catalog.
+- **Details Page Polish**: Updated the release date badge to display the full `DD.MM.YYYY` date instead of just the year, and localized the runtime duration suffix (`min` in English, `dk` in Turkish) while removing duplicate release date and duration detail rows from the bottom details card.
+- **Modern Branding**: Replaced application icons with a new simple minimalist play logo across Windows, Android, and iOS formats.
+- **In-App Updates**: Implemented automatic update checking and installation within the Settings screen using the GitHub Releases API.
+- **Build**: Generated and published split-per-ABI APKs and Windows installer setup for the `v1.0.7` release.
 
 ### v1.0.6
 

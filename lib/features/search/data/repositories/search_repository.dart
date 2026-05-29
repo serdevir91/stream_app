@@ -3,6 +3,96 @@ import 'dart:developer' as developer;
 import 'package:dio/dio.dart';
 import '../../domain/entities/media_item.dart';
 
+class StudioConfig {
+  final String name;
+  final String key;
+  final List<int> movieCompanyIds;
+  final List<int> tvNetworkIds;
+  final List<int>? tvCompanyIds;
+
+  const StudioConfig({
+    required this.name,
+    required this.key,
+    required this.movieCompanyIds,
+    required this.tvNetworkIds,
+    this.tvCompanyIds,
+  });
+}
+
+const List<StudioConfig> studios = [
+  StudioConfig(
+    name: 'Marvel',
+    key: 'marvel',
+    movieCompanyIds: [420],
+    tvNetworkIds: [],
+    tvCompanyIds: [420],
+  ),
+  StudioConfig(
+    name: 'Disney',
+    key: 'disney',
+    movieCompanyIds: [2],
+    tvNetworkIds: [2739],
+    tvCompanyIds: [2],
+  ),
+  StudioConfig(
+    name: 'DreamWorks',
+    key: 'dreamworks',
+    movieCompanyIds: [521, 6125],
+    tvNetworkIds: [],
+    tvCompanyIds: [521, 6125],
+  ),
+  StudioConfig(
+    name: 'DC',
+    key: 'dc',
+    movieCompanyIds: [9993, 128064],
+    tvNetworkIds: [],
+    tvCompanyIds: [9993, 128064],
+  ),
+  StudioConfig(
+    name: 'Paramount',
+    key: 'paramount',
+    movieCompanyIds: [4],
+    tvNetworkIds: [],
+    tvCompanyIds: [4],
+  ),
+  StudioConfig(
+    name: 'Netflix',
+    key: 'netflix',
+    movieCompanyIds: [178200],
+    tvNetworkIds: [213],
+  ),
+  StudioConfig(
+    name: 'HBO',
+    key: 'hbo',
+    movieCompanyIds: [3268],
+    tvNetworkIds: [49],
+  ),
+  StudioConfig(
+    name: 'Prime Video',
+    key: 'prime',
+    movieCompanyIds: [20580],
+    tvNetworkIds: [1024],
+  ),
+  StudioConfig(
+    name: 'Pixar',
+    key: 'pixar',
+    movieCompanyIds: [3],
+    tvNetworkIds: [],
+  ),
+  StudioConfig(
+    name: 'Warner Bros.',
+    key: 'warnerbros',
+    movieCompanyIds: [174],
+    tvNetworkIds: [],
+  ),
+  StudioConfig(
+    name: 'Universal',
+    key: 'universal',
+    movieCompanyIds: [33],
+    tvNetworkIds: [],
+  ),
+];
+
 class SearchRepository {
   final Dio _dio;
   final String _tmdbAccessToken;
@@ -134,6 +224,16 @@ class SearchRepository {
             ? Map<String, dynamic>.from(data['credits'] as Map)
             : null;
 
+        final genres = (data['genres'] as List?)
+            ?.map((e) => e is Map ? (e['name'] ?? '').toString() : '')
+            .where((name) => name.isNotEmpty)
+            .toList() ?? const <String>[];
+
+        final productionCompanies = (data['production_companies'] as List?)
+            ?.map((e) => e is Map ? (e['name'] ?? '').toString() : '')
+            .where((name) => name.isNotEmpty)
+            .toList() ?? const <String>[];
+
         return MediaDetailsInfo(
           mediaType: type,
           runtimeMinutes: _extractRuntimeMinutes(data, type),
@@ -150,6 +250,8 @@ class SearchRepository {
               ? (data['vote_average'] as num).toDouble()
               : null,
           releaseDate: _formatDate(data['release_date'] ?? data['first_air_date']),
+          genres: genres,
+          productionCompanies: productionCompanies,
         );
       }
     } catch (e) {
@@ -215,10 +317,103 @@ class SearchRepository {
     return [];
   }
 
+  StudioConfig? _findStudioConfig(String query) {
+    final q = query.trim().toLowerCase();
+    for (final studio in studios) {
+      if (q == studio.key.toLowerCase() ||
+          q == studio.name.toLowerCase() ||
+          studio.name.toLowerCase().contains(q) ||
+          q.contains(studio.key.toLowerCase())) {
+        return studio;
+      }
+    }
+    return null;
+  }
+
+  Future<List<MediaItem>> getMediaByStudio(StudioConfig studio) async {
+    if (!_hasToken) return [];
+    try {
+      final List<Future<Response>> futures = [];
+
+      // Discover movies
+      if (studio.movieCompanyIds.isNotEmpty) {
+        futures.add(_dio.get(
+          'https://api.themoviedb.org/3/discover/movie',
+          queryParameters: {
+            'language': _tmdbLanguage,
+            'with_companies': studio.movieCompanyIds.join('|'),
+            'sort_by': 'popularity.desc',
+            'page': 1,
+          },
+          options: _tmdbOptions,
+        ));
+      }
+
+      // Discover series
+      if (studio.tvNetworkIds.isNotEmpty || (studio.tvCompanyIds != null && studio.tvCompanyIds!.isNotEmpty)) {
+        final queryParams = <String, dynamic>{
+          'language': _tmdbLanguage,
+          'sort_by': 'popularity.desc',
+          'page': 1,
+        };
+        if (studio.tvNetworkIds.isNotEmpty) {
+          queryParams['with_networks'] = studio.tvNetworkIds.join('|');
+        } else if (studio.tvCompanyIds != null && studio.tvCompanyIds!.isNotEmpty) {
+          queryParams['with_companies'] = studio.tvCompanyIds!.join('|');
+        }
+
+        futures.add(_dio.get(
+          'https://api.themoviedb.org/3/discover/tv',
+          queryParameters: queryParams,
+          options: _tmdbOptions,
+        ));
+      }
+
+      final responses = await Future.wait(futures);
+      final List<MediaItem> results = [];
+
+      for (final response in responses) {
+        if (response.statusCode == 200 && response.data is Map) {
+          final data = response.data;
+          final isMovieQuery = response.requestOptions.path.contains('/movie');
+          final mediaType = isMovieQuery ? 'movie' : 'tv';
+
+          if (data['results'] is List) {
+            for (final json in data['results']) {
+              if (json is Map) {
+                results.add(MediaItem.fromTmdbJson({
+                  ...Map<String, dynamic>.from(json),
+                  'media_type': mediaType,
+                }));
+              }
+            }
+          }
+        }
+      }
+
+      results.sort((a, b) {
+        final aRating = a.rating ?? 0.0;
+        final bRating = b.rating ?? 0.0;
+        return bRating.compareTo(aRating);
+      });
+
+      return results;
+    } catch (e) {
+      developer.log('Error fetching media by studio: $e', name: 'SearchRepository');
+    }
+    return [];
+  }
+
   Future<List<MediaItem>> search(String query) async {
     if (!_hasToken) return [];
     final trimmedQuery = query.trim();
     if (trimmedQuery.isEmpty) return [];
+
+    final matchedStudio = _findStudioConfig(trimmedQuery);
+    List<MediaItem> studioResults = [];
+    if (matchedStudio != null) {
+      studioResults = await getMediaByStudio(matchedStudio);
+    }
 
     try {
       final response = await _dio.get(
@@ -233,6 +428,9 @@ class SearchRepository {
           final List<dynamic> rawItems = data['results'];
           final List<MediaItem> results = [];
           final List<Map<String, dynamic>> people = [];
+
+          // Add studio results first
+          results.addAll(studioResults);
 
           for (final json in rawItems) {
             if (json is Map) {

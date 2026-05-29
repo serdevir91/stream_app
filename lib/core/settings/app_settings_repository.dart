@@ -50,8 +50,17 @@ class AppSettingsRepository {
         return migrated;
       }
 
-      final parsed = AppSettings.fromMap(raw);
-      if (schemaVersion < AppSettings.schemaVersion) {
+      var parsed = AppSettings.fromMap(raw);
+      if (schemaVersion < 10) {
+        final current = List<String>.from(parsed.homeCategories);
+        for (final cat in defaultHomeCategories) {
+          if (!current.contains(cat)) {
+            current.add(cat);
+          }
+        }
+        parsed = parsed.copyWith(homeCategories: current);
+        box.put(key, parsed.toMap());
+      } else if (schemaVersion < AppSettings.schemaVersion) {
         box.put(key, parsed.toMap());
       }
       return parsed;

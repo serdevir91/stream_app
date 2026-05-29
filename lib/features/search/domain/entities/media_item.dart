@@ -89,6 +89,8 @@ class MediaDetailsInfo {
   final String? description;
   final double? rating;
   final String? releaseDate;
+  final List<String> genres;
+  final List<String> productionCompanies;
 
   const MediaDetailsInfo({
     required this.mediaType,
@@ -99,6 +101,8 @@ class MediaDetailsInfo {
     required this.description,
     required this.rating,
     this.releaseDate,
+    this.genres = const [],
+    this.productionCompanies = const [],
   });
 
   bool get isMovie => mediaType == 'movie';

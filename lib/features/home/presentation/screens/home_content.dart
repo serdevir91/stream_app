@@ -13,6 +13,8 @@ import '../../../player/presentation/providers/player_provider.dart';
 import '../../../player/presentation/screens/player_screen.dart';
 import '../../../search/domain/entities/media_item.dart';
 import '../../../search/presentation/screens/media_details_screen.dart';
+import '../../../search/data/repositories/search_repository.dart';
+import 'studio_media_screen.dart';
 import '../providers/home_provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -338,6 +340,10 @@ class _HomeContentState extends ConsumerState<HomeContent> {
   }
 
   AsyncValue<List<MediaItem>> _getCategoryData(WidgetRef ref, String key) {
+    if (key.startsWith('studio_')) {
+      final studioKey = key.replaceFirst('studio_', '');
+      return ref.watch(studioMediaProvider(studioKey));
+    }
     switch (key) {
       case 'recommended_for_you':
         return ref.watch(recommendedForYouProvider);
@@ -407,6 +413,7 @@ class _HomeContentState extends ConsumerState<HomeContent> {
               featuredWeekly,
               subtitleLanguage: settings.subtitleLanguage,
             ),
+
             if (continueItems.isNotEmpty) ...[
               _buildSectionTitle(text.t('continue_watching')),
               _buildContinueWatchingList(
@@ -421,10 +428,35 @@ class _HomeContentState extends ConsumerState<HomeContent> {
             ],
             ...settings.homeCategories.map((key) {
               final asyncData = _getCategoryData(ref, key);
+              final isStudio = key.startsWith('studio_');
               return Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _buildSectionTitle(text.t(key)),
+                  if (isStudio)
+                    GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: () {
+                        final studioKey = key.replaceFirst('studio_', '');
+                        final studio = studios.firstWhere((s) => s.key == studioKey);
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => StudioMediaScreen(studio: studio),
+                          ),
+                        );
+                      },
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Expanded(child: _buildSectionTitle(text.t(key))),
+                          const Padding(
+                            padding: EdgeInsets.only(right: 16.0, top: 24.0),
+                            child: Icon(Icons.chevron_right, color: Colors.grey),
+                          ),
+                        ],
+                      ),
+                    )
+                  else
+                    _buildSectionTitle(text.t(key)),
                   _buildHorizontalList(
                     context,
                     asyncData,
