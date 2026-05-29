@@ -440,9 +440,10 @@ class AddonManagerScreen extends ConsumerWidget {
       );
 
       if (context.mounted) {
+        final text = ref.read(appTextProvider);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(error == null ? 'OK' : 'Error: $error', style: const TextStyle(fontSize: 13)),
+            content: Text(error == null ? 'OK' : '${text.t('error_prefix')}: ${text.t(error)}', style: const TextStyle(fontSize: 13)),
             backgroundColor: error == null ? Colors.green : Colors.red,
             behavior: SnackBarBehavior.floating,
             margin: const EdgeInsets.fromLTRB(16, 16, 16, 0),
@@ -454,9 +455,10 @@ class AddonManagerScreen extends ConsumerWidget {
       }
     } catch (e) {
       if (context.mounted) {
+        final text = ref.read(appTextProvider);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Manifest parse error: $e', style: const TextStyle(fontSize: 13)),
+            content: Text('${text.t('manifest_parse_error')}: $e', style: const TextStyle(fontSize: 13)),
             backgroundColor: Colors.red,
             behavior: SnackBarBehavior.floating,
             margin: const EdgeInsets.fromLTRB(16, 16, 16, 0),
@@ -514,9 +516,10 @@ class AddonManagerScreen extends ConsumerWidget {
                   .read(addonsProvider.notifier)
                   .installAddon(url);
               if (context.mounted) {
+                final text = ref.read(appTextProvider);
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
-                    content: Text(error == null ? 'OK' : 'Error: $error', style: const TextStyle(fontSize: 13)),
+                    content: Text(error == null ? 'OK' : '${text.t('error_prefix')}: ${text.t(error)}', style: const TextStyle(fontSize: 13)),
                     backgroundColor: error == null ? Colors.green : Colors.red,
                     behavior: SnackBarBehavior.floating,
                     margin: const EdgeInsets.fromLTRB(16, 16, 16, 0),

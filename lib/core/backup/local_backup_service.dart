@@ -56,28 +56,24 @@ class LocalBackupService {
   ) async {
     final file = File(filePath);
     if (!await file.exists()) {
-      throw const LocalBackupException('Yedek dosyasi bulunamadi.');
+      throw const LocalBackupException('backup_file_not_found');
     }
 
     final content = await file.readAsString();
     final raw = jsonDecode(content);
     if (raw is! Map) {
-      throw const LocalBackupException('Yedek dosya formati gecersiz.');
+      throw const LocalBackupException('backup_format_invalid');
     }
 
     final payload = Map<String, dynamic>.from(raw);
     final type = payload['type']?.toString() ?? '';
     if (type != _backupType) {
-      throw const LocalBackupException(
-        'Bu dosya Stream App lokal yedegi degil.',
-      );
+      throw const LocalBackupException('not_stream_app_backup');
     }
 
     final version = payload['version'];
     if (version is! int || version > _backupVersion) {
-      throw const LocalBackupException(
-        'Yedek surumu desteklenmiyor. Uygulamayi guncelleyin.',
-      );
+      throw const LocalBackupException('backup_version_not_supported');
     }
 
     return _applyPayload(payload);

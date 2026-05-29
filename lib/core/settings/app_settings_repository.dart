@@ -39,7 +39,7 @@ class AppSettingsRepository {
           autoSelectSource: true,
           preferredSourceId: '',
           videoPlayer: 'native',
-          autoSelectSubtitle: true,
+          autoSelectSubtitle: false,
           librarySort: 'recent',
           watchHistoryEnabled: true,
           newEpisodeNotificationsEnabled: true,

@@ -32,7 +32,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   String _appLanguage = 'en';
   String _subtitleLanguage = 'en';
   bool _autoSelectSource = true;
-  bool _autoSelectSubtitle = true;
+  bool _autoSelectSubtitle = false;
   String _librarySort = 'recent';
   bool _watchHistoryEnabled = true;
   bool _newEpisodeNotificationsEnabled = true;
@@ -205,6 +205,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   }
 
   Future<void> _registerSyncDevice() async {
+    final text = ref.read(appTextProvider);
     setState(() => _isSyncRegistering = true);
     final syncService = ref.read(syncServiceProvider);
     if (syncService == null) {
@@ -216,8 +217,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     if (_syncServerUrl.isEmpty) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Lutfen kendi sync sunucu adresinizi girin.'),
+          SnackBar(
+            content: Text(text.t('please_enter_sync_address')),
             backgroundColor: Colors.red,
           ),
         );
@@ -240,12 +241,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       }
       final error = syncService.lastRegisterError;
       final failedMessage = error == null || error.isEmpty
-          ? 'Kayit basarisiz. Sunucu adresini kontrol edin.'
-          : 'Kayit basarisiz: $error';
+          ? text.t('sync_register_failed')
+          : text.t('sync_register_failed_with').replaceAll('{param}', error);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            success ? 'Cihaz basariyla kaydedildi!' : failedMessage,
+            success ? text.t('device_registered_success') : failedMessage,
           ),
           backgroundColor: success ? Colors.green : Colors.red,
         ),
@@ -255,6 +256,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   }
 
   Future<void> _exportLocalBackup() async {
+    final text = ref.read(appTextProvider);
     if (_isExportingBackup) {
       return;
     }
@@ -265,7 +267,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       final fileName =
           'stream_app_backup_${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}_${now.hour.toString().padLeft(2, '0')}${now.minute.toString().padLeft(2, '0')}.json';
       final outputPath = await FilePicker.platform.saveFile(
-        dialogTitle: 'Yedek dosya konumunu secin',
+        dialogTitle: text.t('saving_backup_title'),
         fileName: fileName,
         type: FileType.custom,
         allowedExtensions: const ['json'],
@@ -278,7 +280,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Yedek disa aktarildi: $savedPath'),
+          content: Text('${text.t('backup_exported')}: $savedPath'),
           backgroundColor: Colors.green,
         ),
       );
@@ -286,7 +288,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Yedek disa aktarma basarisiz: $e'),
+          content: Text('${text.t('backup_export_failed')}: $e'),
           backgroundColor: Colors.red,
         ),
       );
@@ -298,13 +300,14 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   }
 
   Future<void> _importLocalBackup() async {
+    final text = ref.read(appTextProvider);
     if (_isImportingBackup) {
       return;
     }
     setState(() => _isImportingBackup = true);
     try {
       final picked = await FilePicker.platform.pickFiles(
-        dialogTitle: 'Geri yuklenecek yedek dosyasini secin',
+        dialogTitle: text.t('loading_backup_title'),
         type: FileType.custom,
         allowedExtensions: const ['json'],
         allowMultiple: false,
@@ -330,16 +333,17 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            'Yedek geri yuklendi. Kaynak: ${result.sourceCount}, Gecmis: ${result.watchHistoryCount}, Kutuphane: ${result.libraryCount}, Izlenen: ${result.watchedCount}',
+            '${text.t('backup_restored')}. ${text.t('sources')}: ${result.sourceCount}, ${text.t('watch_history')}: ${result.watchHistoryCount}, ${text.t('library_title')}: ${result.libraryCount}, ${text.t('watched')}: ${result.watchedCount}',
           ),
           backgroundColor: Colors.green,
         ),
       );
     } catch (e) {
       if (!mounted) return;
+      final errorMessage = e is LocalBackupException ? text.t(e.message) : e.toString();
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Yedek geri yukleme basarisiz: $e'),
+          content: Text('${text.t('backup_restore_failed')}: $errorMessage'),
           backgroundColor: Colors.red,
         ),
       );
@@ -351,6 +355,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   }
 
   Future<void> _manualSync() async {
+    final text = ref.read(appTextProvider);
     setState(() => _isSyncing = true);
     final syncService = ref.read(syncServiceProvider);
     if (syncService != null) {
@@ -359,8 +364,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     if (mounted) {
       ref.invalidate(syncStatusProvider);
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Senkron tamamlandi!'),
+        SnackBar(
+          content: Text(text.t('sync_completed')),
           backgroundColor: Colors.green,
         ),
       );
@@ -378,24 +383,24 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           children: [
             const Icon(Icons.sync, size: 20),
             const SizedBox(width: 8),
-            const Text(
-              'Cihazlar Arasi Senkron',
-              style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16),
+            Text(
+              text.t('sync_title'),
+              style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 16),
             ),
           ],
         ),
         const SizedBox(height: 8),
-        const Text(
-          'Uygulama varsayilan bir sync sunucusu kullanmaz. Buraya girdiginiz adres kullanilir.',
-          style: TextStyle(color: Colors.grey, fontSize: 13),
+        Text(
+          text.t('sync_desc'),
+          style: const TextStyle(color: Colors.grey, fontSize: 13),
         ),
         const SizedBox(height: 12),
         TextField(
-          decoration: const InputDecoration(
-            labelText: 'Sunucu Adresi',
+          decoration: InputDecoration(
+            labelText: text.t('server_address'),
             hintText: 'http://kendi-sunucun:8000',
-            border: OutlineInputBorder(),
-            prefixIcon: Icon(Icons.dns),
+            border: const OutlineInputBorder(),
+            prefixIcon: const Icon(Icons.dns),
           ),
           controller: _syncServerUrlController,
           onChanged: (v) => _syncServerUrl = v.trim(),
@@ -419,7 +424,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                               child: CircularProgressIndicator(strokeWidth: 2),
                             )
                           : const Icon(Icons.app_registration),
-                      label: const Text('Cihazi Kaydet'),
+                      label: Text(text.t('register_device')),
                     ),
                   ),
                 ],
@@ -430,8 +435,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 ListTile(
                   contentPadding: EdgeInsets.zero,
                   leading: const Icon(Icons.check_circle, color: Colors.green),
-                  title: const Text('Senkron Aktif'),
-                  subtitle: Text('Son senkron: ${status.lastSyncFormatted}'),
+                  title: Text(text.t('sync_active')),
+                  subtitle: Text('${text.t('last_sync')}: ${status.lastSyncFormatted}'),
                 ),
                 SizedBox(
                   width: double.infinity,
@@ -444,7 +449,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                             child: CircularProgressIndicator(strokeWidth: 2),
                           )
                         : const Icon(Icons.sync),
-                    label: const Text('Simdi Senkronla'),
+                    label: Text(text.t('sync_now')),
                   ),
                 ),
               ],
@@ -452,30 +457,31 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           },
           loading: () => const Center(child: CircularProgressIndicator()),
           error: (e, _) =>
-              Text('Hata: $e', style: const TextStyle(color: Colors.red)),
+              Text('${text.t('error_prefix')}: $e', style: const TextStyle(color: Colors.red)),
         ),
       ],
     );
   }
 
   Widget _buildLocalBackupSection() {
+    final text = ref.watch(appTextProvider);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
-          children: const [
-            Icon(Icons.folder_zip_outlined, size: 20),
-            SizedBox(width: 8),
+          children: [
+            const Icon(Icons.folder_zip_outlined, size: 20),
+            const SizedBox(width: 8),
             Text(
-              'Lokal Yedekleme',
-              style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16),
+              text.t('local_backup'),
+              style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 16),
             ),
           ],
         ),
         const SizedBox(height: 8),
-        const Text(
-          'Veriyi JSON olarak disa aktarabilir ve ayni formatla geri yukleyebilirsiniz.',
-          style: TextStyle(color: Colors.grey, fontSize: 13),
+        Text(
+          text.t('local_backup_desc'),
+          style: const TextStyle(color: Colors.grey, fontSize: 13),
         ),
         const SizedBox(height: 12),
         SizedBox(
@@ -489,7 +495,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     child: CircularProgressIndicator(strokeWidth: 2),
                   )
                 : const Icon(Icons.upload_file),
-            label: const Text('Veriyi Disa Aktar (JSON)'),
+            label: Text(text.t('export_data')),
           ),
         ),
         const SizedBox(height: 8),
@@ -504,7 +510,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     child: CircularProgressIndicator(strokeWidth: 2),
                   )
                 : const Icon(Icons.download_for_offline_outlined),
-            label: const Text('Yedekten Geri Yukle (JSON)'),
+            label: Text(text.t('import_data')),
           ),
         ),
       ],
@@ -512,6 +518,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   }
 
   Future<void> _checkUpdates() async {
+    final text = ref.read(appTextProvider);
     setState(() {
       _isCheckingForUpdates = true;
       _updateError = '';
@@ -525,15 +532,15 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       if (mounted) {
         if (info == null) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Uygulamanız güncel!'),
+            SnackBar(
+              content: Text(text.t('app_up_to_date')),
               backgroundColor: Colors.green,
             ),
           );
         } else {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('Yeni güncelleme bulundu: ${info.latestVersion}'),
+              content: Text('${text.t('new_update_found')}: ${info.latestVersion}'),
               backgroundColor: Colors.blueAccent,
             ),
           );
@@ -571,6 +578,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         });
       },
       onError: (err) {
+        final text = ref.read(appTextProvider);
         setState(() {
           _isDownloadingUpdate = false;
           _updateError = err;
@@ -578,7 +586,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('Hata: $err'),
+              content: Text('${text.t('error_prefix')}: $err'),
               backgroundColor: Colors.red,
             ),
           );
@@ -592,18 +600,18 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
-          children: const [
-            Icon(Icons.system_update_outlined, size: 20),
-            SizedBox(width: 8),
+          children: [
+            const Icon(Icons.system_update_outlined, size: 20),
+            const SizedBox(width: 8),
             Text(
-              'Uygulama Güncellemesi',
-              style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16),
+              text.t('app_update'),
+              style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 16),
             ),
           ],
         ),
         const SizedBox(height: 8),
         Text(
-          'Mevcut Sürüm: $currentAppVersion',
+          '${text.t('current_version')}: $currentAppVersion',
           style: const TextStyle(color: Colors.grey, fontSize: 13),
         ),
         const SizedBox(height: 12),
@@ -618,7 +626,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('Güncelleme indiriliyor: %${(_downloadProgress * 100).toStringAsFixed(1)}'),
+              Text('${text.t('downloading_update')}: %${(_downloadProgress * 100).toStringAsFixed(1)}'),
               const SizedBox(height: 8),
               LinearProgressIndicator(value: _downloadProgress),
             ],
@@ -635,7 +643,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Yeni Sürüm: ${_updateInfo!.latestVersion}',
+                  '${text.t('new_version')}: ${_updateInfo!.latestVersion}',
                   style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.greenAccent),
                 ),
                 if (_updateInfo!.releaseNotes.isNotEmpty) ...[
@@ -653,7 +661,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   child: ElevatedButton.icon(
                     onPressed: _installUpdate,
                     icon: const Icon(Icons.download),
-                    label: const Text('Şimdi Güncelle'),
+                    label: Text(text.t('update_now')),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.green,
                       foregroundColor: Colors.white,
@@ -669,13 +677,13 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             child: OutlinedButton.icon(
               onPressed: _checkUpdates,
               icon: const Icon(Icons.refresh),
-              label: const Text('Güncellemeleri Denetle'),
+              label: Text(text.t('check_for_updates')),
             ),
           ),
         if (_updateError.isNotEmpty) ...[
           const SizedBox(height: 8),
           Text(
-            'Hata: $_updateError',
+            '${text.t('error_prefix')}: $_updateError',
             style: const TextStyle(color: Colors.redAccent, fontSize: 12),
           ),
         ],
@@ -746,11 +754,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 _autoSelectSubtitle = value;
               });
             },
-            title: const Text('Otomatik Altyazı Seçici'),
+            title: Text(text.t('auto_select_subtitle')),
             subtitle: Text(
               _autoSelectSubtitle
-                  ? 'Gömülü oynatıcıda dil zorlanır; direkt oynatıcıda Wyzie/OpenSubtitles altyazısı otomatik yüklenir.'
-                  : 'Oynatıcının kendi altyazı seçimine izin verilir.',
+                  ? text.t('auto_select_subtitle_desc_enabled')
+                  : text.t('auto_select_subtitle_desc_disabled'),
             ),
           ),
           const SizedBox(height: 8),
@@ -840,9 +848,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             ),
           ),
           const SizedBox(height: 24),
-          const Text(
-            'Library & Watch History',
-            style: TextStyle(fontWeight: FontWeight.w600),
+          Text(
+            text.t('library_and_history'),
+            style: const TextStyle(fontWeight: FontWeight.w600),
           ),
           const SizedBox(height: 12),
           DropdownButtonFormField<String>(
@@ -863,9 +871,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 _librarySort = value;
               });
             },
-            decoration: const InputDecoration(
-              labelText: 'Watchlist sort order',
-              border: OutlineInputBorder(),
+            decoration: InputDecoration(
+              labelText: text.t('watchlist_sort_order'),
+              border: const OutlineInputBorder(),
             ),
           ),
           const SizedBox(height: 8),
@@ -877,11 +885,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 _watchHistoryEnabled = value;
               });
             },
-            title: const Text('Watch history'),
+            title: Text(text.t('watch_history_setting')),
             subtitle: Text(
               _watchHistoryEnabled
-                  ? 'Progress and continue watching entries are saved.'
-                  : 'New playback progress will not be saved.',
+                  ? text.t('watch_history_desc_enabled')
+                  : text.t('watch_history_desc_disabled'),
             ),
           ),
           if (_watchHistoryEnabled) ...[
@@ -929,9 +937,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 _newEpisodeNotificationsEnabled = value;
               });
             },
-            title: const Text('New episode alerts'),
-            subtitle: const Text(
-              'Library shows recently aired, unwatched episodes from saved series.',
+            title: Text(text.t('new_episode_alerts')),
+            subtitle: Text(
+              text.t('new_episode_alerts_desc'),
             ),
           ),
           const SizedBox(height: 16),
@@ -940,10 +948,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             leading: Icon(
               _isApiFieldsVisible ? Icons.lock_open : Icons.lock_outline,
             ),
-            title: const Text('API & Backend Settings'),
+            title: Text(text.t('api_backend_settings')),
             subtitle: Text(
               _isApiFieldsVisible
-                  ? 'Hide sensitive fields'
+                  ? text.t('hide_sensitive_fields')
                   : 'TMDB: $tmdbTokenPreview\nWyzie: $wyzieKeyPreview\nBackend: $backendPreview',
               maxLines: 3,
               overflow: TextOverflow.ellipsis,
@@ -954,7 +962,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   _isApiFieldsVisible = !_isApiFieldsVisible;
                 });
               },
-              child: Text(_isApiFieldsVisible ? 'Hide' : 'Edit'),
+              child: Text(_isApiFieldsVisible ? text.t('hide') : text.t('edit')),
             ),
           ),
           if (_isApiFieldsVisible) ...[
@@ -982,7 +990,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       if (context.mounted) {
                         ScaffoldMessenger.of(
                           context,
-                        ).showSnackBar(SnackBar(content: Text('Hata: $e')));
+                        ).showSnackBar(SnackBar(content: Text('${text.t('error_prefix')}: $e')));
                       }
                     }
                   },
@@ -1013,9 +1021,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               maxLines: 4,
             ),
             const SizedBox(height: 16),
-            const Text(
-              'Wyzie Subs API Key',
-              style: TextStyle(fontWeight: FontWeight.w600),
+            Text(
+              text.t('wyzie_api_key'),
+              style: const TextStyle(fontWeight: FontWeight.w600),
             ),
             const SizedBox(height: 8),
             TextField(

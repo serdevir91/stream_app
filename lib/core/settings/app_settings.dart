@@ -70,7 +70,7 @@ class AppSettings {
     autoSelectSource: true,
     preferredSourceId: '',
     videoPlayer: 'native',
-    autoSelectSubtitle: true,
+    autoSelectSubtitle: false,
     librarySort: 'recent',
     watchHistoryEnabled: true,
     newEpisodeNotificationsEnabled: true,
@@ -143,7 +143,7 @@ class AppSettings {
       autoSelectSource: (map['autoSelectSource'] ?? true) == true,
       preferredSourceId: (map['preferredSourceId'] ?? '').toString(),
       videoPlayer: (map['videoPlayer'] ?? 'native').toString(),
-      autoSelectSubtitle: (map['autoSelectSubtitle'] ?? true) == true,
+      autoSelectSubtitle: (map['autoSelectSubtitle'] ?? false) == true,
       librarySort: (map['librarySort'] ?? 'recent').toString(),
       watchHistoryEnabled: (map['watchHistoryEnabled'] ?? true) == true,
       newEpisodeNotificationsEnabled:

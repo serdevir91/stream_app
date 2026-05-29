@@ -84,7 +84,7 @@ class WebSourceAddon extends BaseAddon {
         title: _titleFromUrl(sourceUrl),
         contentType:
             defaultType == 'movie' || defaultType == 'series' ? defaultType : 'movie',
-        description: 'Doğrudan medya bağlantısı',
+        description: 'Direct media link',
         streams: [sourceUrl],
       );
       return;
@@ -209,7 +209,7 @@ class WebSourceAddon extends BaseAddon {
     var filename = parsed?.path.split('/').last ?? url;
     filename = filename.replaceFirst(RegExp(r'\.[A-Za-z0-9]{2,5}$'), '');
     final title = filename.replaceAll(RegExp(r'[-_]'), ' ').trim();
-    return title.isNotEmpty ? title : 'Web Kaynağı';
+    return title.isNotEmpty ? title : 'Web Source';
   }
 
   static String _candidateId(String value) {

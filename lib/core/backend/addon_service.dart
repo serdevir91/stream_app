@@ -96,7 +96,7 @@ class AddonService {
   Future<(AddonManifest?, String?)> installFromUrl(String url) async {
     final normalizedUrl = _normalizeInputUrl(url);
     if (!normalizedUrl.startsWith('http')) {
-      return (null, "URL 'http://' veya 'https://' ile başlamalıdır.");
+      return (null, "url_must_start_with_http");
     }
 
     final (baseUrl, manifestUrls) = _buildManifestCandidates(normalizedUrl);
@@ -135,7 +135,7 @@ class AddonService {
     if (!data.containsKey('id') || !data.containsKey('name')) {
       return (
         null,
-        "Geçersiz manifest: 'id' ve 'name' alanları zorunludur. Bulunan: ${data.keys.toList()}"
+        "invalid_manifest_missing_id_name"
       );
     }
 
@@ -170,7 +170,7 @@ class AddonService {
 
       final existing = _addons[manifest.id];
       if (existing != null && existing.manifest.isBuiltin) {
-        return (null, "'${manifest.id}' yerleşik addon olduğu için üzerine yazılamaz.");
+        return (null, "builtin_addon_cannot_overwrite");
       }
 
       final isStremio = _detectStremioManifest(data);
@@ -193,7 +193,7 @@ class AddonService {
       await _saveConfig();
       return (manifest, null);
     } catch (e) {
-      return (null, 'Manifest parse hatası: $e');
+      return (null, "manifest_parse_error");
     }
   }
 
@@ -201,7 +201,7 @@ class AddonService {
     Map<String, dynamic> data, {
     String sourceLabel = 'local-manifest.json',
   }) async {
-    if (data.isEmpty) return (null, 'Manifest JSON formatı geçersiz.');
+    if (data.isEmpty) return (null, 'manifest_invalid_json');
 
     var baseUrl = (data['transportUrl'] ??
             data['transport_url'] ??
@@ -212,13 +212,13 @@ class AddonService {
         .replaceAll(RegExp(r'/+$'), '');
 
     if (baseUrl.isEmpty) {
-      return (null, "Manifest dosyasında 'transportUrl' veya 'baseUrl' alanı zorunlu.");
+      return (null, "manifest_missing_transport_url");
     }
     if (!baseUrl.startsWith('http')) {
-      return (null, 'transportUrl/baseUrl http veya https ile başlamalıdır.');
+      return (null, 'transport_url_must_start_with_http');
     }
     if (!data.containsKey('id') || !data.containsKey('name')) {
-      return (null, "Manifest dosyasında 'id' ve 'name' alanları zorunludur.");
+      return (null, "manifest_missing_id_name");
     }
 
     try {
@@ -252,7 +252,7 @@ class AddonService {
 
       final existing = _addons[manifest.id];
       if (existing != null && existing.manifest.isBuiltin) {
-        return (null, "'${manifest.id}' yerleşik addon olduğu için üzerine yazılamaz.");
+        return (null, "builtin_addon_cannot_overwrite");
       }
 
       final isStremio = _detectStremioManifest(data);
@@ -284,7 +284,7 @@ class AddonService {
       await _saveConfig();
       return (manifest, null);
     } catch (e) {
-      return (null, 'Manifest parse hatası: $e');
+      return (null, 'manifest_parse_error');
     }
   }
 
@@ -335,7 +335,7 @@ class AddonService {
     if (addonId != null) {
       final addon = getAddon(addonId);
       if (addon == null) {
-        return {'success': false, 'error': "Addon '$addonId' bulunamadı veya pasif.", 'streams': []};
+        return {'success': false, 'error': "addon_not_found_or_inactive", 'streams': []};
       }
       final addonStreams = await _tryAddonStreams(addon, query, contentType, season, episode, tmdbId: tmdbId);
       appendStreams(addon, addonStreams);
@@ -602,7 +602,7 @@ class AddonService {
     return AddonManifest(
       id: 'websource.$digest',
       name: 'Web Source ($host)',
-      description: 'Direkt site/link kaynağından çıkarılan dizi/film streamleri',
+      description: 'Streams extracted directly from web pages/links',
       version: '1.0',
       types: ['movie', 'series'],
       icon: '🌐',

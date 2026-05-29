@@ -189,15 +189,15 @@ class HomeCategoriesManagerScreen extends ConsumerWidget {
             ),
           ),
           if (availableCategories.isEmpty)
-            const SliverPadding(
-              padding: EdgeInsets.symmetric(horizontal: 16),
+            SliverPadding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
               sliver: SliverToBoxAdapter(
                 child: Padding(
-                  padding: EdgeInsets.all(12.0),
+                  padding: const EdgeInsets.all(12.0),
                   child: Center(
                     child: Text(
-                      'Tüm kategoriler aktif durumda.',
-                      style: TextStyle(color: Colors.grey, fontSize: 13),
+                      text.t('all_categories_active'),
+                      style: const TextStyle(color: Colors.grey, fontSize: 13),
                     ),
                   ),
                 ),

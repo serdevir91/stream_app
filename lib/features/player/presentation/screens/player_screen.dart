@@ -18,6 +18,7 @@ import 'package:webview_windows/webview_windows.dart' as windows_webview;
 
 import '../../../../core/backend/addon_service_provider.dart';
 import '../../../../core/subtitles/online_subtitle_repository.dart';
+import '../../../../core/i18n/app_text.dart';
 
 import '../providers/player_provider.dart';
 import '../../domain/entities/watch_history.dart';
@@ -80,8 +81,9 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   bool _isDirectLink = true;
   bool _isDisposed = false;
   bool _isLoading = true;
-  String? _errorMessage;
-  String _loadingStatus = 'Video kaynagi araniyor...';
+  String? _errorMessageKey;
+  String? _errorMessageParam;
+  String _loadingStatusKey = 'searching_video_source';
   bool _initialized = false;
   String? _embedUrl;
   int _embedLoadAttempt = 0;
@@ -773,7 +775,8 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     _currentStreamUrl = isDirectLink ? streamUrl : null;
     setState(() {
       _isDirectLink = isDirectLink;
-      _errorMessage = null;
+      _errorMessageKey = null;
+      _errorMessageParam = null;
       _embedUrl = null;
       _player = null;
       _videoController = null;
@@ -805,7 +808,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
 
     if (isDirectLink) {
       setState(() {
-        _loadingStatus = 'Video yukleniyor...';
+        _loadingStatusKey = 'loading_video';
       });
       if (_useNativePlayer) {
         await _initNativePlayer(streamUrl);
@@ -826,7 +829,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
       final localizedUrl = _applyEmbedSubtitleLanguage(streamUrl);
       setState(() {
         _embedUrl = localizedUrl;
-        _loadingStatus = 'Uygulama ici oynatici hazirlaniyor...';
+        _loadingStatusKey = 'preparing_in_app_player';
         _isLoading = true;
       });
       _initializeEmbedPlayer(localizedUrl);
@@ -1333,7 +1336,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                 _syncEmbedSubtitleLanguage(uri, webController: controller),
               );
               setState(() {
-                _loadingStatus = 'Embed kaynagi yukleniyor...';
+                _loadingStatusKey = 'loading_embed_source';
               });
             },
             onPageFinished: (_) {
@@ -1368,7 +1371,8 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                 return;
               }
               setState(() {
-                _errorMessage = 'Sayfa yuklenemedi: ${error.description}';
+                _errorMessageKey = 'page_load_failed_with';
+                _errorMessageParam = error.description;
                 _isLoading = false;
               });
             },
@@ -1389,7 +1393,8 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     } catch (e) {
       if (_isDisposed || !mounted) return;
       setState(() {
-        _errorMessage = 'Uygulama ici oynatici baslatilamadi: $e';
+        _errorMessageKey = 'in_app_player_failed_with';
+        _errorMessageParam = e.toString();
         _isLoading = false;
       });
     }
@@ -1608,10 +1613,10 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
       if (_isDisposed || !mounted || attemptId != _embedLoadAttempt) {
         return;
       }
-      if (_isLoading && _errorMessage == null) {
+      if (_isLoading && _errorMessageKey == null) {
         setState(() {
-          _errorMessage =
-              'Embed oynatici acilamadi. Lutfen baska bir kaynak deneyin.';
+          _errorMessageKey = 'embed_player_failed_to_open';
+          _errorMessageParam = null;
           _isLoading = false;
         });
       }
@@ -1758,10 +1763,11 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
         provider: embedFallback['provider']?.toString(),
         isDirectLink: false,
       );
+      final text = ref.read(appTextProvider);
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Direkt kaynak acilamadi, embed oynaticiya gecildi.'),
-          duration: Duration(seconds: 3),
+        SnackBar(
+          content: Text(text.t('direct_source_failed')),
+          duration: const Duration(seconds: 3),
         ),
       );
     });
@@ -1772,7 +1778,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
       final addonService = ref.read(addonServiceProvider);
 
       setState(() {
-        _loadingStatus = 'Yayin cozumleniyor...';
+        _loadingStatusKey = 'resolving_stream';
       });
 
       final data = await addonService.resolveFast(
@@ -1804,14 +1810,16 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
         );
       } else {
         setState(() {
-          _errorMessage = 'Yayin kaynagi bulunamadi';
+          _errorMessageKey = 'stream_source_not_found';
+          _errorMessageParam = null;
           _isLoading = false;
         });
       }
     } catch (e) {
       debugPrint('Stream fetch failed: $e');
       setState(() {
-        _errorMessage = 'Yayin kaynagi bulunamadi';
+        _errorMessageKey = 'stream_source_not_found';
+        _errorMessageParam = null;
         _isLoading = false;
       });
     }
@@ -1992,9 +2000,10 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     }
 
     setState(() {
-      _errorMessage = null;
+      _errorMessageKey = null;
+      _errorMessageParam = null;
       _isLoading = true;
-      _loadingStatus = 'Video kaynagi araniyor...';
+      _loadingStatusKey = 'searching_video_source';
     });
 
     if (widget.initialStreamUrl != null &&
@@ -2145,6 +2154,13 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
 
   @override
   Widget build(BuildContext context) {
+    final text = ref.watch(appTextProvider);
+    final String? errorMessage = _errorMessageKey != null
+        ? (_errorMessageParam != null
+            ? text.t(_errorMessageKey!).replaceAll('{param}', _errorMessageParam!)
+            : text.t(_errorMessageKey!))
+        : null;
+
     final content = _isLoading
         ? Column(
             mainAxisAlignment: MainAxisAlignment.center,
@@ -2152,12 +2168,12 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
               const CircularProgressIndicator(),
               const SizedBox(height: 16),
               Text(
-                _loadingStatus,
+                text.t(_loadingStatusKey),
                 style: const TextStyle(color: Colors.white70, fontSize: 14),
               ),
             ],
           )
-        : _errorMessage != null
+        : errorMessage != null
         ? Padding(
             padding: const EdgeInsets.all(24.0),
             child: Column(
@@ -2170,7 +2186,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                 ),
                 const SizedBox(height: 16),
                 Text(
-                  _errorMessage!,
+                  errorMessage,
                   style: const TextStyle(color: Colors.redAccent, fontSize: 16),
                   textAlign: TextAlign.center,
                 ),
@@ -2178,7 +2194,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                 ElevatedButton.icon(
                   onPressed: _retryCurrentPlayback,
                   icon: const Icon(Icons.refresh),
-                  label: const Text('Tekrar Dene'),
+                  label: Text(text.t('try_again')),
                 ),
               ],
             ),
@@ -2196,7 +2212,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     final shouldBlockPlaybackSurfacePointer =
         _showOverlayControls &&
         !_isLoading &&
-        _errorMessage == null &&
+        errorMessage == null &&
         _isDirectLink;
     final renderedContent = shouldBlockPlaybackSurfacePointer
         ? AbsorbPointer(absorbing: true, child: content)
@@ -2223,6 +2239,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   }
 
   Widget _buildPlayerStack(Widget renderedContent) {
+    final text = ref.watch(appTextProvider);
     return Stack(
       children: [
         Positioned.fill(child: Center(child: renderedContent)),
@@ -2348,7 +2365,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                     const Icon(Icons.skip_next, color: Colors.white, size: 64),
                     const SizedBox(height: 16),
                     Text(
-                      'Sonraki Bolum',
+                      text.t('next_episode_overlay'),
                       style: const TextStyle(
                         color: Colors.white,
                         fontSize: 20,
@@ -2379,13 +2396,13 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                             foregroundColor: Colors.white,
                             side: const BorderSide(color: Colors.white54),
                           ),
-                          child: const Text('Iptal'),
+                          child: Text(text.t('cancel')),
                         ),
                         const SizedBox(width: 16),
                         ElevatedButton.icon(
                           onPressed: _playNextEpisode,
                           icon: const Icon(Icons.play_arrow),
-                          label: const Text('Izle'),
+                          label: Text(text.t('watch')),
                           style: ElevatedButton.styleFrom(
                             backgroundColor: Colors.red,
                             foregroundColor: Colors.white,
@@ -2768,11 +2785,12 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   }
 
   void _showSubtitleSelector() {
+    final text = ref.read(appTextProvider);
     if (!_isDirectLink) {
       final subtitle = _activeOnlineSubtitle;
       if (subtitle == null || _embedCaptions.isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Online altyazi bulunamadi')),
+          SnackBar(content: Text(text.t('online_subtitle_not_found'))),
         );
         return;
       }
@@ -2788,11 +2806,11 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Padding(
-                  padding: EdgeInsets.all(16),
+                Padding(
+                  padding: const EdgeInsets.all(16),
                   child: Text(
-                    'Altyazi Secimi',
-                    style: TextStyle(
+                    text.t('subtitle_selection'),
+                    style: const TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.bold,
                       color: Colors.white,
@@ -2806,9 +2824,9 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                         : Icons.radio_button_off,
                     color: Colors.white,
                   ),
-                  title: const Text(
-                    'Kapali',
-                    style: TextStyle(color: Colors.white),
+                  title: Text(
+                    text.t('off'),
+                    style: const TextStyle(color: Colors.white),
                   ),
                   onTap: () {
                     setState(() {
@@ -2851,7 +2869,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
       final tracks = _player!.state.tracks.subtitle;
       if (tracks.isEmpty && _activeOnlineSubtitle == null) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Altyazi track bulunamadi')),
+          SnackBar(content: Text(text.t('subtitle_track_not_found'))),
         );
         return;
       }
@@ -2866,11 +2884,11 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Padding(
-                  padding: EdgeInsets.all(16),
+                Padding(
+                  padding: const EdgeInsets.all(16),
                   child: Text(
-                    'Altyazi Secimi',
-                    style: TextStyle(
+                    text.t('subtitle_selection'),
+                    style: const TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.bold,
                       color: Colors.white,
@@ -2884,9 +2902,9 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                         : Icons.radio_button_off,
                     color: Colors.white,
                   ),
-                  title: const Text(
-                    'Kapali',
-                    style: TextStyle(color: Colors.white),
+                  title: Text(
+                    text.t('off'),
+                    style: const TextStyle(color: Colors.white),
                   ),
                   onTap: () {
                     _player!.setSubtitleTrack(SubtitleTrack.no());
@@ -2954,7 +2972,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
       final subtitle = _activeOnlineSubtitle;
       if (subtitle == null) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Online altyazi bulunamadi')),
+          SnackBar(content: Text(text.t('online_subtitle_not_found'))),
         );
         return;
       }
@@ -2970,11 +2988,11 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Padding(
-                  padding: EdgeInsets.all(16),
+                Padding(
+                  padding: const EdgeInsets.all(16),
                   child: Text(
-                    'Altyazi Secimi',
-                    style: TextStyle(
+                    text.t('subtitle_selection'),
+                    style: const TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.bold,
                       color: Colors.white,
@@ -2988,9 +3006,9 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                         : Icons.radio_button_off,
                     color: Colors.white,
                   ),
-                  title: const Text(
-                    'Kapali',
-                    style: TextStyle(color: Colors.white),
+                  title: Text(
+                    text.t('off'),
+                    style: const TextStyle(color: Colors.white),
                   ),
                   onTap: () {
                     _nativeController!.setClosedCaptionFile(null);
@@ -3029,7 +3047,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
 
     ScaffoldMessenger.of(
       context,
-    ).showSnackBar(const SnackBar(content: Text('Altyazi track bulunamadi')));
+    ).showSnackBar(SnackBar(content: Text(text.t('subtitle_track_not_found'))));
   }
 
   Widget _buildEmbedView() {
