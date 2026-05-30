@@ -68,8 +68,16 @@ class AppSettingsRepository {
     return AppSettings.defaults;
   }
 
-  Future<void> saveSettings(AppSettings settings) async {
+  Future<void> saveSettings(AppSettings settings, {int? updatedAtMs}) async {
     final box = _boxOrNull ?? await Hive.openBox<dynamic>(boxName);
     await box.put(key, settings.toMap());
+    final timestamp = updatedAtMs ?? DateTime.now().millisecondsSinceEpoch;
+    await box.put('settings_updated_at_ms', timestamp);
+  }
+
+  int getSettingsUpdatedAtMs() {
+    final box = _boxOrNull;
+    if (box == null) return 0;
+    return (box.get('settings_updated_at_ms') as int?) ?? 0;
   }
 }

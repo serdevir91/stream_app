@@ -363,6 +363,7 @@ class AddonManagerScreen extends ConsumerWidget {
   }
 
   void _showInstallOptions(BuildContext context, WidgetRef ref) {
+    final text = ref.read(appTextProvider);
     showModalBottomSheet<void>(
       context: context,
       builder: (sheetContext) {
@@ -372,7 +373,7 @@ class AddonManagerScreen extends ConsumerWidget {
             children: [
               ListTile(
                 leading: const Icon(Icons.link),
-                title: const Text('Install from URL'),
+                title: Text(text.t('install_from_url')),
                 onTap: () {
                   Navigator.pop(sheetContext);
                   _showInstallDialog(context, ref);
@@ -380,7 +381,7 @@ class AddonManagerScreen extends ConsumerWidget {
               ),
               ListTile(
                 leading: const Icon(Icons.upload_file),
-                title: const Text('Install from file (.json)'),
+                title: Text(text.t('install_from_file')),
                 onTap: () {
                   Navigator.pop(sheetContext);
                   _pickAndInstallManifestFile(context, ref);
@@ -397,6 +398,7 @@ class AddonManagerScreen extends ConsumerWidget {
     BuildContext context,
     WidgetRef ref,
   ) async {
+    final text = ref.read(appTextProvider);
     final result = await FilePicker.platform.pickFiles(
       allowMultiple: false,
       type: FileType.custom,
@@ -412,14 +414,14 @@ class AddonManagerScreen extends ConsumerWidget {
     if (bytes == null || bytes.isEmpty) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('File could not be read.', style: TextStyle(fontSize: 13)),
+          SnackBar(
+            content: Text(text.t('file_could_not_be_read'), style: const TextStyle(fontSize: 13)),
             backgroundColor: Colors.red,
             behavior: SnackBarBehavior.floating,
-            margin: EdgeInsets.fromLTRB(16, 16, 16, 0),
-            padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            duration: Duration(seconds: 3),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.all(Radius.circular(8))),
+            margin: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            duration: const Duration(seconds: 3),
+            shape: const RoundedRectangleBorder(borderRadius: BorderRadius.all(Radius.circular(8))),
           ),
         );
       }
@@ -430,7 +432,7 @@ class AddonManagerScreen extends ConsumerWidget {
       final content = utf8.decode(bytes);
       final decoded = jsonDecode(content);
       if (decoded is! Map) {
-        throw const FormatException('Manifest must be a JSON object');
+        throw FormatException(text.t('manifest_must_be_json'));
       }
       final manifest = Map<String, dynamic>.from(decoded);
 
@@ -440,10 +442,9 @@ class AddonManagerScreen extends ConsumerWidget {
       );
 
       if (context.mounted) {
-        final text = ref.read(appTextProvider);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(error == null ? 'OK' : '${text.t('error_prefix')}: ${text.t(error)}', style: const TextStyle(fontSize: 13)),
+            content: Text(error == null ? text.t('ok') : '${text.t('error_prefix')}: ${text.t(error)}', style: const TextStyle(fontSize: 13)),
             backgroundColor: error == null ? Colors.green : Colors.red,
             behavior: SnackBarBehavior.floating,
             margin: const EdgeInsets.fromLTRB(16, 16, 16, 0),
@@ -455,7 +456,6 @@ class AddonManagerScreen extends ConsumerWidget {
       }
     } catch (e) {
       if (context.mounted) {
-        final text = ref.read(appTextProvider);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('${text.t('manifest_parse_error')}: $e', style: const TextStyle(fontSize: 13)),
@@ -516,10 +516,9 @@ class AddonManagerScreen extends ConsumerWidget {
                   .read(addonsProvider.notifier)
                   .installAddon(url);
               if (context.mounted) {
-                final text = ref.read(appTextProvider);
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
-                    content: Text(error == null ? 'OK' : '${text.t('error_prefix')}: ${text.t(error)}', style: const TextStyle(fontSize: 13)),
+                    content: Text(error == null ? text.t('ok') : '${text.t('error_prefix')}: ${text.t(error)}', style: const TextStyle(fontSize: 13)),
                     backgroundColor: error == null ? Colors.green : Colors.red,
                     behavior: SnackBarBehavior.floating,
                     margin: const EdgeInsets.fromLTRB(16, 16, 16, 0),

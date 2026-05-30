@@ -52,6 +52,9 @@ class LibraryRepository {
         'title': media.title,
         'media_type': media.type,
         'poster_url': media.posterUrl,
+        'backdrop_url': media.backdropUrl,
+        'description': media.description,
+        'rating': media.rating,
         'updated_at_ms': updatedAtMs,
       });
     }
@@ -97,19 +100,20 @@ class LibraryRepository {
     required String title,
     required String mediaType,
     String? posterUrl,
+    String? backdropUrl,
+    String? description,
+    double? rating,
     required int updatedAtMs,
   }) async {
     final box = _boxOrNull ?? await Hive.openBox<dynamic>(boxName);
-    final existingRaw = box.get(mediaId);
-    final existingMap = existingRaw is Map ? existingRaw : <dynamic, dynamic>{};
     final map = <String, dynamic>{
       'id': mediaId,
       'title': title,
       'type': mediaType,
       'posterUrl': posterUrl,
-      'backdropUrl': existingMap['backdropUrl'],
-      'description': existingMap['description'],
-      'rating': existingMap['rating'],
+      'backdropUrl': backdropUrl,
+      'description': description,
+      'rating': rating,
       'updated_at_ms': updatedAtMs,
     };
     await box.put(mediaId, map);

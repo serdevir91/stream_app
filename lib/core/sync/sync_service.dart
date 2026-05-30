@@ -6,16 +6,27 @@ import 'package:hive/hive.dart';
 import 'device_identity.dart';
 import 'sync_repository.dart';
 import '../../features/library/data/repositories/library_repository.dart';
+import '../../features/library/data/repositories/watched_repository.dart';
+import '../../features/search/domain/entities/media_item.dart';
 import '../../features/player/domain/entities/watch_history.dart';
 import '../../features/player/data/repositories/watch_history_repository.dart';
+import '../../features/sources/data/repositories/sources_repository.dart';
+import '../../features/sources/domain/entities/source.dart';
+import '../settings/app_settings_repository.dart';
+import '../settings/app_settings.dart';
+import '../backend/addons/addon_config_repository.dart';
 
 class SyncService {
   static const String _syncMetaBox = 'sync_meta_box';
   static const String _lastSyncKey = 'last_sync_ms';
   static const String _watchSnapshotKey = 'watch_snapshot_ids';
   static const String _librarySnapshotKey = 'library_snapshot_ids';
+  static const String _watchedSnapshotKey = 'watched_snapshot_ids';
+  static const String _sourcesSnapshotKey = 'sources_snapshot_ids';
   static const String _watchDeletePrefix = 'wh:';
   static const String _libraryDeletePrefix = 'lib:';
+  static const String _watchedDeletePrefix = 'watched:';
+  static const String _sourcesDeletePrefix = 'src:';
 
   SyncRepository? _repo;
   Timer? _periodicTimer;
@@ -25,8 +36,24 @@ class SyncService {
 
   final WatchHistoryRepository _watchHistoryRepo;
   final LibraryRepository _libraryRepo;
+  final WatchedRepository _watchedRepo;
+  final AppSettingsRepository _settingsRepo;
+  final SourcesRepository _sourcesRepo;
+  final AddonConfigRepository _addonConfigRepo;
 
-  SyncService(this._watchHistoryRepo, this._libraryRepo);
+  SyncService({
+    required WatchHistoryRepository watchHistoryRepo,
+    required LibraryRepository libraryRepo,
+    required WatchedRepository watchedRepo,
+    required AppSettingsRepository settingsRepo,
+    required SourcesRepository sourcesRepo,
+    required AddonConfigRepository addonConfigRepo,
+  })  : _watchHistoryRepo = watchHistoryRepo,
+        _libraryRepo = libraryRepo,
+        _watchedRepo = watchedRepo,
+        _settingsRepo = settingsRepo,
+        _sourcesRepo = sourcesRepo,
+        _addonConfigRepo = addonConfigRepo;
 
   String? get lastRegisterError => _lastRegisterError;
 
@@ -39,6 +66,9 @@ class SyncService {
 
     final token = await DeviceIdentity.getAuthToken();
     _repo = SyncRepository(baseUrl: resolvedServerUrl, authToken: token);
+
+    // Trigger immediate sync on startup/init
+    unawaited(syncNow());
 
     // Start periodic sync every 15 minutes.
     _periodicTimer?.cancel();
@@ -57,13 +87,13 @@ class SyncService {
     _lastRegisterError = null;
     final normalizedToken = tmdbAccessToken.trim();
     if (normalizedToken.isEmpty) {
-      _lastRegisterError = 'TMDB token bos olamaz.';
+      _lastRegisterError = 'sync_error_tmdb_empty';
       return false;
     }
 
     final candidates = _buildServerCandidates(serverUrl);
     if (candidates.isEmpty) {
-      _lastRegisterError = 'Gecersiz sunucu adresi: "$serverUrl"';
+      _lastRegisterError = 'sync_error_invalid_address';
       return false;
     }
 
@@ -76,8 +106,7 @@ class SyncService {
       try {
         final isHealthy = await repo.checkHealth();
         if (!isHealthy) {
-          _lastRegisterError =
-              'Sunucuya erisilemiyor [$candidate]. Sunucunun acik oldugunu ve portun dis erisime acik oldugunu kontrol edin.';
+          _lastRegisterError = 'sync_error_cannot_connect';
           continue;
         }
         final result = await repo.registerDevice(
@@ -87,7 +116,7 @@ class SyncService {
         );
         final token = result['auth_token'] as String?;
         if (token == null || token.isEmpty) {
-          _lastRegisterError = 'Sunucu auth token donmedi [$candidate]';
+          _lastRegisterError = 'sync_error_no_token';
           continue;
         }
 
@@ -157,16 +186,77 @@ class SyncService {
           },
         )
         .toList();
+
     final libraryMaps = _libraryRepo
         .getSyncEntries()
         .where((item) => (item['updated_at_ms'] as int? ?? 0) > sinceMs)
         .toList();
+
+    final watchedMaps = _watchedRepo
+        .getItems()
+        .where((item) => (_watchedRepo.getUpdatedAtMs(item.id) ?? 0) > sinceMs)
+        .map((item) => {
+          'media_id': item.id,
+          'title': item.title,
+          'media_type': item.type,
+          'poster_url': item.posterUrl,
+          'backdrop_url': item.backdropUrl,
+          'description': item.description,
+          'rating': item.rating,
+          'updated_at_ms': _watchedRepo.getUpdatedAtMs(item.id) ?? 0,
+        })
+        .toList();
+
+    Map<String, dynamic>? settingsMap;
+    final settingsUpdated = _settingsRepo.getSettingsUpdatedAtMs();
+    if (settingsUpdated > sinceMs) {
+      settingsMap = {
+        'settings': _settingsRepo.getSettings().toMap(),
+        'updated_at_ms': settingsUpdated,
+      };
+    }
+
+    final sourcesMaps = _sourcesRepo
+        .getSources()
+        .where((s) => _sourcesRepo.getSourceUpdatedAtMs(s.id) > sinceMs)
+        .map((s) => {
+          'id': s.id,
+          'name': s.name,
+          'baseUrl': s.baseUrl,
+          'searchEndpoint': s.searchEndpoint,
+          'isEnabled': s.isEnabled,
+          'updated_at_ms': _sourcesRepo.getSourceUpdatedAtMs(s.id),
+        })
+        .toList();
+
+    Map<String, dynamic>? addonConfigMap;
+    final addonConfigUpdated = _addonConfigRepo.getAddonConfigUpdatedAtMs();
+    if (addonConfigUpdated > sinceMs) {
+      addonConfigMap = {
+        'config': {
+          'enabled': _addonConfigRepo.getEnabled(),
+          'custom_urls': _addonConfigRepo.getCustomUrls(),
+          'custom_manifests': _addonConfigRepo.getCustomManifests(),
+          'removed_builtins': _addonConfigRepo.getRemovedBuiltins(),
+        },
+        'updated_at_ms': addonConfigUpdated,
+      };
+    }
+
     final deletedIds = await _collectDeletedIds(
       allHistory: allHistory,
       currentLibraryIds: _libraryRepo.getItemIds(),
+      currentWatchedIds: _watchedRepo.getItemIds(),
+      currentSourcesIds: _sourcesRepo.getSources().map((s) => s.id).toSet(),
     );
 
-    if (watchHistoryMaps.isEmpty && libraryMaps.isEmpty && deletedIds.isEmpty) {
+    if (watchHistoryMaps.isEmpty &&
+        libraryMaps.isEmpty &&
+        watchedMaps.isEmpty &&
+        settingsMap == null &&
+        sourcesMaps.isEmpty &&
+        addonConfigMap == null &&
+        deletedIds.isEmpty) {
       return;
     }
 
@@ -174,6 +264,10 @@ class SyncService {
       deviceId: deviceId,
       watchHistory: watchHistoryMaps,
       library: libraryMaps,
+      watched: watchedMaps,
+      settings: settingsMap,
+      sources: sourcesMaps,
+      addonConfig: addonConfigMap,
       deletedIds: deletedIds,
       sinceMs: sinceMs,
     );
@@ -240,8 +334,116 @@ class SyncService {
         title: map['title'] as String? ?? '',
         mediaType: map['media_type'] as String? ?? 'movie',
         posterUrl: map['poster_url'] as String?,
+        backdropUrl: map['backdrop_url'] as String?,
+        description: map['description'] as String?,
+        rating: map['rating'] is num ? (map['rating'] as num).toDouble() : null,
         updatedAtMs: remoteUpdatedAt,
       );
+    }
+
+    final remoteWatched = result['watched'] as List<dynamic>? ?? [];
+    for (final item in remoteWatched) {
+      final map = item as Map<String, dynamic>;
+      final mediaId = map['media_id'] as String? ?? '';
+      if (mediaId.isEmpty) {
+        continue;
+      }
+      final remoteUpdatedAt = map['updated_at_ms'] as int? ?? 0;
+      final localUpdatedAt = _watchedRepo.getUpdatedAtMs(mediaId) ?? 0;
+      if (localUpdatedAt >= remoteUpdatedAt) {
+        continue;
+      }
+
+      final mediaItem = MediaItem(
+        id: mediaId,
+        title: map['title'] as String? ?? 'Unknown',
+        type: map['media_type'] as String? ?? 'movie',
+        posterUrl: map['poster_url'] as String?,
+        backdropUrl: map['backdrop_url'] as String?,
+        description: map['description'] as String?,
+        rating: map['rating'] is num ? (map['rating'] as num).toDouble() : null,
+      );
+
+      await _watchedRepo.upsert(
+        mediaItem,
+        updatedAtMs: remoteUpdatedAt,
+      );
+    }
+
+    final remoteSettings = result['settings'] as Map<String, dynamic>?;
+    if (remoteSettings != null) {
+      final remoteUpdatedAt = remoteSettings['updated_at_ms'] as int? ?? 0;
+      final localUpdatedAt = _settingsRepo.getSettingsUpdatedAtMs();
+      if (remoteUpdatedAt > localUpdatedAt) {
+        final settingsMap = remoteSettings['settings'] as Map<dynamic, dynamic>?;
+        if (settingsMap != null) {
+          final settings = AppSettings.fromMap(settingsMap);
+          await _settingsRepo.saveSettings(settings, updatedAtMs: remoteUpdatedAt);
+        }
+      }
+    }
+
+    final remoteSources = result['sources'] as List<dynamic>? ?? [];
+    for (final item in remoteSources) {
+      final map = item as Map<String, dynamic>;
+      final sourceId = map['id'] as String? ?? '';
+      if (sourceId.isEmpty) {
+        continue;
+      }
+      final remoteUpdatedAt = map['updated_at_ms'] as int? ?? 0;
+      final localUpdatedAt = _sourcesRepo.getSourceUpdatedAtMs(sourceId);
+      if (localUpdatedAt >= remoteUpdatedAt) {
+        continue;
+      }
+
+      final source = Source(
+        id: sourceId,
+        name: map['name'] as String? ?? '',
+        baseUrl: map['baseUrl'] as String? ?? '',
+        searchEndpoint: map['searchEndpoint'] as String? ?? '',
+        isEnabled: map['isEnabled'] as bool? ?? true,
+      );
+      await _sourcesRepo.addSource(source, updatedAtMs: remoteUpdatedAt);
+    }
+
+    final remoteAddonConfig = result['addon_config'] as Map<String, dynamic>?;
+    if (remoteAddonConfig != null) {
+      final remoteUpdatedAt = remoteAddonConfig['updated_at_ms'] as int? ?? 0;
+      final localUpdatedAt = _addonConfigRepo.getAddonConfigUpdatedAtMs();
+      if (remoteUpdatedAt > localUpdatedAt) {
+        final configMap = remoteAddonConfig['config'] as Map<dynamic, dynamic>?;
+        if (configMap != null) {
+          final enabled = Map<String, bool>.from(
+            (configMap['enabled'] as Map? ?? {}).map(
+              (k, v) => MapEntry(k.toString(), v == true),
+            ),
+          );
+          final customUrls = Map<String, String>.from(
+            (configMap['custom_urls'] as Map? ?? {}).map(
+              (k, v) => MapEntry(k.toString(), v.toString()),
+            ),
+          );
+          final customManifests = (configMap['custom_manifests'] as Map? ?? {}).map(
+            (k, v) {
+              if (v is Map) {
+                return MapEntry(k.toString(), Map<String, dynamic>.from(v));
+              }
+              return MapEntry(k.toString(), <String, dynamic>{});
+            },
+          ).cast<String, Map<String, dynamic>>();
+          final removedBuiltins = List<String>.from(
+            (configMap['removed_builtins'] as List? ?? []).map((e) => e.toString()),
+          );
+
+          await _addonConfigRepo.saveAll(
+            enabled: enabled,
+            customUrls: customUrls,
+            customManifests: customManifests,
+            removedBuiltins: removedBuiltins,
+            updatedAtMs: remoteUpdatedAt,
+          );
+        }
+      }
     }
 
     final deletedIds = result['deleted_ids'] as List<dynamic>? ?? [];
@@ -256,6 +458,16 @@ class SyncService {
         final mediaId = deleteId.substring(_libraryDeletePrefix.length);
         if (mediaId.isNotEmpty) {
           await _libraryRepo.remove(mediaId);
+        }
+      } else if (deleteId.startsWith(_watchedDeletePrefix)) {
+        final mediaId = deleteId.substring(_watchedDeletePrefix.length);
+        if (mediaId.isNotEmpty) {
+          await _watchedRepo.remove(mediaId);
+        }
+      } else if (deleteId.startsWith(_sourcesDeletePrefix)) {
+        final sourceId = deleteId.substring(_sourcesDeletePrefix.length);
+        if (sourceId.isNotEmpty) {
+          await _sourcesRepo.removeSource(sourceId);
         }
       }
     }
@@ -280,14 +492,15 @@ class SyncService {
   Future<List<String>> _collectDeletedIds({
     required List<WatchHistory> allHistory,
     required Set<String> currentLibraryIds,
+    required Set<String> currentWatchedIds,
+    required Set<String> currentSourcesIds,
   }) async {
     final box = await _openMetaBox();
 
     final previousWatchIds = _readStringList(box, _watchSnapshotKey).toSet();
-    final previousLibraryIds = _readStringList(
-      box,
-      _librarySnapshotKey,
-    ).toSet();
+    final previousLibraryIds = _readStringList(box, _librarySnapshotKey).toSet();
+    final previousWatchedIds = _readStringList(box, _watchedSnapshotKey).toSet();
+    final previousSourcesIds = _readStringList(box, _sourcesSnapshotKey).toSet();
 
     final currentWatchIds = allHistory
         .map((h) => h.historyId)
@@ -300,8 +513,14 @@ class SyncService {
     final deletedLibrary = previousLibraryIds
         .difference(currentLibraryIds)
         .map((id) => '$_libraryDeletePrefix$id');
+    final deletedWatched = previousWatchedIds
+        .difference(currentWatchedIds)
+        .map((id) => '$_watchedDeletePrefix$id');
+    final deletedSources = previousSourcesIds
+        .difference(currentSourcesIds)
+        .map((id) => '$_sourcesDeletePrefix$id');
 
-    return [...deletedWatch, ...deletedLibrary];
+    return [...deletedWatch, ...deletedLibrary, ...deletedWatched, ...deletedSources];
   }
 
   Future<void> _updateSnapshots() async {
@@ -312,9 +531,13 @@ class SyncService {
         .where((id) => id.isNotEmpty)
         .toList();
     final libraryIds = _libraryRepo.getItemIds().toList();
+    final watchedIds = _watchedRepo.getItemIds().toList();
+    final sourcesIds = _sourcesRepo.getSources().map((s) => s.id).toList();
 
     await box.put(_watchSnapshotKey, watchIds);
     await box.put(_librarySnapshotKey, libraryIds);
+    await box.put(_watchedSnapshotKey, watchedIds);
+    await box.put(_sourcesSnapshotKey, sourcesIds);
   }
 
   Future<Box<dynamic>> _openMetaBox() async {

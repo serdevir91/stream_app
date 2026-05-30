@@ -23,3 +23,8 @@ final addonServiceProvider = Provider<AddonService>((ref) {
   final configRepo = ref.read(addonConfigRepositoryProvider);
   return AddonService(configRepo: configRepo);
 });
+
+final addonConfigChangesProvider = StreamProvider<int>((ref) {
+  final repo = ref.watch(addonConfigRepositoryProvider);
+  return repo.watchChanges();
+});

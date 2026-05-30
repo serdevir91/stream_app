@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/i18n/app_text.dart';
+import '../../../../core/sync/sync_provider.dart';
 import '../../../player/presentation/providers/mini_player_provider.dart';
 import '../../../player/presentation/widgets/mini_player.dart';
 import '../../../player/presentation/screens/player_screen.dart';
@@ -19,6 +20,15 @@ class HomeScreen extends ConsumerStatefulWidget {
 
 class _HomeScreenState extends ConsumerState<HomeScreen> {
   int _currentIndex = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      // Trigger cloud synchronization on app launch
+      ref.read(syncServiceProvider);
+    });
+  }
 
   final List<Widget> _screens = [
     const HomeContent(),

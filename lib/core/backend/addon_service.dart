@@ -36,6 +36,16 @@ class AddonService {
     await _loadConfig();
   }
 
+  Future<void> reloadConfig() async {
+    _addons.clear();
+    _enabled.clear();
+    _customUrls.clear();
+    _customManifests.clear();
+    _removedBuiltins.clear();
+    _registerBuiltins();
+    await _loadConfig();
+  }
+
   void _registerBuiltins() {
     for (final factory in [
       () => VidSrcAddon(),

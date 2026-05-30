@@ -2,24 +2,28 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/i18n/app_text.dart';
-import '../../../search/data/repositories/search_repository.dart';
 import '../../../search/presentation/screens/media_details_screen.dart';
 import '../providers/home_provider.dart';
 
-class StudioMediaScreen extends ConsumerWidget {
-  final StudioConfig studio;
+class CategoryMediaScreen extends ConsumerWidget {
+  final String categoryKey;
+  final String title;
 
-  const StudioMediaScreen({super.key, required this.studio});
+  const CategoryMediaScreen({
+    super.key,
+    required this.categoryKey,
+    required this.title,
+  });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final text = ref.watch(appTextProvider);
-    final mediaAsync = ref.watch(studioMediaProvider(studio.key));
+    final mediaAsync = ref.watch(categoryMediaProvider(categoryKey));
 
     return Scaffold(
       appBar: AppBar(
         title: Text(
-          studio.name,
+          title,
           style: const TextStyle(fontWeight: FontWeight.bold),
         ),
         centerTitle: true,

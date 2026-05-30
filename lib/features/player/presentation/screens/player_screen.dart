@@ -1405,13 +1405,17 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     windows_webview.WebviewController controller,
     int startAtMs,
   ) async {
-    if (!_isStreamImdbEmbedHost(entryUri.host)) {
-      return;
-    }
     try {
+      // Inject anti-popup and overlay click bypass script for Windows WebViews
       await controller.addScriptToExecuteOnDocumentCreated(
-        _buildStreamImdbSubtitleBootstrapScript(startAtMs),
+        _getAntiPopupScript(),
       );
+
+      if (_isStreamImdbEmbedHost(entryUri.host)) {
+        await controller.addScriptToExecuteOnDocumentCreated(
+          _buildStreamImdbSubtitleBootstrapScript(startAtMs),
+        );
+      }
     } catch (_) {}
   }
 
@@ -1582,12 +1586,14 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     return false;
   }
 
-  Future<void> _injectEmbedAntiPopupScript(WebViewController controller) async {
-    const script = '''
+  String _getAntiPopupScript() {
+    return '''
       (function() {
         window.open = function() { return null; };
+        
         var anchors = document.querySelectorAll('a[target="_blank"]');
         anchors.forEach(function(a) { a.removeAttribute('target'); });
+        
         document.addEventListener('click', function(evt) {
           var node = evt.target;
           while (node && node.tagName !== 'A') {
@@ -1599,10 +1605,70 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
             evt.stopPropagation();
           }
         }, true);
+
+        // Inject CSS styling to disable tap highlights and pointer events on transparent overlays
+        var style = document.createElement('style');
+        style.innerHTML = `
+          * {
+            -webkit-tap-highlight-color: transparent !important;
+            -webkit-tap-highlight-color: rgba(0,0,0,0) !important;
+          }
+          div[style*="position: absolute"][style*="z-index"][style*="width: 100%"][style*="height: 100%"],
+          div[style*="position: fixed"][style*="z-index"][style*="width: 100%"][style*="height: 100%"],
+          div[style*="position: absolute"][style*="z-index: 2147483647"],
+          div[style*="position: fixed"][style*="z-index: 2147483647"],
+          div[class*="overlay"],
+          div[id*="overlay"],
+          div[class*="popup"],
+          div[id*="popup"],
+          #player_overlay,
+          .player-overlay,
+          #play-overlay,
+          .play-overlay,
+          div[onclick*="window.open"],
+          div[style*="z-index"][onclick] {
+            pointer-events: none !important;
+            background: transparent !important;
+            display: none !important;
+            opacity: 0 !important;
+            visibility: hidden !important;
+          }
+        `;
+        document.head.appendChild(style);
+
+        // Scan periodically to remove/disable viewport-covering overlays
+        setInterval(function() {
+          var divs = document.getElementsByTagName('div');
+          for (var i = 0; i < divs.length; i++) {
+            var div = divs[i];
+            var styleStr = window.getComputedStyle(div);
+            var zIndex = parseInt(styleStr.zIndex);
+            if (!isNaN(zIndex) && zIndex > 10) {
+              var rect = div.getBoundingClientRect();
+              var isOverlay = rect.width > window.innerWidth * 0.9 && rect.height > window.innerHeight * 0.9;
+              var hasVideo = div.getElementsByTagName('video').length > 0 || div.getElementsByTagName('iframe').length > 0;
+              if (isOverlay && !hasVideo) {
+                div.style.pointerEvents = 'none';
+                div.style.display = 'none';
+                div.style.zIndex = '-9999';
+              }
+            }
+          }
+          var adClasses = ['banner', 'ads', 'popunder', 'clickforce', 'mgid', 'exoclick'];
+          adClasses.forEach(function(cls) {
+            var elements = document.querySelectorAll('.' + cls + ', [id*="' + cls + '"], [class*="' + cls + '"]');
+            elements.forEach(function(el) {
+              el.remove();
+            });
+          });
+        }, 500);
       })();
     ''';
+  }
+
+  Future<void> _injectEmbedAntiPopupScript(WebViewController controller) async {
     try {
-      await controller.runJavaScript(script);
+      await controller.runJavaScript(_getAntiPopupScript());
     } catch (_) {
       // Non-fatal; keep playback going.
     }

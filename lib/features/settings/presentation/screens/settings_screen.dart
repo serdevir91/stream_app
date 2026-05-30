@@ -242,7 +242,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       final error = syncService.lastRegisterError;
       final failedMessage = error == null || error.isEmpty
           ? text.t('sync_register_failed')
-          : text.t('sync_register_failed_with').replaceAll('{param}', error);
+          : text.t('sync_register_failed_with').replaceAll('{param}', text.t(error));
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
@@ -398,7 +398,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         TextField(
           decoration: InputDecoration(
             labelText: text.t('server_address'),
-            hintText: 'http://kendi-sunucun:8000',
+            hintText: text.t('server_address_hint'),
             border: const OutlineInputBorder(),
             prefixIcon: const Icon(Icons.dns),
           ),
@@ -436,7 +436,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   contentPadding: EdgeInsets.zero,
                   leading: const Icon(Icons.check_circle, color: Colors.green),
                   title: Text(text.t('sync_active')),
-                  subtitle: Text('${text.t('last_sync')}: ${status.lastSyncFormatted}'),
+                  subtitle: Text('${text.t('last_sync')}: ${status.lastSyncMs == 0 ? text.t('never_synced') : status.lastSyncFormatted}'),
                 ),
                 SizedBox(
                   width: double.infinity,

@@ -44,9 +44,9 @@ watch history, a personal library, and runtime app settings.
 
 | Architecture | File | Size |
 |-------------|------|------|
-| ARM64 (most devices) | [app-arm64-v8a-release.apk](https://github.com/serdevir91/stream_app/releases/download/v1.0.7/app-arm64-v8a-release.apk) | ~32.5 MB |
-| ARM 32-bit (older devices) | [app-armeabi-v7a-release.apk](https://github.com/serdevir91/stream_app/releases/download/v1.0.7/app-armeabi-v7a-release.apk) | ~29.8 MB |
-| x86_64 (emulators) | [app-x86_64-release.apk](https://github.com/serdevir91/stream_app/releases/download/v1.0.7/app-x86_64-release.apk) | ~37.2 MB |
+| ARM64 (most devices) | [app-arm64-v8a-release.apk](https://github.com/serdevir91/stream_app/releases/download/v1.0.8/app-arm64-v8a-release.apk) | ~32.7 MB |
+| ARM 32-bit (older devices) | [app-armeabi-v7a-release.apk](https://github.com/serdevir91/stream_app/releases/download/v1.0.8/app-armeabi-v7a-release.apk) | ~29.8 MB |
+| x86_64 (emulators) | [app-x86_64-release.apk](https://github.com/serdevir91/stream_app/releases/download/v1.0.8/app-x86_64-release.apk) | ~37.4 MB |
 
 > Most modern phones use ARM64. If unsure, download the ARM64 version.
 
@@ -54,8 +54,8 @@ watch history, a personal library, and runtime app settings.
 
 | Type | File | Size |
 |------|------|------|
-| Installer (recommended) | [StreamApp-Setup-v1.0.7.exe](https://github.com/serdevir91/stream_app/releases/download/v1.0.7/StreamApp-Setup-v1.0.7.exe) | ~25.1 MB |
-| Portable | [stream_app-windows-x64.zip](https://github.com/serdevir91/stream_app/releases/download/v1.0.7/stream_app-windows-x64.zip) | ~34.0 MB |
+| Installer (recommended) | [StreamApp-Setup-v1.0.8.exe](https://github.com/serdevir91/stream_app/releases/download/v1.0.8/StreamApp-Setup-v1.0.8.exe) | ~25.2 MB |
+| Portable | [stream_app-windows-x64.zip](https://github.com/serdevir91/stream_app/releases/download/v1.0.8/stream_app-windows-x64.zip) | ~34.0 MB |
 
 **Installer**: Run the `.exe` wizard. Creates Start Menu shortcuts and an uninstaller.
 
@@ -352,6 +352,13 @@ Your backend must expose:
   - `Install from file (.json)` and choose local manifest file.
 
 ## Changelog
+
+### v1.0.8
+
+- **Expandable Categories**: Expanded all home screen category rows (recommended, trending, genre lists, decades) so that tapping the category header or the new trailing chevron icon routes users to a detailed grid view of the category catalog.
+- **VidSrc Player Click & Overlay Fix**: Injected an advanced overlay click-bypass and anti-popup script engine into Android, iOS, and Windows WebViews. This completely hides transparent ad overlays and disables tap highlight flashing, unblocking play/pause, seek, and other player controls.
+- **Auto Cloud Sync**: Implemented automatic cloud synchronization of watch history progress, personal library, marked-as-watched status, app settings/customizations, and custom addon sources immediately upon application startup.
+- **Builds**: Generated split-per-ABI Android APKs and Windows Release installer executable for the `v1.0.8` release.
 
 ### v1.0.7
 

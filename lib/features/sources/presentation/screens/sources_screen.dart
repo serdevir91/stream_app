@@ -12,6 +12,7 @@ class SourcesScreen extends ConsumerWidget {
     WidgetRef ref, {
     Source? existingSource,
   }) {
+    final text = ref.read(appTextProvider);
     final nameController = TextEditingController(
       text: existingSource?.name ?? '',
     );
@@ -26,27 +27,27 @@ class SourcesScreen extends ConsumerWidget {
       context: context,
       builder: (context) {
         return AlertDialog(
-          title: Text(existingSource == null ? 'Add Source' : 'Edit Source'),
+          title: Text(existingSource == null ? text.t('add_source') : text.t('edit_source')),
           content: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
                 TextField(
                   controller: nameController,
-                  decoration: const InputDecoration(
-                    labelText: 'Name (e.g., My API)',
+                  decoration: InputDecoration(
+                    labelText: text.t('source_name_label'),
                   ),
                 ),
                 TextField(
                   controller: baseUrlController,
-                  decoration: const InputDecoration(
-                    labelText: 'Base URL (e.g., https://api.example.com)',
+                  decoration: InputDecoration(
+                    labelText: text.t('source_url_label'),
                   ),
                 ),
                 TextField(
                   controller: searchEndpointController,
-                  decoration: const InputDecoration(
-                    labelText: 'Search Endpoint (e.g., /search)',
+                  decoration: InputDecoration(
+                    labelText: text.t('source_search_endpoint_label'),
                   ),
                 ),
               ],
@@ -55,7 +56,7 @@ class SourcesScreen extends ConsumerWidget {
           actions: [
             TextButton(
               onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Cancel'),
+              child: Text(text.t('cancel')),
             ),
             ElevatedButton(
               onPressed: () {
@@ -77,7 +78,7 @@ class SourcesScreen extends ConsumerWidget {
                   Navigator.of(context).pop();
                 }
               },
-              child: Text(existingSource == null ? 'Add' : 'Save'),
+              child: Text(existingSource == null ? text.t('add') : text.t('save')),
             ),
           ],
         );
@@ -86,23 +87,24 @@ class SourcesScreen extends ConsumerWidget {
   }
 
   void _confirmDelete(BuildContext context, WidgetRef ref, Source source) {
+    final text = ref.read(appTextProvider);
     showDialog(
       context: context,
       builder: (context) {
         return AlertDialog(
-          title: const Text('Delete Source'),
-          content: Text('Are you sure you want to delete ${source.name}?'),
+          title: Text(text.t('delete_source')),
+          content: Text(text.t('delete_source_confirm').replaceAll('{param}', source.name)),
           actions: [
             TextButton(
               onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Cancel'),
+              child: Text(text.t('cancel')),
             ),
             TextButton(
               onPressed: () {
                 ref.read(sourcesProvider.notifier).removeSource(source.id);
                 Navigator.of(context).pop();
               },
-              child: const Text('Delete', style: TextStyle(color: Colors.red)),
+              child: Text(text.t('delete_button'), style: const TextStyle(color: Colors.red)),
             ),
           ],
         );

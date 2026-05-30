@@ -51,6 +51,7 @@ def init_db():
             episode INTEGER,
             poster_url TEXT,
             backdrop_url TEXT,
+            source_id TEXT,
             last_position INTEGER,
             duration INTEGER,
             is_watched INTEGER,
@@ -64,8 +65,44 @@ def init_db():
             title TEXT,
             media_type TEXT,
             poster_url TEXT,
+            backdrop_url TEXT,
+            description TEXT,
+            rating REAL,
             updated_at_ms INTEGER,
             PRIMARY KEY (media_id, device_id)
+        );
+
+        CREATE TABLE IF NOT EXISTS watched_items (
+            media_id TEXT,
+            device_id TEXT,
+            title TEXT,
+            media_type TEXT,
+            poster_url TEXT,
+            backdrop_url TEXT,
+            description TEXT,
+            rating REAL,
+            updated_at_ms INTEGER,
+            PRIMARY KEY (media_id, device_id)
+        );
+
+        CREATE TABLE IF NOT EXISTS app_settings (
+            device_id TEXT PRIMARY KEY,
+            settings_json TEXT,
+            updated_at_ms INTEGER
+        );
+
+        CREATE TABLE IF NOT EXISTS custom_sources (
+            source_id TEXT,
+            device_id TEXT,
+            source_json TEXT,
+            updated_at_ms INTEGER,
+            PRIMARY KEY (source_id, device_id)
+        );
+
+        CREATE TABLE IF NOT EXISTS addon_configs (
+            device_id TEXT PRIMARY KEY,
+            config_json TEXT,
+            updated_at_ms INTEGER
         );
 
         CREATE TABLE IF NOT EXISTS deleted_items (
@@ -78,12 +115,40 @@ def init_db():
         CREATE INDEX IF NOT EXISTS idx_wh_updated ON watch_history(updated_at_ms);
         CREATE INDEX IF NOT EXISTS idx_wh_device ON watch_history(device_id);
         CREATE INDEX IF NOT EXISTS idx_lib_updated ON library_items(updated_at_ms);
+        CREATE INDEX IF NOT EXISTS idx_wat_updated ON watched_items(updated_at_ms);
+        CREATE INDEX IF NOT EXISTS idx_src_updated ON custom_sources(updated_at_ms);
     """)
+
+    # 1. Update devices table
     columns = conn.execute("PRAGMA table_info(devices)").fetchall()
     column_names = {row["name"] for row in columns}
     if "sync_group" not in column_names:
         conn.execute("ALTER TABLE devices ADD COLUMN sync_group TEXT")
         conn.commit()
+
+    # 2. Update watch_history table
+    columns = conn.execute("PRAGMA table_info(watch_history)").fetchall()
+    column_names = {row["name"] for row in columns}
+    if "source_id" not in column_names:
+        conn.execute("ALTER TABLE watch_history ADD COLUMN source_id TEXT")
+        conn.commit()
+
+    # 3. Update library_items table
+    columns = conn.execute("PRAGMA table_info(library_items)").fetchall()
+    column_names = {row["name"] for row in columns}
+    for col, col_type in [("backdrop_url", "TEXT"), ("description", "TEXT"), ("rating", "REAL")]:
+        if col not in column_names:
+            conn.execute(f"ALTER TABLE library_items ADD COLUMN {col} {col_type}")
+            conn.commit()
+
+    # 4. Update watched_items table
+    columns = conn.execute("PRAGMA table_info(watched_items)").fetchall()
+    column_names = {row["name"] for row in columns}
+    for col, col_type in [("backdrop_url", "TEXT"), ("description", "TEXT"), ("rating", "REAL")]:
+        if col not in column_names:
+            conn.execute(f"ALTER TABLE watched_items ADD COLUMN {col} {col_type}")
+            conn.commit()
+
     conn.close()
 
 
@@ -115,6 +180,10 @@ class PushRequest(BaseModel):
     device_id: str
     watch_history: List[dict] = []
     library: List[dict] = []
+    watched: List[dict] = []
+    settings: Optional[dict] = None
+    sources: List[dict] = []
+    addon_config: Optional[dict] = None
     deleted_ids: List[str] = []
     since_ms: int = 0
 
@@ -150,13 +219,14 @@ def push_changes(req: PushRequest, authorization: Optional[str] = Header(None)):
             conn.execute("""
                 INSERT OR REPLACE INTO watch_history
                 (history_id, device_id, media_id, title, media_type, season, episode,
-                 poster_url, backdrop_url, last_position, duration, is_watched, updated_at_ms)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 poster_url, backdrop_url, source_id, last_position, duration, is_watched, updated_at_ms)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 item.get("history_id"), req.device_id, item.get("media_id"),
                 item.get("title"), item.get("media_type"),
                 item.get("season", 1), item.get("episode", 1),
                 item.get("poster_url"), item.get("backdrop_url"),
+                item.get("source_id"),
                 item.get("last_position", 0), item.get("duration", 0),
                 1 if item.get("is_watched") else 0,
                 item.get("updated_at_ms", 0),
@@ -165,12 +235,60 @@ def push_changes(req: PushRequest, authorization: Optional[str] = Header(None)):
         for item in req.library:
             conn.execute("""
                 INSERT OR REPLACE INTO library_items
-                (media_id, device_id, title, media_type, poster_url, updated_at_ms)
-                VALUES (?, ?, ?, ?, ?, ?)
+                (media_id, device_id, title, media_type, poster_url, backdrop_url, description, rating, updated_at_ms)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 item.get("media_id"), req.device_id, item.get("title"),
                 item.get("media_type"), item.get("poster_url"),
+                item.get("backdrop_url"), item.get("description"),
+                item.get("rating"),
                 item.get("updated_at_ms", 0),
+            ))
+
+        for item in req.watched:
+            conn.execute("""
+                INSERT OR REPLACE INTO watched_items
+                (media_id, device_id, title, media_type, poster_url, backdrop_url, description, rating, updated_at_ms)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                item.get("media_id"), req.device_id, item.get("title"),
+                item.get("media_type"), item.get("poster_url"),
+                item.get("backdrop_url"), item.get("description"),
+                item.get("rating"),
+                item.get("updated_at_ms", 0),
+            ))
+
+        if req.settings:
+            conn.execute("""
+                INSERT OR REPLACE INTO app_settings
+                (device_id, settings_json, updated_at_ms)
+                VALUES (?, ?, ?)
+            """, (
+                req.device_id,
+                json.dumps(req.settings.get("settings", {})),
+                req.settings.get("updated_at_ms", 0),
+            ))
+
+        for item in req.sources:
+            conn.execute("""
+                INSERT OR REPLACE INTO custom_sources
+                (source_id, device_id, source_json, updated_at_ms)
+                VALUES (?, ?, ?, ?)
+            """, (
+                item.get("id"), req.device_id,
+                json.dumps(item),
+                item.get("updated_at_ms", 0),
+            ))
+
+        if req.addon_config:
+            conn.execute("""
+                INSERT OR REPLACE INTO addon_configs
+                (device_id, config_json, updated_at_ms)
+                VALUES (?, ?, ?)
+            """, (
+                req.device_id,
+                json.dumps(req.addon_config.get("config", {})),
+                req.addon_config.get("updated_at_ms", 0),
             ))
 
         now_ms = int(time.time() * 1000)
@@ -213,6 +331,7 @@ def pull_changes(device_id: str, since_ms: int = 0, authorization: Optional[str]
                 "episode": row["episode"],
                 "poster_url": row["poster_url"],
                 "backdrop_url": row["backdrop_url"],
+                "source_id": row["source_id"],
                 "last_position": row["last_position"],
                 "duration": row["duration"],
                 "is_watched": bool(row["is_watched"]),
@@ -233,8 +352,73 @@ def pull_changes(device_id: str, since_ms: int = 0, authorization: Optional[str]
                 "title": row["title"],
                 "media_type": row["media_type"],
                 "poster_url": row["poster_url"],
+                "backdrop_url": row["backdrop_url"],
+                "description": row["description"],
+                "rating": row["rating"],
                 "updated_at_ms": row["updated_at_ms"],
             })
+
+        # Get watched items from OTHER devices.
+        wat_rows = conn.execute("""
+            SELECT * FROM watched_items
+            WHERE device_id != ? AND updated_at_ms > ?
+              AND device_id IN (SELECT device_id FROM devices WHERE sync_group = ?)
+        """, (device_id, since_ms, sync_group)).fetchall()
+
+        watched = []
+        for row in wat_rows:
+            watched.append({
+                "media_id": row["media_id"],
+                "title": row["title"],
+                "media_type": row["media_type"],
+                "poster_url": row["poster_url"],
+                "backdrop_url": row["backdrop_url"],
+                "description": row["description"],
+                "rating": row["rating"],
+                "updated_at_ms": row["updated_at_ms"],
+            })
+
+        # Get the latest settings from the sync group.
+        settings_row = conn.execute("""
+            SELECT settings_json, updated_at_ms FROM app_settings
+            WHERE device_id IN (SELECT device_id FROM devices WHERE sync_group = ?)
+            ORDER BY updated_at_ms DESC LIMIT 1
+        """, (sync_group,)).fetchone()
+
+        settings = None
+        if settings_row and settings_row["updated_at_ms"] > since_ms:
+            settings = {
+                "settings": json.loads(settings_row["settings_json"]),
+                "updated_at_ms": settings_row["updated_at_ms"],
+            }
+
+        # Get custom sources from OTHER devices.
+        src_rows = conn.execute("""
+            SELECT * FROM custom_sources
+            WHERE device_id != ? AND updated_at_ms > ?
+              AND device_id IN (SELECT device_id FROM devices WHERE sync_group = ?)
+        """, (device_id, since_ms, sync_group)).fetchall()
+
+        sources = []
+        for row in src_rows:
+            sources.append({
+                **json.loads(row["source_json"]),
+                "updated_at_ms": row["updated_at_ms"],
+            })
+
+        # Get the latest addon configs from the sync group.
+        addon_row = conn.execute("""
+            SELECT config_json, updated_at_ms FROM addon_configs
+            WHERE device_id IN (SELECT device_id FROM devices WHERE sync_group = ?)
+            ORDER BY updated_at_ms DESC LIMIT 1
+        """, (sync_group,)).fetchone()
+
+        addon_config = None
+        if addon_row and addon_row["updated_at_ms"] > since_ms:
+            addon_config = {
+                "config": json.loads(addon_row["config_json"]),
+                "updated_at_ms": addon_row["updated_at_ms"],
+            }
 
         # Get deleted items from OTHER devices.
         del_rows = conn.execute("""
@@ -256,6 +440,10 @@ def pull_changes(device_id: str, since_ms: int = 0, authorization: Optional[str]
     return {
         "watch_history": watch_history,
         "library": library,
+        "watched": watched,
+        "settings": settings,
+        "sources": sources,
+        "addon_config": addon_config,
         "deleted_ids": deleted_ids,
     }
 

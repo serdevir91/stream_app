@@ -1,9 +1,13 @@
+import 'dart:async';
 import 'package:hive_flutter/hive_flutter.dart';
 
 class AddonConfigRepository {
   static const _boxName = 'addon_config_box';
 
   late Box _box;
+  final StreamController<int> _changesController =
+      StreamController<int>.broadcast();
+  int _changeVersion = 0;
 
   Future<void> init() async {
     _box = await Hive.openBox(_boxName);
@@ -66,15 +70,43 @@ class AddonConfigRepository {
     return _box.put('removed_builtins', values);
   }
 
+  int getAddonConfigUpdatedAtMs() {
+    return (_box.get('addon_config_updated_at_ms') as int?) ?? 0;
+  }
+
   Future<void> saveAll({
     Map<String, bool>? enabled,
     Map<String, String>? customUrls,
     Map<String, Map<String, dynamic>>? customManifests,
     List<String>? removedBuiltins,
+    int? updatedAtMs,
   }) async {
     if (enabled != null) await setEnabled(enabled);
     if (customUrls != null) await setCustomUrls(customUrls);
     if (customManifests != null) await setCustomManifests(customManifests);
     if (removedBuiltins != null) await setRemovedBuiltins(removedBuiltins);
+    
+    final timestamp = updatedAtMs ?? DateTime.now().millisecondsSinceEpoch;
+    await _box.put('addon_config_updated_at_ms', timestamp);
+    _emitChange();
+  }
+
+  Stream<int> watchChanges() {
+    return Stream<int>.multi((controller) {
+      controller.add(_changeVersion);
+      final sub = _changesController.stream.listen(
+        controller.add,
+        onError: controller.addError,
+      );
+      controller.onCancel = sub.cancel;
+    });
+  }
+
+  void _emitChange() {
+    if (_changesController.isClosed) {
+      return;
+    }
+    _changeVersion += 1;
+    _changesController.add(_changeVersion);
   }
 }

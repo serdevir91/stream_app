@@ -58,8 +58,8 @@ class WatchedRepository {
     return _boxOrNull?.containsKey(mediaId) ?? false;
   }
 
-  Future<void> upsert(MediaItem item) async {
-    final now = DateTime.now().millisecondsSinceEpoch;
+  Future<void> upsert(MediaItem item, {int? updatedAtMs}) async {
+    final now = updatedAtMs ?? DateTime.now().millisecondsSinceEpoch;
     final box = _boxOrNull ?? await Hive.openBox<dynamic>(boxName);
     final map = <String, dynamic>{...item.toMap(), 'updated_at_ms': now};
     await box.put(item.id, map);

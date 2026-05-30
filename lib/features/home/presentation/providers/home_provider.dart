@@ -131,3 +131,42 @@ final studioMediaProvider = FutureProvider.family<List<MediaItem>, String>((ref,
   );
   return repo.getMediaByStudio(studio);
 });
+
+final categoryMediaProvider = FutureProvider.family<List<MediaItem>, String>((ref, key) async {
+  if (key.startsWith('studio_')) {
+    final studioKey = key.replaceFirst('studio_', '');
+    return ref.watch(studioMediaProvider(studioKey).future);
+  }
+  switch (key) {
+    case 'recommended_for_you':
+      return ref.watch(recommendedForYouProvider.future);
+    case 'trending_movies':
+      return ref.watch(trendingMoviesProvider.future);
+    case 'trending_series':
+      return ref.watch(trendingSeriesProvider.future);
+    case 'animation_movies':
+      return ref.watch(animationMoviesProvider.future);
+    case 'anime_series':
+      return ref.watch(animeSeriesProvider.future);
+    case 'horror_movies':
+      return ref.watch(horrorMoviesProvider.future);
+    case 'drama_movies':
+      return ref.watch(dramaMoviesProvider.future);
+    case 'thriller_movies':
+      return ref.watch(thrillerMoviesProvider.future);
+    case 'classic_movies':
+      return ref.watch(classicsProvider.future);
+    case 'western_movies':
+      return ref.watch(westernProvider.future);
+    case 'movies_1950s':
+      return ref.watch(movies1950sProvider.future);
+    case 'movies_1960s':
+      return ref.watch(movies1960sProvider.future);
+    case 'movies_1970s':
+      return ref.watch(movies1970sProvider.future);
+    case 'movies_1980s':
+      return ref.watch(movies1980sProvider.future);
+    default:
+      return [];
+  }
+});

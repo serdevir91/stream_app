@@ -57,6 +57,10 @@ class SyncRepository {
     required String deviceId,
     required List<Map<String, dynamic>> watchHistory,
     required List<Map<String, dynamic>> library,
+    required List<Map<String, dynamic>> watched,
+    required Map<String, dynamic>? settings,
+    required List<Map<String, dynamic>> sources,
+    required Map<String, dynamic>? addonConfig,
     required List<String> deletedIds,
     required int sinceMs,
   }) async {
@@ -67,6 +71,10 @@ class SyncRepository {
           'device_id': deviceId,
           'watch_history': watchHistory,
           'library': library,
+          'watched': watched,
+          'settings': settings,
+          'sources': sources,
+          'addon_config': addonConfig,
           'deleted_ids': deletedIds,
           'since_ms': sinceMs,
         },
@@ -107,47 +115,21 @@ class SyncRepository {
 
   String _buildReadableError(DioException e) {
     final status = e.response?.statusCode;
-    final detail = _extractResponseDetail(e.response?.data);
-    final target = _requestTarget(e);
 
     if (status != null) {
-      final suffix = detail == null ? '' : ' - $detail';
-      return 'Sunucu hatasi ($status) [$target]$suffix';
+      return 'sync_error_server_error';
     }
 
     if (e.type == DioExceptionType.connectionTimeout ||
         e.type == DioExceptionType.sendTimeout ||
         e.type == DioExceptionType.receiveTimeout) {
-      return 'Baglanti zaman asimi [$target]. Sunucu/port ulasilabilirligini kontrol edin.';
+      return 'sync_error_timeout';
     }
 
     if (e.type == DioExceptionType.connectionError) {
-      return 'Sunucuya baglanilamadi [$target]. IP, port veya firewall ayarini kontrol edin.';
+      return 'sync_error_cannot_connect_detail';
     }
 
-    return e.message ?? 'Bilinmeyen baglanti hatasi [$target]';
-  }
-
-  String _requestTarget(DioException e) {
-    final uri = e.requestOptions.uri;
-    final portPart = uri.hasPort ? ':${uri.port}' : '';
-    return '${uri.scheme}://${uri.host}$portPart';
-  }
-
-  String? _extractResponseDetail(dynamic data) {
-    if (data is Map) {
-      final detail = data['detail'];
-      if (detail is String && detail.trim().isNotEmpty) {
-        return detail.trim();
-      }
-      final message = data['message'];
-      if (message is String && message.trim().isNotEmpty) {
-        return message.trim();
-      }
-    }
-    if (data is String && data.trim().isNotEmpty) {
-      return data.trim();
-    }
-    return null;
+    return 'sync_error_unknown';
   }
 }
