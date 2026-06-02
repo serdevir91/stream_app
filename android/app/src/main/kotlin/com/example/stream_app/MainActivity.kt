@@ -1,6 +1,9 @@
 package com.example.stream_app
 
+import android.content.Intent
+import java.io.File
 import android.webkit.WebView
+import androidx.core.content.FileProvider
 import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
 import io.flutter.embedding.android.FlutterActivity
@@ -10,9 +13,31 @@ import io.flutter.plugins.webviewflutter.WebViewFlutterAndroidExternalApi
 
 class MainActivity : FlutterActivity() {
     private val androidWebViewChannel = "stream_app/android_webview"
+    private val appUpdaterChannel = "stream_app/app_updater"
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, appUpdaterChannel)
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "installApk" -> {
+                        val path = call.argument<String>("path")
+                        if (path.isNullOrBlank()) {
+                            result.error("bad_args", "path is required", null)
+                            return@setMethodCallHandler
+                        }
+
+                        try {
+                            result.success(openApkInstaller(path))
+                        } catch (e: Exception) {
+                            result.error("install_failed", e.message, null)
+                        }
+                    }
+
+                    else -> result.notImplemented()
+                }
+            }
 
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, androidWebViewChannel)
             .setMethodCallHandler { call, result ->
@@ -49,5 +74,26 @@ class MainActivity : FlutterActivity() {
                     else -> result.notImplemented()
                 }
             }
+    }
+
+    private fun openApkInstaller(path: String): Boolean {
+        val apkFile = File(path)
+        if (!apkFile.exists()) {
+            return false
+        }
+
+        val apkUri = FileProvider.getUriForFile(
+            this,
+            "${applicationContext.packageName}.fileprovider",
+            apkFile,
+        )
+
+        val intent = Intent(Intent.ACTION_VIEW).apply {
+            setDataAndType(apkUri, "application/vnd.android.package-archive")
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        startActivity(intent)
+        return true
     }
 }

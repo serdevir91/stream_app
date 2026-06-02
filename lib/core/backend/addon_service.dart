@@ -114,12 +114,14 @@ class AddonService {
     Map<String, dynamic>? data;
     for (final manifestUrl in manifestUrls) {
       try {
-        final dio = Dio(BaseOptions(
-          connectTimeout: const Duration(seconds: 15),
-          receiveTimeout: const Duration(seconds: 15),
-          followRedirects: true,
-          headers: _headers,
-        ));
+        final dio = Dio(
+          BaseOptions(
+            connectTimeout: const Duration(seconds: 15),
+            receiveTimeout: const Duration(seconds: 15),
+            followRedirects: true,
+            headers: _headers,
+          ),
+        );
         final response = await dio.get(manifestUrl);
         if (response.statusCode == 200) {
           data = response.data as Map<String, dynamic>;
@@ -143,10 +145,7 @@ class AddonService {
     }
 
     if (!data.containsKey('id') || !data.containsKey('name')) {
-      return (
-        null,
-        "invalid_manifest_missing_id_name"
-      );
+      return (null, "invalid_manifest_missing_id_name");
     }
 
     try {
@@ -213,13 +212,11 @@ class AddonService {
   }) async {
     if (data.isEmpty) return (null, 'manifest_invalid_json');
 
-    var baseUrl = (data['transportUrl'] ??
-            data['transport_url'] ??
-            data['baseUrl'] ??
-            '')
-        .toString()
-        .trim()
-        .replaceAll(RegExp(r'/+$'), '');
+    var baseUrl =
+        (data['transportUrl'] ?? data['transport_url'] ?? data['baseUrl'] ?? '')
+            .toString()
+            .trim()
+            .replaceAll(RegExp(r'/+$'), '');
 
     if (baseUrl.isEmpty) {
       return (null, "manifest_missing_transport_url");
@@ -345,9 +342,20 @@ class AddonService {
     if (addonId != null) {
       final addon = getAddon(addonId);
       if (addon == null) {
-        return {'success': false, 'error': "addon_not_found_or_inactive", 'streams': []};
+        return {
+          'success': false,
+          'error': "addon_not_found_or_inactive",
+          'streams': [],
+        };
       }
-      final addonStreams = await _tryAddonStreams(addon, query, contentType, season, episode, tmdbId: tmdbId);
+      final addonStreams = await _tryAddonStreams(
+        addon,
+        query,
+        contentType,
+        season,
+        episode,
+        tmdbId: tmdbId,
+      );
       appendStreams(addon, addonStreams);
       return {
         'success': true,
@@ -362,7 +370,14 @@ class AddonService {
 
     for (final addon in enabledAddons) {
       if (!_addonSupportsType(addon, contentType)) continue;
-      final addonStreams = await _tryAddonStreams(addon, query, contentType, season, episode, tmdbId: tmdbId);
+      final addonStreams = await _tryAddonStreams(
+        addon,
+        query,
+        contentType,
+        season,
+        episode,
+        tmdbId: tmdbId,
+      );
       if (addonStreams.isNotEmpty) {
         appendStreams(addon, addonStreams);
       }
@@ -386,6 +401,7 @@ class AddonService {
     required int episode,
     String? addonId,
     String? tmdbId,
+    bool preferAnimeSources = false,
   }) async {
     if (addonId != null) {
       return resolve(
@@ -402,33 +418,32 @@ class AddonService {
         .where((a) => _addonSupportsType(a, contentType))
         .toList();
 
-    const embedIds = {
-      'builtin.vidsrc',
-      'builtin.twoembed',
-      'builtin.superembed',
-      'builtin.vidlink',
-      'builtin.embedsu',
-    };
     enabled.sort((a, b) {
-      final aIsEmbed = embedIds.contains(a.manifest.id) ? 0 : 1;
-      final bIsEmbed = embedIds.contains(b.manifest.id) ? 0 : 1;
-      return aIsEmbed.compareTo(bIsEmbed);
+      final aScore = _addonPriority(a.manifest.id, preferAnimeSources);
+      final bScore = _addonPriority(b.manifest.id, preferAnimeSources);
+      return aScore.compareTo(bScore);
     });
 
-    for (final addon in enabled) {
-      final addonStreams = await _tryAddonStreams(addon, query, contentType, season, episode, tmdbId: tmdbId);
-      if (addonStreams.isNotEmpty) {
-        final seenUrls = <String>{};
-        final streams = <Map<String, dynamic>>[];
-        for (final item in addonStreams) {
-          if (seenUrls.contains(item.url)) continue;
-          seenUrls.add(item.url);
-          streams.add({
-            ...item.toJson(),
-            'addon_id': addon.manifest.id,
-            'provider': item.provider ?? addon.manifest.name,
-          });
-        }
+    for (var start = 0; start < enabled.length; start += 4) {
+      final batch = enabled.skip(start).take(4).toList();
+      final batchResults = await Future.wait(
+        batch.map(
+          (addon) async => MapEntry(
+            addon,
+            await _tryAddonStreams(
+              addon,
+              query,
+              contentType,
+              season,
+              episode,
+              tmdbId: tmdbId,
+            ),
+          ),
+        ),
+      );
+
+      final streams = _mapStreams(batchResults);
+      if (streams.isNotEmpty) {
         return {
           'success': true,
           'query': query,
@@ -450,6 +465,55 @@ class AddonService {
       'count': 0,
       'streams': <Map<String, dynamic>>[],
     };
+  }
+
+  List<Map<String, dynamic>> _mapStreams(
+    List<MapEntry<BaseAddon, List<StreamResult>>> results,
+  ) {
+    final seenUrls = <String>{};
+    final streams = <Map<String, dynamic>>[];
+    for (final entry in results) {
+      final addon = entry.key;
+      for (final item in entry.value) {
+        if (seenUrls.contains(item.url)) continue;
+        seenUrls.add(item.url);
+        streams.add({
+          ...item.toJson(),
+          'addon_id': addon.manifest.id,
+          'provider': item.provider ?? addon.manifest.name,
+        });
+      }
+    }
+    return streams;
+  }
+
+  int _addonPriority(String addonId, bool preferAnimeSources) {
+    final animeOrder = <String, int>{
+      'builtin.streamimdb': 0,
+      'builtin.vidsrccc': 1,
+      'builtin.vidsrc': 2,
+      'builtin.videasy': 3,
+      'builtin.embedsu': 4,
+      'builtin.pstream': 5,
+      'builtin.smashystream': 6,
+      'builtin.vidlink': 7,
+      'builtin.twoembed': 8,
+      'builtin.superembed': 9,
+    };
+    final defaultOrder = <String, int>{
+      'builtin.vidsrc': 0,
+      'builtin.vidsrccc': 1,
+      'builtin.streamimdb': 2,
+      'builtin.videasy': 3,
+      'builtin.embedsu': 4,
+      'builtin.pstream': 5,
+      'builtin.smashystream': 6,
+      'builtin.vidlink': 7,
+      'builtin.twoembed': 8,
+      'builtin.superembed': 9,
+    };
+    final order = preferAnimeSources ? animeOrder : defaultOrder;
+    return order[addonId] ?? 100;
   }
 
   Future<List<StreamResult>> _tryAddonStreams(
@@ -474,7 +538,12 @@ class AddonService {
     // 1) Try TMDB ID first for Stremio-like addons
     if (tmdbId != null && tmdbId.isNotEmpty) {
       try {
-        final directTmdb = await addon.getStreams(tmdbId, contentType, season, episode);
+        final directTmdb = await addon.getStreams(
+          tmdbId,
+          contentType,
+          season,
+          episode,
+        );
         dedupeAndAppend(directTmdb);
       } catch (_) {}
     }
@@ -482,7 +551,12 @@ class AddonService {
     // 2) Try direct query as content_id
     if (streams.isEmpty) {
       try {
-        final directQuery = await addon.getStreams(query, contentType, season, episode);
+        final directQuery = await addon.getStreams(
+          query,
+          contentType,
+          season,
+          episode,
+        );
         dedupeAndAppend(directQuery);
       } catch (_) {}
     }
@@ -492,7 +566,12 @@ class AddonService {
       try {
         final results = await addon.search(query, contentType);
         for (final result in results.take(5)) {
-          final found = await addon.getStreams(result.id, contentType, season, episode);
+          final found = await addon.getStreams(
+            result.id,
+            contentType,
+            season,
+            episode,
+          );
           if (found.isNotEmpty) {
             dedupeAndAppend(found);
             break;
@@ -542,8 +621,12 @@ class AddonService {
     for (final item in savedManifests.values) {
       final payload = item['manifest'];
       if (payload is! Map<String, dynamic>) continue;
-      final sourceLabel = (item['source_label'] ?? 'local-manifest.json').toString();
-      final (manifest, _) = await installFromManifest(payload, sourceLabel: sourceLabel);
+      final sourceLabel = (item['source_label'] ?? 'local-manifest.json')
+          .toString();
+      final (manifest, _) = await installFromManifest(
+        payload,
+        sourceLabel: sourceLabel,
+      );
       if (manifest != null && savedEnabled.containsKey(manifest.id)) {
         _enabled[manifest.id] = savedEnabled[manifest.id]!;
       }
@@ -570,30 +653,53 @@ class AddonService {
 
   static (String, List<String>) _buildManifestCandidates(String normalizedUrl) {
     final parsed = Uri.tryParse(normalizedUrl);
-    if (parsed == null) return (normalizedUrl, ['$normalizedUrl/manifest.json']);
+    if (parsed == null) {
+      return (normalizedUrl, ['$normalizedUrl/manifest.json']);
+    }
 
     final path = parsed.path;
 
     if (path.endsWith('/manifest.json')) {
       final basePath = path.substring(0, path.length - '/manifest.json'.length);
       final manifestUrl = normalizedUrl;
-      final baseUrl = Uri(scheme: parsed.scheme, userInfo: parsed.userInfo, host: parsed.host, port: parsed.port, path: basePath).toString().replaceAll(RegExp(r'/+$'), '');
+      final baseUrl = Uri(
+        scheme: parsed.scheme,
+        userInfo: parsed.userInfo,
+        host: parsed.host,
+        port: parsed.port,
+        path: basePath,
+      ).toString().replaceAll(RegExp(r'/+$'), '');
       return (baseUrl, [manifestUrl]);
     }
 
     if (path.endsWith('.json')) {
       final basePath = path.substring(0, path.lastIndexOf('/'));
       final manifestUrl = normalizedUrl;
-      final baseUrl = Uri(scheme: parsed.scheme, userInfo: parsed.userInfo, host: parsed.host, port: parsed.port, path: basePath).toString().replaceAll(RegExp(r'/+$'), '');
+      final baseUrl = Uri(
+        scheme: parsed.scheme,
+        userInfo: parsed.userInfo,
+        host: parsed.host,
+        port: parsed.port,
+        path: basePath,
+      ).toString().replaceAll(RegExp(r'/+$'), '');
       return (baseUrl, [manifestUrl]);
     }
 
-    final baseUrl = Uri(scheme: parsed.scheme, userInfo: parsed.userInfo, host: parsed.host, port: parsed.port, path: parsed.path).toString().replaceAll(RegExp(r'/+$'), '');
-    return (baseUrl, [
-      '$baseUrl/manifest.json',
-      '$baseUrl/addon/manifest.json',
-      '$baseUrl/stremio/v1/manifest.json',
-    ]);
+    final baseUrl = Uri(
+      scheme: parsed.scheme,
+      userInfo: parsed.userInfo,
+      host: parsed.host,
+      port: parsed.port,
+      path: parsed.path,
+    ).toString().replaceAll(RegExp(r'/+$'), '');
+    return (
+      baseUrl,
+      [
+        '$baseUrl/manifest.json',
+        '$baseUrl/addon/manifest.json',
+        '$baseUrl/stremio/v1/manifest.json',
+      ],
+    );
   }
 
   static bool _detectStremioManifest(Map<String, dynamic> data) {

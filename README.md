@@ -44,9 +44,9 @@ watch history, a personal library, and runtime app settings.
 
 | Architecture | File | Size |
 |-------------|------|------|
-| ARM64 (most devices) | [app-arm64-v8a-release.apk](https://github.com/serdevir91/stream_app/releases/download/v1.0.8/app-arm64-v8a-release.apk) | ~32.7 MB |
-| ARM 32-bit (older devices) | [app-armeabi-v7a-release.apk](https://github.com/serdevir91/stream_app/releases/download/v1.0.8/app-armeabi-v7a-release.apk) | ~29.8 MB |
-| x86_64 (emulators) | [app-x86_64-release.apk](https://github.com/serdevir91/stream_app/releases/download/v1.0.8/app-x86_64-release.apk) | ~37.4 MB |
+| ARM64 (most devices) | [app-arm64-v8a-release.apk](https://github.com/serdevir91/stream_app/releases/download/v1.0.9/app-arm64-v8a-release.apk) | ~32.7 MB |
+| ARM 32-bit (older devices) | [app-armeabi-v7a-release.apk](https://github.com/serdevir91/stream_app/releases/download/v1.0.9/app-armeabi-v7a-release.apk) | ~29.9 MB |
+| x86_64 (emulators) | [app-x86_64-release.apk](https://github.com/serdevir91/stream_app/releases/download/v1.0.9/app-x86_64-release.apk) | ~37.4 MB |
 
 > Most modern phones use ARM64. If unsure, download the ARM64 version.
 
@@ -54,8 +54,8 @@ watch history, a personal library, and runtime app settings.
 
 | Type | File | Size |
 |------|------|------|
-| Installer (recommended) | [StreamApp-Setup-v1.0.8.exe](https://github.com/serdevir91/stream_app/releases/download/v1.0.8/StreamApp-Setup-v1.0.8.exe) | ~25.2 MB |
-| Portable | [stream_app-windows-x64.zip](https://github.com/serdevir91/stream_app/releases/download/v1.0.8/stream_app-windows-x64.zip) | ~34.0 MB |
+| Installer (recommended) | [StreamApp-Setup-v1.0.9.exe](https://github.com/serdevir91/stream_app/releases/download/v1.0.9/StreamApp-Setup-v1.0.9.exe) | ~25.1 MB |
+| Portable | [stream_app-windows-x64.zip](https://github.com/serdevir91/stream_app/releases/download/v1.0.9/stream_app-windows-x64.zip) | ~32.5 MB |
 
 **Installer**: Run the `.exe` wizard. Creates Start Menu shortcuts and an uninstaller.
 
@@ -231,7 +231,7 @@ flutter build windows --release
 "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer\stream_app.iss
 ```
 
-Output: `output/StreamApp-Setup-v1.0.5.exe`
+Output: `output/StreamApp-Setup-v1.0.9.exe`
 
 ### Android APK
 
@@ -352,6 +352,12 @@ Your backend must expose:
   - `Install from file (.json)` and choose local manifest file.
 
 ## Changelog
+
+### v1.0.9
+
+- **Anime Source Stability**: Prioritized anime-friendly embed providers for TV animation content and collected multiple fast provider results before auto-selecting a stream, reducing cases where playback starts from weak English-only/no-subtitle sources.
+- **In-App Updates**: Fixed the displayed/current app version by reading package metadata at runtime instead of a stale hard-coded value, and added Android APK download plus installer handoff directly from the app.
+- **Builds**: Generated split-per-ABI Android APKs, Windows Release build, installer executable, and refreshed portable ZIP for the `v1.0.9` release.
 
 ### v1.0.8
 

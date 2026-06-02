@@ -1,9 +1,12 @@
 import 'dart:io';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
+import 'package:package_info_plus/package_info_plus.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-const String currentAppVersion = '1.0.7';
+const String currentAppVersionFallback = '1.0.9';
 
 class AppUpdateInfo {
   final String latestVersion;
@@ -23,31 +26,65 @@ class AppUpdateInfo {
 
 class AppUpdaterService {
   final Dio _dio = Dio();
-  static const String _repoUrl = 'https://api.github.com/repos/serdevir91/stream_app/releases/latest';
+  static const String _repoUrl =
+      'https://api.github.com/repos/serdevir91/stream_app/releases/latest';
+  static const MethodChannel _updaterChannel = MethodChannel(
+    'stream_app/app_updater',
+  );
+
+  Future<String> getCurrentVersion() async {
+    try {
+      final info = await PackageInfo.fromPlatform();
+      final version = info.version.trim();
+      if (version.isNotEmpty) {
+        return version;
+      }
+    } catch (e) {
+      debugPrint('Read app version failed: $e');
+    }
+    return currentAppVersionFallback;
+  }
 
   bool _isNewerVersion(String current, String latest) {
     try {
-      final currentClean = current.toLowerCase().replaceAll('v', '').trim();
-      final latestClean = latest.toLowerCase().replaceAll('v', '').trim();
+      final currentParts = _parseVersionParts(current);
+      final latestParts = _parseVersionParts(latest);
 
-      if (currentClean == latestClean) return false;
-
-      final currentParts = currentClean.split('.').map((e) => int.tryParse(e) ?? 0).toList();
-      final latestParts = latestClean.split('.').map((e) => int.tryParse(e) ?? 0).toList();
-
-      for (var i = 0; i < currentParts.length && i < latestParts.length; i++) {
+      for (var i = 0; i < currentParts.length; i++) {
         if (latestParts[i] > currentParts[i]) return true;
         if (latestParts[i] < currentParts[i]) return false;
       }
 
-      return latestParts.length > currentParts.length;
+      return false;
     } catch (_) {
       return false;
     }
   }
 
+  List<int> _parseVersionParts(String value) {
+    final clean = value
+        .toLowerCase()
+        .replaceFirst(RegExp(r'^v'), '')
+        .split('+')
+        .first
+        .split('-')
+        .first
+        .trim();
+    final parts = clean
+        .split('.')
+        .map(
+          (part) => int.tryParse(part.replaceAll(RegExp(r'[^0-9]'), '')) ?? 0,
+        )
+        .toList();
+    while (parts.length < 3) {
+      parts.add(0);
+    }
+    return parts.take(3).toList();
+  }
+
   Future<AppUpdateInfo?> checkForUpdate() async {
     try {
+      final currentVersion = await getCurrentVersion();
       final response = await _dio.get(
         _repoUrl,
         options: Options(
@@ -66,7 +103,7 @@ class AppUpdaterService {
 
         if (latestTag.isEmpty) return null;
 
-        if (_isNewerVersion(currentAppVersion, latestTag)) {
+        if (_isNewerVersion(currentVersion, latestTag)) {
           final assets = data['assets'] as List?;
           String downloadUrl = '';
           String fileName = '';
@@ -77,8 +114,9 @@ class AppUpdaterService {
             } else if (Platform.isWindows) {
               // Try to find .exe or .zip for Windows
               final winAsset = assets.firstWhere(
-                (a) => a['name'].toString().toLowerCase().endsWith('.exe') ||
-                       a['name'].toString().toLowerCase().endsWith('.zip'),
+                (a) =>
+                    a['name'].toString().toLowerCase().endsWith('.exe') ||
+                    a['name'].toString().toLowerCase().endsWith('.zip'),
                 orElse: () => null,
               );
               if (winAsset != null) {
@@ -131,8 +169,7 @@ class AppUpdaterService {
       return;
     }
 
-    // On non-Windows platforms or if download is just a webpage, open in browser
-    if (kIsWeb || !Platform.isWindows || !downloadUrl.startsWith('http')) {
+    if (kIsWeb || !downloadUrl.startsWith('http')) {
       try {
         final uri = Uri.parse(downloadUrl);
         if (await launchUrl(uri, mode: LaunchMode.externalApplication)) {
@@ -146,11 +183,55 @@ class AppUpdaterService {
       return;
     }
 
-    // Windows in-app downloading and running
     try {
+      final fileName = _resolveFileName(updateInfo);
+
+      if (Platform.isAndroid && fileName.toLowerCase().endsWith('.apk')) {
+        final tempDir = await getTemporaryDirectory();
+        final tempFilePath =
+            '${tempDir.path}${Platform.pathSeparator}$fileName';
+
+        await _dio.download(
+          downloadUrl,
+          tempFilePath,
+          onReceiveProgress: (received, total) {
+            if (total > 0) {
+              onProgress(received / total);
+            }
+          },
+        );
+
+        final downloadedFile = File(tempFilePath);
+        if (!await downloadedFile.exists()) {
+          onError('Downloaded APK could not be found.');
+          return;
+        }
+
+        final installed = await _updaterChannel.invokeMethod<bool>(
+          'installApk',
+          {'path': tempFilePath},
+        );
+        if (installed == true) {
+          onComplete();
+        } else {
+          onError('Could not start APK installer.');
+        }
+        return;
+      }
+
+      if (!Platform.isWindows) {
+        final uri = Uri.parse(downloadUrl);
+        if (await launchUrl(uri, mode: LaunchMode.externalApplication)) {
+          onComplete();
+        } else {
+          onError('Could not open browser for update.');
+        }
+        return;
+      }
+
       final tempDir = Directory.systemTemp;
-      final tempFilePath = '${tempDir.path}\\${updateInfo.fileName}';
-      
+      final tempFilePath = '${tempDir.path}\\$fileName';
+
       await _dio.download(
         downloadUrl,
         tempFilePath,
@@ -171,10 +252,11 @@ class AppUpdaterService {
       onComplete();
 
       // Trigger installer or hot-swapping script
-      if (updateInfo.fileName.toLowerCase() == 'stream_app.exe') {
+      if (fileName.toLowerCase() == 'stream_app.exe') {
         // Standalone executable hot-replacement
         final currentExePath = Platform.resolvedExecutable;
-        final batContent = '''
+        final batContent =
+            '''
 @echo off
 timeout /t 2 /nobreak > nul
 move /y "$tempFilePath" "$currentExePath"
@@ -183,24 +265,36 @@ del "%~f0"
 ''';
         final batFile = File('${tempDir.path}\\update_stream_app.bat');
         await batFile.writeAsString(batContent);
-        
-        await Process.start(
-          'cmd.exe',
-          ['/c', batFile.path],
-          runInShell: true,
-        );
+
+        await Process.start('cmd.exe', ['/c', batFile.path], runInShell: true);
         exit(0);
       } else {
         // Setup installer execution
-        await Process.start(
-          'cmd.exe',
-          ['/c', 'start', '', tempFilePath],
-          runInShell: true,
-        );
+        await Process.start('cmd.exe', [
+          '/c',
+          'start',
+          '',
+          tempFilePath,
+        ], runInShell: true);
         exit(0);
       }
     } catch (e) {
       onError('Update failed: $e');
     }
+  }
+
+  String _resolveFileName(AppUpdateInfo updateInfo) {
+    final assetName = updateInfo.fileName.trim();
+    if (assetName.isNotEmpty) {
+      return assetName.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_');
+    }
+    final parsed = Uri.tryParse(updateInfo.downloadUrl);
+    final pathName = parsed?.pathSegments.isNotEmpty == true
+        ? parsed!.pathSegments.last
+        : '';
+    if (pathName.isNotEmpty) {
+      return pathName.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_');
+    }
+    return 'stream_app_update';
   }
 }

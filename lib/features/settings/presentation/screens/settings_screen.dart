@@ -50,12 +50,22 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   bool _isDownloadingUpdate = false;
   double _downloadProgress = 0.0;
   String _updateError = '';
+  String _currentVersion = currentAppVersionFallback;
 
   @override
   void initState() {
     super.initState();
     _syncServerUrlController = TextEditingController(text: _syncServerUrl);
     _loadSavedSyncServerUrl();
+    _loadCurrentVersion();
+  }
+
+  Future<void> _loadCurrentVersion() async {
+    final version = await _updaterService.getCurrentVersion();
+    if (!mounted) return;
+    setState(() {
+      _currentVersion = version;
+    });
   }
 
   @override
@@ -242,7 +252,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       final error = syncService.lastRegisterError;
       final failedMessage = error == null || error.isEmpty
           ? text.t('sync_register_failed')
-          : text.t('sync_register_failed_with').replaceAll('{param}', text.t(error));
+          : text
+                .t('sync_register_failed_with')
+                .replaceAll('{param}', text.t(error));
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
@@ -340,7 +352,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       );
     } catch (e) {
       if (!mounted) return;
-      final errorMessage = e is LocalBackupException ? text.t(e.message) : e.toString();
+      final errorMessage = e is LocalBackupException
+          ? text.t(e.message)
+          : e.toString();
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('${text.t('backup_restore_failed')}: $errorMessage'),
@@ -436,7 +450,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   contentPadding: EdgeInsets.zero,
                   leading: const Icon(Icons.check_circle, color: Colors.green),
                   title: Text(text.t('sync_active')),
-                  subtitle: Text('${text.t('last_sync')}: ${status.lastSyncMs == 0 ? text.t('never_synced') : status.lastSyncFormatted}'),
+                  subtitle: Text(
+                    '${text.t('last_sync')}: ${status.lastSyncMs == 0 ? text.t('never_synced') : status.lastSyncFormatted}',
+                  ),
                 ),
                 SizedBox(
                   width: double.infinity,
@@ -456,8 +472,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             );
           },
           loading: () => const Center(child: CircularProgressIndicator()),
-          error: (e, _) =>
-              Text('${text.t('error_prefix')}: $e', style: const TextStyle(color: Colors.red)),
+          error: (e, _) => Text(
+            '${text.t('error_prefix')}: $e',
+            style: const TextStyle(color: Colors.red),
+          ),
         ),
       ],
     );
@@ -540,7 +558,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         } else {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('${text.t('new_update_found')}: ${info.latestVersion}'),
+              content: Text(
+                '${text.t('new_update_found')}: ${info.latestVersion}',
+              ),
               backgroundColor: Colors.blueAccent,
             ),
           );
@@ -611,7 +631,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         ),
         const SizedBox(height: 8),
         Text(
-          '${text.t('current_version')}: $currentAppVersion',
+          '${text.t('current_version')}: $_currentVersion',
           style: const TextStyle(color: Colors.grey, fontSize: 13),
         ),
         const SizedBox(height: 12),
@@ -626,7 +646,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('${text.t('downloading_update')}: %${(_downloadProgress * 100).toStringAsFixed(1)}'),
+              Text(
+                '${text.t('downloading_update')}: %${(_downloadProgress * 100).toStringAsFixed(1)}',
+              ),
               const SizedBox(height: 8),
               LinearProgressIndicator(value: _downloadProgress),
             ],
@@ -644,7 +666,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               children: [
                 Text(
                   '${text.t('new_version')}: ${_updateInfo!.latestVersion}',
-                  style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.greenAccent),
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    color: Colors.greenAccent,
+                  ),
                 ),
                 if (_updateInfo!.releaseNotes.isNotEmpty) ...[
                   const SizedBox(height: 6),
@@ -938,9 +963,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               });
             },
             title: Text(text.t('new_episode_alerts')),
-            subtitle: Text(
-              text.t('new_episode_alerts_desc'),
-            ),
+            subtitle: Text(text.t('new_episode_alerts_desc')),
           ),
           const SizedBox(height: 16),
           ListTile(
@@ -962,7 +985,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   _isApiFieldsVisible = !_isApiFieldsVisible;
                 });
               },
-              child: Text(_isApiFieldsVisible ? text.t('hide') : text.t('edit')),
+              child: Text(
+                _isApiFieldsVisible ? text.t('hide') : text.t('edit'),
+              ),
             ),
           ),
           if (_isApiFieldsVisible) ...[
@@ -988,9 +1013,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       }
                     } catch (e) {
                       if (context.mounted) {
-                        ScaffoldMessenger.of(
-                          context,
-                        ).showSnackBar(SnackBar(content: Text('${text.t('error_prefix')}: $e')));
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text('${text.t('error_prefix')}: $e'),
+                          ),
+                        );
                       }
                     }
                   },

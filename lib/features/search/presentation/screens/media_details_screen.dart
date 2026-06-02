@@ -199,14 +199,58 @@ class _MediaDetailsScreenState extends ConsumerState<MediaDetailsScreen> {
 
   List<Map<String, dynamic>> _prioritizeDirectStreams(
     List<Map<String, dynamic>> streams,
+    bool preferAnimeSources,
   ) {
     final sorted = List<Map<String, dynamic>>.from(streams);
     sorted.sort((a, b) {
       final aDirect = a['is_direct_link'] == true ? 1 : 0;
       final bDirect = b['is_direct_link'] == true ? 1 : 0;
-      return bDirect.compareTo(aDirect);
+      final directCompare = bDirect.compareTo(aDirect);
+      if (directCompare != 0) return directCompare;
+      return _streamProviderScore(
+        a,
+        preferAnimeSources,
+      ).compareTo(_streamProviderScore(b, preferAnimeSources));
     });
     return sorted;
+  }
+
+  int _streamProviderScore(
+    Map<String, dynamic> stream,
+    bool preferAnimeSources,
+  ) {
+    if (!preferAnimeSources) {
+      return 0;
+    }
+    final addonId = stream['addon_id']?.toString().toLowerCase() ?? '';
+    final provider = stream['provider']?.toString().toLowerCase() ?? '';
+    if (addonId.contains('streamimdb') || provider.contains('streamimdb')) {
+      return 0;
+    }
+    if (addonId.contains('vidsrccc') || provider.contains('vidsrc.cc')) {
+      return 1;
+    }
+    if (addonId.contains('vidsrc') || provider.contains('vidsrc')) return 2;
+    if (addonId.contains('videasy') || provider.contains('videasy')) return 3;
+    if (addonId.contains('embedsu') || provider.contains('embedsu')) return 4;
+    return 10;
+  }
+
+  bool _preferAnimeSources() {
+    if (widget.mediaItem.type != 'tv') {
+      return false;
+    }
+    final details = ref
+        .read(
+          mediaDetailsProvider(
+            '${widget.mediaItem.type}:${widget.mediaItem.id}',
+          ),
+        )
+        .maybeWhen(data: (value) => value, orElse: () => null);
+    return details?.genres.any(
+          (genre) => genre.toLowerCase().contains('animation'),
+        ) ??
+        false;
   }
 
   Future<void> _resolveAndPickSource({
@@ -218,6 +262,7 @@ class _MediaDetailsScreenState extends ConsumerState<MediaDetailsScreen> {
     final text = ref.read(appTextProvider);
     final settings = ref.read(appSettingsProvider);
     final addonService = ref.read(addonServiceProvider);
+    final preferAnimeSources = _preferAnimeSources();
 
     var addons = addonService.enabledAddons;
     if (addons.isEmpty) {
@@ -244,7 +289,10 @@ class _MediaDetailsScreenState extends ConsumerState<MediaDetailsScreen> {
           .whereType<Map>()
           .map((entry) => Map<String, dynamic>.from(entry))
           .toList();
-      final prioritizedStreams = _prioritizeDirectStreams(streams);
+      final prioritizedStreams = _prioritizeDirectStreams(
+        streams,
+        preferAnimeSources,
+      );
 
       if (!mounted) return;
 
@@ -364,6 +412,7 @@ class _MediaDetailsScreenState extends ConsumerState<MediaDetailsScreen> {
           nextSeasonNumber: nextTarget?.season,
           nextEpisodeNumber: nextTarget?.episode,
           totalEpisodesInSeason: episodeCount,
+          preferAnimeSources: _preferAnimeSources(),
         ),
       ),
     );
@@ -473,6 +522,7 @@ class _MediaDetailsScreenState extends ConsumerState<MediaDetailsScreen> {
                                 nextSeasonNumber: nextSeasonNumber,
                                 nextEpisodeNumber: nextEpisodeNumber,
                                 totalEpisodesInSeason: totalEpisodesInSeason,
+                                preferAnimeSources: _preferAnimeSources(),
                               ),
                             ),
                           );
@@ -574,19 +624,31 @@ class _MediaDetailsScreenState extends ConsumerState<MediaDetailsScreen> {
                     crossAxisAlignment: WrapCrossAlignment.center,
                     children: [
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
                         decoration: BoxDecoration(
                           color: Colors.amber.withValues(alpha: 0.15),
                           borderRadius: BorderRadius.circular(6),
-                          border: Border.all(color: Colors.amber.withValues(alpha: 0.4), width: 1),
+                          border: Border.all(
+                            color: Colors.amber.withValues(alpha: 0.4),
+                            width: 1,
+                          ),
                         ),
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            const Icon(Icons.star, color: Colors.amber, size: 14),
+                            const Icon(
+                              Icons.star,
+                              color: Colors.amber,
+                              size: 14,
+                            ),
                             const SizedBox(width: 4),
                             Text(
-                              (item.rating ?? mediaDetails?.rating)?.toStringAsFixed(1) ?? 'N/A',
+                              (item.rating ?? mediaDetails?.rating)
+                                      ?.toStringAsFixed(1) ??
+                                  'N/A',
                               style: const TextStyle(
                                 fontSize: 12,
                                 fontWeight: FontWeight.bold,
@@ -597,11 +659,17 @@ class _MediaDetailsScreenState extends ConsumerState<MediaDetailsScreen> {
                         ),
                       ),
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
                         decoration: BoxDecoration(
                           color: Colors.blueAccent.withValues(alpha: 0.15),
                           borderRadius: BorderRadius.circular(6),
-                          border: Border.all(color: Colors.blueAccent.withValues(alpha: 0.4), width: 1),
+                          border: Border.all(
+                            color: Colors.blueAccent.withValues(alpha: 0.4),
+                            width: 1,
+                          ),
                         ),
                         child: Text(
                           text.t(item.type).toUpperCase(),
@@ -612,16 +680,21 @@ class _MediaDetailsScreenState extends ConsumerState<MediaDetailsScreen> {
                           ),
                         ),
                       ),
-                      if (mediaDetails?.releaseDate != null && mediaDetails!.releaseDate!.isNotEmpty)
+                      if (mediaDetails?.releaseDate != null &&
+                          mediaDetails!.releaseDate!.isNotEmpty)
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 4,
+                          ),
                           decoration: BoxDecoration(
                             color: Colors.white10,
                             borderRadius: BorderRadius.circular(6),
                             border: Border.all(color: Colors.white24, width: 1),
                           ),
                           child: Text(
-                            mediaDetails.releaseDate!, // Show full date (day.month.year)
+                            mediaDetails
+                                .releaseDate!, // Show full date (day.month.year)
                             style: const TextStyle(
                               color: Colors.white70,
                               fontSize: 12,
@@ -631,7 +704,10 @@ class _MediaDetailsScreenState extends ConsumerState<MediaDetailsScreen> {
                         ),
                       if (mediaDetails?.runtimeMinutes != null)
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 4,
+                          ),
                           decoration: BoxDecoration(
                             color: Colors.white10,
                             borderRadius: BorderRadius.circular(6),
@@ -649,18 +725,25 @@ class _MediaDetailsScreenState extends ConsumerState<MediaDetailsScreen> {
                     ],
                   ),
                   // Genres Row
-                  if (mediaDetails != null && mediaDetails.genres.isNotEmpty) ...[
+                  if (mediaDetails != null &&
+                      mediaDetails.genres.isNotEmpty) ...[
                     const SizedBox(height: 12),
                     Wrap(
                       spacing: 8,
                       runSpacing: 8,
                       children: mediaDetails.genres.map((genre) {
                         return Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 5,
+                          ),
                           decoration: BoxDecoration(
                             color: Colors.redAccent.withValues(alpha: 0.12),
                             borderRadius: BorderRadius.circular(20),
-                            border: Border.all(color: Colors.redAccent.withValues(alpha: 0.35), width: 1),
+                            border: Border.all(
+                              color: Colors.redAccent.withValues(alpha: 0.35),
+                              width: 1,
+                            ),
                           ),
                           child: Text(
                             genre,
@@ -710,16 +793,22 @@ class _MediaDetailsScreenState extends ConsumerState<MediaDetailsScreen> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-
                           if (item.type == 'movie') ...[
                             if (mediaDetails.directorName != null) ...[
                               Row(
                                 children: [
-                                  const Icon(Icons.movie_creation_outlined, size: 15, color: Colors.grey),
+                                  const Icon(
+                                    Icons.movie_creation_outlined,
+                                    size: 15,
+                                    color: Colors.grey,
+                                  ),
                                   const SizedBox(width: 8),
                                   Text(
                                     '${text.t('director')}: ',
-                                    style: const TextStyle(fontWeight: FontWeight.w600, color: Colors.grey),
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w600,
+                                      color: Colors.grey,
+                                    ),
                                   ),
                                   Text(
                                     mediaDetails.directorName!,
@@ -733,11 +822,18 @@ class _MediaDetailsScreenState extends ConsumerState<MediaDetailsScreen> {
                             if (mediaDetails.creatorName != null) ...[
                               Row(
                                 children: [
-                                  const Icon(Icons.create_outlined, size: 15, color: Colors.grey),
+                                  const Icon(
+                                    Icons.create_outlined,
+                                    size: 15,
+                                    color: Colors.grey,
+                                  ),
                                   const SizedBox(width: 8),
                                   Text(
                                     '${text.t('creator')}: ',
-                                    style: const TextStyle(fontWeight: FontWeight.w600, color: Colors.grey),
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w600,
+                                      color: Colors.grey,
+                                    ),
                                   ),
                                   Text(
                                     mediaDetails.creatorName!,
@@ -755,18 +851,31 @@ class _MediaDetailsScreenState extends ConsumerState<MediaDetailsScreen> {
                               children: [
                                 const Padding(
                                   padding: EdgeInsets.only(top: 2),
-                                  child: Icon(Icons.people_outline, size: 15, color: Colors.grey),
+                                  child: Icon(
+                                    Icons.people_outline,
+                                    size: 15,
+                                    color: Colors.grey,
+                                  ),
                                 ),
                                 const SizedBox(width: 8),
                                 Expanded(
                                   child: RichText(
                                     text: TextSpan(
                                       text: '${text.t('cast')}: ',
-                                      style: const TextStyle(fontWeight: FontWeight.w600, color: Colors.grey, fontSize: 13),
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.w600,
+                                        color: Colors.grey,
+                                        fontSize: 13,
+                                      ),
                                       children: [
                                         TextSpan(
-                                          text: mediaDetails.castNames.join(', '),
-                                          style: const TextStyle(color: Colors.white70, fontWeight: FontWeight.normal),
+                                          text: mediaDetails.castNames.join(
+                                            ', ',
+                                          ),
+                                          style: const TextStyle(
+                                            color: Colors.white70,
+                                            fontWeight: FontWeight.normal,
+                                          ),
                                         ),
                                       ],
                                     ),
@@ -789,9 +898,14 @@ class _MediaDetailsScreenState extends ConsumerState<MediaDetailsScreen> {
                             Wrap(
                               spacing: 6,
                               runSpacing: 6,
-                              children: mediaDetails.productionCompanies.map((company) {
+                              children: mediaDetails.productionCompanies.map((
+                                company,
+                              ) {
                                 return Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 8,
+                                    vertical: 4,
+                                  ),
                                   decoration: BoxDecoration(
                                     color: Colors.white.withValues(alpha: 0.04),
                                     borderRadius: BorderRadius.circular(6),
@@ -800,11 +914,18 @@ class _MediaDetailsScreenState extends ConsumerState<MediaDetailsScreen> {
                                   child: Row(
                                     mainAxisSize: MainAxisSize.min,
                                     children: [
-                                      const Icon(Icons.business_center_outlined, size: 11, color: Colors.grey),
+                                      const Icon(
+                                        Icons.business_center_outlined,
+                                        size: 11,
+                                        color: Colors.grey,
+                                      ),
                                       const SizedBox(width: 4),
                                       Text(
                                         company,
-                                        style: const TextStyle(fontSize: 11, color: Colors.white70),
+                                        style: const TextStyle(
+                                          fontSize: 11,
+                                          color: Colors.white70,
+                                        ),
                                       ),
                                     ],
                                   ),
@@ -928,7 +1049,10 @@ class _MediaDetailsScreenState extends ConsumerState<MediaDetailsScreen> {
                           ),
                           style: OutlinedButton.styleFrom(
                             side: isWatched
-                                ? const BorderSide(color: Color(0xFF00E054), width: 1.5)
+                                ? const BorderSide(
+                                    color: Color(0xFF00E054),
+                                    width: 1.5,
+                                  )
                                 : null,
                           ),
                         ),

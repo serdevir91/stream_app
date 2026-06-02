@@ -42,6 +42,7 @@ class PlayerScreen extends ConsumerStatefulWidget {
   final int? nextEpisodeNumber;
   final String? nextEpisodeTitle;
   final int? totalEpisodesInSeason;
+  final bool preferAnimeSources;
 
   const PlayerScreen({
     super.key,
@@ -62,6 +63,7 @@ class PlayerScreen extends ConsumerStatefulWidget {
     this.nextEpisodeNumber,
     this.nextEpisodeTitle,
     this.totalEpisodesInSeason,
+    this.preferAnimeSources = false,
   });
 
   @override
@@ -706,7 +708,9 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
         return;
       }
 
-      final currentTimeSec = double.tryParse(data['currentTime']?.toString() ?? '');
+      final currentTimeSec = double.tryParse(
+        data['currentTime']?.toString() ?? '',
+      );
       final durationSec = double.tryParse(data['duration']?.toString() ?? '');
       final paused = data['paused'] == true;
 
@@ -1698,7 +1702,15 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
 
     // On mobile prefer direct links to avoid embed ad redirects.
     if (defaultTargetPlatform != TargetPlatform.windows) {
-      for (final stream in streams) {
+      final sorted = List<Map<String, dynamic>>.from(streams)
+        ..sort((a, b) {
+          final directCompare = (b['is_direct_link'] == true ? 1 : 0).compareTo(
+            a['is_direct_link'] == true ? 1 : 0,
+          );
+          if (directCompare != 0) return directCompare;
+          return _streamProviderScore(a).compareTo(_streamProviderScore(b));
+        });
+      for (final stream in sorted) {
         if (stream['is_direct_link'] == true &&
             (stream['url']?.toString().isNotEmpty ?? false)) {
           return stream;
@@ -1710,6 +1722,24 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
       (stream) => stream['url']?.toString().isNotEmpty ?? false,
       orElse: () => streams.first,
     );
+  }
+
+  int _streamProviderScore(Map<String, dynamic> stream) {
+    if (!widget.preferAnimeSources) {
+      return 0;
+    }
+    final addonId = stream['addon_id']?.toString().toLowerCase() ?? '';
+    final provider = stream['provider']?.toString().toLowerCase() ?? '';
+    if (addonId.contains('streamimdb') || provider.contains('streamimdb')) {
+      return 0;
+    }
+    if (addonId.contains('vidsrccc') || provider.contains('vidsrc.cc')) {
+      return 1;
+    }
+    if (addonId.contains('vidsrc') || provider.contains('vidsrc')) return 2;
+    if (addonId.contains('videasy') || provider.contains('videasy')) return 3;
+    if (addonId.contains('embedsu') || provider.contains('embedsu')) return 4;
+    return 10;
   }
 
   void _startProgressAutosave() {
@@ -1854,6 +1884,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
         season: widget.season,
         episode: widget.episode,
         addonId: widget.sourceId,
+        preferAnimeSources: widget.preferAnimeSources,
       );
 
       final streams = (data['streams'] as List<dynamic>? ?? <dynamic>[])
@@ -2037,7 +2068,8 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
 
       if (position.inMilliseconds > 0 && duration.inMilliseconds > 0) {
         final isWatched =
-            position.inMilliseconds >= duration.inMilliseconds * completionThreshold;
+            position.inMilliseconds >=
+            duration.inMilliseconds * completionThreshold;
 
         await repo.saveProgress(
           WatchHistory(
@@ -2223,8 +2255,10 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     final text = ref.watch(appTextProvider);
     final String? errorMessage = _errorMessageKey != null
         ? (_errorMessageParam != null
-            ? text.t(_errorMessageKey!).replaceAll('{param}', _errorMessageParam!)
-            : text.t(_errorMessageKey!))
+              ? text
+                    .t(_errorMessageKey!)
+                    .replaceAll('{param}', _errorMessageParam!)
+              : text.t(_errorMessageKey!))
         : null;
 
     final content = _isLoading
@@ -2579,6 +2613,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
           backdropUrl: widget.backdropUrl,
           subtitleLanguage: widget.subtitleLanguage,
           runtimeMinutes: widget.runtimeMinutes,
+          preferAnimeSources: widget.preferAnimeSources,
         ),
       ),
     );
