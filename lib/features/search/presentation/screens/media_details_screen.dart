@@ -1103,7 +1103,7 @@ class _MediaDetailsScreenState extends ConsumerState<MediaDetailsScreen> {
                     const Divider(color: Colors.white10, height: 32),
                     Text(
                       mediaDetails.isCollection
-                          ? (text.languageCode == 'tr' ? 'Devam Filmleri & Spin-off\'lar' : 'Sequels & Spin-offs')
+                          ? (text.languageCode == 'tr' ? 'Devam Yapımları & Benzer Öneriler' : 'Sequels & Similar Recommendations')
                           : (text.languageCode == 'tr' ? 'Benzer Yapımlar' : 'Similar Recommendations'),
                       style: const TextStyle(
                         fontSize: 20,

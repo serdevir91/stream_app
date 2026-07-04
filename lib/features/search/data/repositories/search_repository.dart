@@ -266,25 +266,26 @@ class SearchRepository {
             }
           }
 
-          if (relatedItems.isEmpty) {
-            try {
-              final recResponse = await _dio.get(
-                'https://api.themoviedb.org/3/movie/$mediaId/recommendations',
-                queryParameters: {'language': _tmdbLanguage, 'page': 1},
-                options: _tmdbOptions,
-              );
-              if (recResponse.statusCode == 200 && recResponse.data is Map) {
-                final results = recResponse.data['results'];
-                if (results is List) {
-                  relatedItems = results
-                      .whereType<Map>()
-                      .map((json) => MediaItem.fromTmdbJson({...json, 'media_type': 'movie'}))
-                      .toList();
-                }
+          try {
+            final recResponse = await _dio.get(
+              'https://api.themoviedb.org/3/movie/$mediaId/recommendations',
+              queryParameters: {'language': _tmdbLanguage, 'page': 1},
+              options: _tmdbOptions,
+            );
+            if (recResponse.statusCode == 200 && recResponse.data is Map) {
+              final results = recResponse.data['results'];
+              if (results is List) {
+                final existingIds = relatedItems.map((item) => item.id).toSet();
+                final recItems = results
+                    .whereType<Map>()
+                    .map((json) => MediaItem.fromTmdbJson({...json, 'media_type': 'movie'}))
+                    .where((item) => !existingIds.contains(item.id) && item.id != mediaId)
+                    .toList();
+                relatedItems.addAll(recItems);
               }
-            } catch (e) {
-              developer.log('Recommendations fetch failed: $e', name: 'SearchRepository');
             }
+          } catch (e) {
+            developer.log('Recommendations fetch failed: $e', name: 'SearchRepository');
           }
         } else {
           try {
