@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:file_picker/file_picker.dart';
-import 'package:url_launcher/url_launcher.dart';
+import '../../../../core/settings/tmdb_instructions_dialog.dart';
 
 import '../../../../core/updater/app_updater_service.dart';
 
@@ -1000,28 +1000,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   style: const TextStyle(fontWeight: FontWeight.w600),
                 ),
                 TextButton.icon(
-                  onPressed: () async {
-                    final Uri url = Uri.parse(
-                      'https://www.themoviedb.org/settings/api',
-                    );
-                    try {
-                      if (!await launchUrl(
-                        url,
-                        mode: LaunchMode.externalApplication,
-                      )) {
-                        throw Exception('Could not launch $url');
-                      }
-                    } catch (e) {
-                      if (context.mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text('${text.t('error_prefix')}: $e'),
-                          ),
-                        );
-                      }
-                    }
+                  onPressed: () {
+                    showTmdbTokenInstructions(context, text);
                   },
-                  icon: const Icon(Icons.open_in_new, size: 14),
+                  icon: const Icon(Icons.help_outline, size: 14),
                   label: Text(
                     text.t('get_tmdb_token'),
                     style: const TextStyle(fontSize: 12),

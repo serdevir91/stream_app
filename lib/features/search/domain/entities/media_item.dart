@@ -91,6 +91,8 @@ class MediaDetailsInfo {
   final String? releaseDate;
   final List<String> genres;
   final List<String> productionCompanies;
+  final List<MediaItem> relatedItems;
+  final bool isCollection;
 
   const MediaDetailsInfo({
     required this.mediaType,
@@ -103,11 +105,43 @@ class MediaDetailsInfo {
     this.releaseDate,
     this.genres = const [],
     this.productionCompanies = const [],
+    this.relatedItems = const [],
+    this.isCollection = false,
   });
 
   bool get isMovie => mediaType == 'movie';
 
   String? get leadName => isMovie ? directorName : creatorName;
+
+  MediaDetailsInfo copyWith({
+    String? mediaType,
+    int? runtimeMinutes,
+    List<String>? castNames,
+    String? directorName,
+    String? creatorName,
+    String? description,
+    double? rating,
+    String? releaseDate,
+    List<String>? genres,
+    List<String>? productionCompanies,
+    List<MediaItem>? relatedItems,
+    bool? isCollection,
+  }) {
+    return MediaDetailsInfo(
+      mediaType: mediaType ?? this.mediaType,
+      runtimeMinutes: runtimeMinutes ?? this.runtimeMinutes,
+      castNames: castNames ?? this.castNames,
+      directorName: directorName ?? this.directorName,
+      creatorName: creatorName ?? this.creatorName,
+      description: description ?? this.description,
+      rating: rating ?? this.rating,
+      releaseDate: releaseDate ?? this.releaseDate,
+      genres: genres ?? this.genres,
+      productionCompanies: productionCompanies ?? this.productionCompanies,
+      relatedItems: relatedItems ?? this.relatedItems,
+      isCollection: isCollection ?? this.isCollection,
+    );
+  }
 }
 
 class LatestEpisodeInfo {

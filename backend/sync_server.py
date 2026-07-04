@@ -213,6 +213,8 @@ def push_changes(req: PushRequest, authorization: Optional[str] = Header(None)):
     authed_device_id, _ = verify_token(authorization)
     if authed_device_id != req.device_id:
         raise HTTPException(status_code=403, detail="Device id mismatch")
+    
+    now_ms = int(time.time() * 1000)
     conn = get_db()
     try:
         for item in req.watch_history:
@@ -229,7 +231,7 @@ def push_changes(req: PushRequest, authorization: Optional[str] = Header(None)):
                 item.get("source_id"),
                 item.get("last_position", 0), item.get("duration", 0),
                 1 if item.get("is_watched") else 0,
-                item.get("updated_at_ms", 0),
+                now_ms,
             ))
 
         for item in req.library:
@@ -242,7 +244,7 @@ def push_changes(req: PushRequest, authorization: Optional[str] = Header(None)):
                 item.get("media_type"), item.get("poster_url"),
                 item.get("backdrop_url"), item.get("description"),
                 item.get("rating"),
-                item.get("updated_at_ms", 0),
+                now_ms,
             ))
 
         for item in req.watched:
@@ -255,7 +257,7 @@ def push_changes(req: PushRequest, authorization: Optional[str] = Header(None)):
                 item.get("media_type"), item.get("poster_url"),
                 item.get("backdrop_url"), item.get("description"),
                 item.get("rating"),
-                item.get("updated_at_ms", 0),
+                now_ms,
             ))
 
         if req.settings:
@@ -266,7 +268,7 @@ def push_changes(req: PushRequest, authorization: Optional[str] = Header(None)):
             """, (
                 req.device_id,
                 json.dumps(req.settings.get("settings", {})),
-                req.settings.get("updated_at_ms", 0),
+                now_ms,
             ))
 
         for item in req.sources:
@@ -277,7 +279,7 @@ def push_changes(req: PushRequest, authorization: Optional[str] = Header(None)):
             """, (
                 item.get("id"), req.device_id,
                 json.dumps(item),
-                item.get("updated_at_ms", 0),
+                now_ms,
             ))
 
         if req.addon_config:
@@ -288,10 +290,9 @@ def push_changes(req: PushRequest, authorization: Optional[str] = Header(None)):
             """, (
                 req.device_id,
                 json.dumps(req.addon_config.get("config", {})),
-                req.addon_config.get("updated_at_ms", 0),
+                now_ms,
             ))
 
-        now_ms = int(time.time() * 1000)
         for item_id in req.deleted_ids:
             conn.execute("""
                 INSERT OR REPLACE INTO deleted_items (item_id, device_id, deleted_at_ms)
@@ -301,7 +302,7 @@ def push_changes(req: PushRequest, authorization: Optional[str] = Header(None)):
         conn.commit()
     finally:
         conn.close()
-    return {"status": "ok"}
+    return {"status": "ok", "server_time_ms": now_ms}
 
 
 @app.get("/api/sync/pull")
@@ -445,6 +446,7 @@ def pull_changes(device_id: str, since_ms: int = 0, authorization: Optional[str]
         "sources": sources,
         "addon_config": addon_config,
         "deleted_ids": deleted_ids,
+        "server_time_ms": int(time.time() * 1000)
     }
 
 

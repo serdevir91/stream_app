@@ -3,6 +3,7 @@ import '../../../search/domain/entities/media_item.dart';
 import '../../../search/presentation/providers/search_provider.dart';
 import '../../../search/data/repositories/search_repository.dart';
 import '../../../player/presentation/providers/player_provider.dart';
+import '../../../library/presentation/providers/watched_provider.dart';
 
 final trendingMoviesProvider = FutureProvider<List<MediaItem>>((ref) async {
   final repo = ref.watch(searchRepositoryProvider);
@@ -73,10 +74,13 @@ final movies1980sProvider = FutureProvider<List<MediaItem>>((ref) async {
 
 final recommendedForYouProvider = FutureProvider<List<MediaItem>>((ref) async {
   ref.watch(watchHistoryChangesProvider);
+  ref.watch(watchedChangesProvider);
 
   final repo = ref.watch(searchRepositoryProvider);
   final history = ref.read(watchHistoryRepositoryProvider).getAllHistory();
-  if (history.isEmpty) {
+  final manuallyWatched = ref.watch(watchedProvider);
+
+  if (history.isEmpty && manuallyWatched.isEmpty) {
     return [];
   }
 
@@ -84,10 +88,16 @@ final recommendedForYouProvider = FutureProvider<List<MediaItem>>((ref) async {
   final watchedIds = <String>{};
   for (final item in history) {
     watchedIds.add(item.mediaId);
-    if (seed.length >= 3) {
-      continue;
+    if (seed.length < 3) {
+      seed.add('${item.mediaType}:${item.mediaId}');
     }
-    seed.add('${item.mediaType}:${item.mediaId}');
+  }
+
+  for (final item in manuallyWatched) {
+    watchedIds.add(item.id);
+    if (seed.length < 3) {
+      seed.add('${item.type}:${item.id}');
+    }
   }
 
   final merged = <MediaItem>[];

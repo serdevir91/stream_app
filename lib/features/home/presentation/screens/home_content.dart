@@ -15,7 +15,7 @@ import '../../../search/domain/entities/media_item.dart';
 import '../../../search/presentation/screens/media_details_screen.dart';
 import 'category_media_screen.dart';
 import '../providers/home_provider.dart';
-import 'package:url_launcher/url_launcher.dart';
+import '../../../../core/settings/tmdb_instructions_dialog.dart';
 
 class HomeContent extends ConsumerStatefulWidget {
   const HomeContent({super.key});
@@ -286,13 +286,8 @@ class _HomeContentState extends ConsumerState<HomeContent> {
             mainAxisAlignment: MainAxisAlignment.end,
             children: [
               TextButton.icon(
-                onPressed: () async {
-                  final Uri url = Uri.parse('https://www.themoviedb.org/settings/api');
-                  try {
-                    await launchUrl(url, mode: LaunchMode.externalApplication);
-                  } catch (_) {}
-                },
-                icon: const Icon(Icons.open_in_new, size: 14, color: Colors.orangeAccent),
+                onPressed: () => showTmdbTokenInstructions(context, text),
+                icon: const Icon(Icons.help_outline, size: 14, color: Colors.orangeAccent),
                 label: Text(
                   text.t('get_tmdb_token'),
                   style: const TextStyle(color: Colors.orangeAccent, fontSize: 13),
@@ -383,7 +378,7 @@ class _HomeContentState extends ConsumerState<HomeContent> {
     final settings = ref.watch(appSettingsProvider);
 
     final featuredWeekly = ref.watch(featuredWeeklyProvider);
-    final continueItems = ref.watch(continueWatchingProvider);
+    final continueItemsAsync = ref.watch(continueWatchingProvider);
     final libraryItems = ref.watch(sortedLibraryProvider);
 
     return Scaffold(
@@ -413,14 +408,24 @@ class _HomeContentState extends ConsumerState<HomeContent> {
               subtitleLanguage: settings.subtitleLanguage,
             ),
 
-            if (continueItems.isNotEmpty) ...[
-              _buildSectionTitle(text.t('continue_watching')),
-              _buildContinueWatchingList(
-                context,
-                continueItems,
-                subtitleLanguage: settings.subtitleLanguage,
-              ),
-            ],
+            continueItemsAsync.when(
+              data: (continueItems) {
+                if (continueItems.isEmpty) return const SizedBox.shrink();
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _buildSectionTitle(text.t('continue_watching')),
+                    _buildContinueWatchingList(
+                      context,
+                      continueItems,
+                      subtitleLanguage: settings.subtitleLanguage,
+                    ),
+                  ],
+                );
+              },
+              loading: () => const SizedBox.shrink(),
+              error: (_, __) => const SizedBox.shrink(),
+            ),
             if (libraryItems.isNotEmpty) ...[
               _buildSectionTitle(text.t('my_list')),
               _buildLibraryQuickList(context, libraryItems),

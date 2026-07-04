@@ -234,6 +234,79 @@ class SearchRepository {
             .where((name) => name.isNotEmpty)
             .toList() ?? const <String>[];
 
+        List<MediaItem> relatedItems = [];
+        bool isCollection = false;
+
+        if (type == 'movie') {
+          final belongsToCollection = data['belongs_to_collection'];
+          if (belongsToCollection is Map) {
+            final collectionId = belongsToCollection['id'];
+            if (collectionId != null) {
+              try {
+                final collResponse = await _dio.get(
+                  'https://api.themoviedb.org/3/collection/$collectionId',
+                  queryParameters: {'language': _tmdbLanguage},
+                  options: _tmdbOptions,
+                );
+                if (collResponse.statusCode == 200 && collResponse.data is Map) {
+                  final collData = collResponse.data;
+                  final parts = collData['parts'];
+                  if (parts is List) {
+                    relatedItems = parts
+                        .whereType<Map>()
+                        .map((json) => MediaItem.fromTmdbJson({...json, 'media_type': 'movie'}))
+                        .where((item) => item.id != mediaId)
+                        .toList();
+                    isCollection = true;
+                  }
+                }
+              } catch (e) {
+                developer.log('Collection fetch failed: $e', name: 'SearchRepository');
+              }
+            }
+          }
+
+          if (relatedItems.isEmpty) {
+            try {
+              final recResponse = await _dio.get(
+                'https://api.themoviedb.org/3/movie/$mediaId/recommendations',
+                queryParameters: {'language': _tmdbLanguage, 'page': 1},
+                options: _tmdbOptions,
+              );
+              if (recResponse.statusCode == 200 && recResponse.data is Map) {
+                final results = recResponse.data['results'];
+                if (results is List) {
+                  relatedItems = results
+                      .whereType<Map>()
+                      .map((json) => MediaItem.fromTmdbJson({...json, 'media_type': 'movie'}))
+                      .toList();
+                }
+              }
+            } catch (e) {
+              developer.log('Recommendations fetch failed: $e', name: 'SearchRepository');
+            }
+          }
+        } else {
+          try {
+            final recResponse = await _dio.get(
+              'https://api.themoviedb.org/3/tv/$mediaId/recommendations',
+              queryParameters: {'language': _tmdbLanguage, 'page': 1},
+              options: _tmdbOptions,
+            );
+            if (recResponse.statusCode == 200 && recResponse.data is Map) {
+              final results = recResponse.data['results'];
+              if (results is List) {
+                relatedItems = results
+                    .whereType<Map>()
+                    .map((json) => MediaItem.fromTmdbJson({...json, 'media_type': 'tv'}))
+                    .toList();
+              }
+            }
+          } catch (e) {
+            developer.log('TV Recommendations fetch failed: $e', name: 'SearchRepository');
+          }
+        }
+
         return MediaDetailsInfo(
           mediaType: type,
           runtimeMinutes: _extractRuntimeMinutes(data, type),
@@ -252,6 +325,8 @@ class SearchRepository {
           releaseDate: _formatDate(data['release_date'] ?? data['first_air_date']),
           genres: genres,
           productionCompanies: productionCompanies,
+          relatedItems: relatedItems,
+          isCollection: isCollection,
         );
       }
     } catch (e) {

@@ -146,11 +146,15 @@ class SyncService {
       await _pushLocalChanges(deviceId, lastSyncMs);
 
       // Pull remote changes.
-      await _pullRemoteChanges(deviceId, lastSyncMs);
+      final serverTime = await _pullRemoteChanges(deviceId, lastSyncMs);
 
       await _updateSnapshots();
 
-      await _setLastSyncMs(DateTime.now().millisecondsSinceEpoch);
+      if (serverTime != null) {
+        await _setLastSyncMs(serverTime);
+      } else {
+        await _setLastSyncMs(DateTime.now().millisecondsSinceEpoch);
+      }
       debugPrint('Sync completed successfully');
     } catch (e) {
       debugPrint('Sync failed: $e');
@@ -274,7 +278,7 @@ class SyncService {
     await _updateSnapshots();
   }
 
-  Future<void> _pullRemoteChanges(String deviceId, int sinceMs) async {
+  Future<int?> _pullRemoteChanges(String deviceId, int sinceMs) async {
     final result = await _repo!.pullChanges(
       deviceId: deviceId,
       sinceMs: sinceMs,
@@ -471,6 +475,8 @@ class SyncService {
         }
       }
     }
+    final serverTime = result['server_time_ms'];
+    return serverTime is int ? serverTime : null;
   }
 
   Future<int> _getLastSyncMs() async {

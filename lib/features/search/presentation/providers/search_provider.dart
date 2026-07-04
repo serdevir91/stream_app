@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/settings/app_settings_provider.dart';
 import '../../domain/entities/media_item.dart';
 import '../../data/repositories/search_repository.dart';
+import '../../../player/presentation/providers/player_provider.dart';
+import '../../../library/presentation/providers/watched_provider.dart';
 
 final dioProvider = Provider<Dio>((ref) {
   return Dio();
@@ -31,7 +33,29 @@ final mediaDetailsProvider = FutureProvider.family<MediaDetailsInfo?, String>((
 
   final mediaType = parts.first;
   final mediaId = parts.sublist(1).join(':');
-  return repo.getMediaDetails(mediaId, mediaType);
+  final details = await repo.getMediaDetails(mediaId, mediaType);
+  if (details == null) return null;
+
+  // Reactively rebuild when watched lists change
+  ref.watch(watchHistoryChangesProvider);
+  ref.watch(watchedChangesProvider);
+
+  final history = ref.read(watchHistoryRepositoryProvider).getAllHistory();
+  final manuallyWatched = ref.read(watchedRepositoryProvider).getItems();
+
+  final watchedIds = <String>{};
+  for (final h in history) {
+    watchedIds.add(h.mediaId);
+  }
+  for (final m in manuallyWatched) {
+    watchedIds.add(m.id);
+  }
+
+  final filteredRelated = details.relatedItems
+      .where((item) => !watchedIds.contains(item.id))
+      .toList();
+
+  return details.copyWith(relatedItems: filteredRelated);
 });
 
 class SearchQueryNotifier extends Notifier<String> {
@@ -96,29 +120,45 @@ final mixedRecommendationsProvider = FutureProvider<List<MediaItem>>((
   final repo = ref.watch(searchRepositoryProvider);
   final token = ref.watch(appSettingsProvider).tmdbAccessToken.trim();
 
+  // Watch history and manually watched changes to reactively update recommendations
+  ref.watch(watchHistoryChangesProvider);
+  ref.watch(watchedChangesProvider);
+
+  final history = ref.read(watchHistoryRepositoryProvider).getAllHistory();
+  final manuallyWatched = ref.read(watchedRepositoryProvider).getItems();
+
+  final watchedIds = <String>{};
+  for (final h in history) {
+    watchedIds.add(h.mediaId);
+  }
+  for (final m in manuallyWatched) {
+    watchedIds.add(m.id);
+  }
+
   final mixed = <MediaItem>[];
   if (token.isEmpty) {
     final localMovies = await repo.getLatestVidSrcMovies(page: 1);
     final localSeries = await repo.getLatestVidSrcSeries(page: 1);
     mixed.addAll(_alternateMerge(localMovies, localSeries));
-    return _dedupeAndLimit(mixed, 40);
+  } else {
+    final responses = await Future.wait([
+      repo.getTrendingMovies(),
+      repo.getTrendingSeries(),
+      repo.getLatestVidSrcMovies(page: 1),
+      repo.getLatestVidSrcSeries(page: 1),
+    ]);
+
+    final trendingMovies = responses[0];
+    final trendingSeries = responses[1];
+    final latestMovies = responses[2];
+    final latestSeries = responses[3];
+
+    mixed.addAll(_alternateMerge(trendingMovies, trendingSeries));
+    mixed.addAll(_alternateMerge(latestMovies, latestSeries));
   }
 
-  final responses = await Future.wait([
-    repo.getTrendingMovies(),
-    repo.getTrendingSeries(),
-    repo.getLatestVidSrcMovies(page: 1),
-    repo.getLatestVidSrcSeries(page: 1),
-  ]);
-
-  final trendingMovies = responses[0];
-  final trendingSeries = responses[1];
-  final latestMovies = responses[2];
-  final latestSeries = responses[3];
-
-  mixed.addAll(_alternateMerge(trendingMovies, trendingSeries));
-  mixed.addAll(_alternateMerge(latestMovies, latestSeries));
-  return _dedupeAndLimit(mixed, 40);
+  final filtered = mixed.where((item) => !watchedIds.contains(item.id)).toList();
+  return _dedupeAndLimit(filtered, 40);
 });
 
 List<MediaItem> _alternateMerge(

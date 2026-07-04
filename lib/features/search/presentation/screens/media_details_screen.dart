@@ -564,8 +564,9 @@ class _MediaDetailsScreenState extends ConsumerState<MediaDetailsScreen> {
     final tvEpisodeHistory = item.type == 'tv'
         ? _tvEpisodeProgressByKey(mediaHistoryEntries)
         : const <String, WatchHistory>{};
+    final continueWatchingAsync = ref.watch(continueWatchingProvider);
     final continueItem = item.type == 'tv'
-        ? _continueItemForMedia(ref.watch(continueWatchingProvider))
+        ? _continueItemForMedia(continueWatchingAsync.value ?? const [])
         : null;
     final inLibrary = ref.watch(
       libraryProvider.select(
@@ -1098,6 +1099,108 @@ class _MediaDetailsScreenState extends ConsumerState<MediaDetailsScreen> {
                       tvEpisodeHistory: tvEpisodeHistory,
                       runtimeMinutes: mediaDetails?.runtimeMinutes,
                     ),
+                  if (mediaDetails != null && mediaDetails.relatedItems.isNotEmpty) ...[
+                    const Divider(color: Colors.white10, height: 32),
+                    Text(
+                      mediaDetails.isCollection
+                          ? (text.languageCode == 'tr' ? 'Devam Filmleri & Spin-off\'lar' : 'Sequels & Spin-offs')
+                          : (text.languageCode == 'tr' ? 'Benzer Yapımlar' : 'Similar Recommendations'),
+                      style: const TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      height: 220,
+                      child: ListView.builder(
+                        scrollDirection: Axis.horizontal,
+                        itemCount: mediaDetails.relatedItems.length,
+                        itemBuilder: (context, index) {
+                          final item = mediaDetails.relatedItems[index];
+                          return GestureDetector(
+                            onTap: () {
+                              Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (_) => MediaDetailsScreen(mediaItem: item),
+                                ),
+                              );
+                            },
+                            child: SizedBox(
+                              width: 140,
+                              child: Container(
+                                margin: const EdgeInsets.only(right: 12),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Expanded(
+                                      child: ClipRRect(
+                                        borderRadius: BorderRadius.circular(8),
+                                        child: Stack(
+                                          fit: StackFit.expand,
+                                          children: [
+                                            item.posterUrl != null
+                                                ? Image.network(
+                                                    item.posterUrl!,
+                                                    fit: BoxFit.cover,
+                                                    width: double.infinity,
+                                                    errorBuilder: (context, error, stackTrace) =>
+                                                        const ColoredBox(color: Colors.grey),
+                                                  )
+                                                : const ColoredBox(
+                                                    color: Colors.grey,
+                                                    child: Center(child: Icon(Icons.movie)),
+                                                  ),
+                                            if (item.rating != null && item.rating! > 0)
+                                              Positioned(
+                                                bottom: 6,
+                                                left: 6,
+                                                child: Container(
+                                                  padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2.5),
+                                                  decoration: BoxDecoration(
+                                                    color: Colors.black.withValues(alpha: 0.65),
+                                                    borderRadius: BorderRadius.circular(4),
+                                                  ),
+                                                  child: Row(
+                                                    mainAxisSize: MainAxisSize.min,
+                                                    children: [
+                                                      const Icon(Icons.star, color: Colors.amber, size: 10),
+                                                      const SizedBox(width: 2),
+                                                      Text(
+                                                        item.rating!.toStringAsFixed(1),
+                                                        style: const TextStyle(
+                                                          fontSize: 9,
+                                                          color: Colors.white,
+                                                          fontWeight: FontWeight.bold,
+                                                        ),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                ),
+                                              ),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(height: 6),
+                                    Text(
+                                      item.title,
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),

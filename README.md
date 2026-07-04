@@ -44,9 +44,9 @@ watch history, a personal library, and runtime app settings.
 
 | Architecture | File | Size |
 |-------------|------|------|
-| ARM64 (most devices) | [app-arm64-v8a-release.apk](https://github.com/serdevir91/stream_app/releases/download/v1.0.9/app-arm64-v8a-release.apk) | ~32.7 MB |
-| ARM 32-bit (older devices) | [app-armeabi-v7a-release.apk](https://github.com/serdevir91/stream_app/releases/download/v1.0.9/app-armeabi-v7a-release.apk) | ~29.9 MB |
-| x86_64 (emulators) | [app-x86_64-release.apk](https://github.com/serdevir91/stream_app/releases/download/v1.0.9/app-x86_64-release.apk) | ~37.4 MB |
+| ARM64 (most devices) | [app-arm64-v8a-release.apk](https://github.com/serdevir91/stream_app/releases/download/v1.0.10/app-arm64-v8a-release.apk) | ~32.7 MB |
+| ARM 32-bit (older devices) | [app-armeabi-v7a-release.apk](https://github.com/serdevir91/stream_app/releases/download/v1.0.10/app-armeabi-v7a-release.apk) | ~29.9 MB |
+| x86_64 (emulators) | [app-x86_64-release.apk](https://github.com/serdevir91/stream_app/releases/download/v1.0.10/app-x86_64-release.apk) | ~37.4 MB |
 
 > Most modern phones use ARM64. If unsure, download the ARM64 version.
 
@@ -54,8 +54,8 @@ watch history, a personal library, and runtime app settings.
 
 | Type | File | Size |
 |------|------|------|
-| Installer (recommended) | [StreamApp-Setup-v1.0.9.exe](https://github.com/serdevir91/stream_app/releases/download/v1.0.9/StreamApp-Setup-v1.0.9.exe) | ~25.1 MB |
-| Portable | [stream_app-windows-x64.zip](https://github.com/serdevir91/stream_app/releases/download/v1.0.9/stream_app-windows-x64.zip) | ~32.5 MB |
+| Installer (recommended) | [StreamApp-Setup-v1.0.10.exe](https://github.com/serdevir91/stream_app/releases/download/v1.0.10/StreamApp-Setup-v1.0.10.exe) | ~25.1 MB |
+| Portable | [stream_app-windows-x64.zip](https://github.com/serdevir91/stream_app/releases/download/v1.0.10/stream_app-windows-x64.zip) | ~32.5 MB |
 
 **Installer**: Run the `.exe` wizard. Creates Start Menu shortcuts and an uninstaller.
 
@@ -231,7 +231,7 @@ flutter build windows --release
 "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer\stream_app.iss
 ```
 
-Output: `output/StreamApp-Setup-v1.0.9.exe`
+Output: `output/StreamApp-Setup-v1.0.10.exe`
 
 ### Android APK
 
@@ -352,6 +352,15 @@ Your backend must expose:
   - `Install from file (.json)` and choose local manifest file.
 
 ## Changelog
+
+### v1.0.10
+
+- **Exclude Watched Content from Recommendations**: Both homepage recommendations and movie detail recommendations now fully exclude titles that are marked as watched or have completed progress in watch history.
+- **TMDB Token Step-by-Step Instructions**: Created an interactive step-by-step guideline dialog accessible directly from the token warning banner on the Home and Search pages, making TMDB API setup significantly easier.
+- **TV Series Continuation Guard**: Converted "Continue Watching" provider to verify TV episode release/air dates before showing them, hiding series from the list if the next episode (or next season's first episode) has not aired yet.
+- **Sequels & Similar Recommendations**: Added a section to the movie detail page showing sequels/prequels/spin-offs (from TMDB collection) or similar genre recommendations as a fallback.
+- **Clock-Drift Synchronization Fix**: Revamped client-server syncing (`sync_server.py` & `sync_service.dart`) to use server-side timestamps rather than client clocks, preventing update loss and guaranteeing reliable syncing.
+- **Builds**: Generated split-per-ABI Android APKs, Windows Release build, installer executable, and refreshed portable ZIP for the `v1.0.10` release.
 
 ### v1.0.9
 
