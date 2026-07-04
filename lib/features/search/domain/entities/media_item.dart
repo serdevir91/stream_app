@@ -92,6 +92,7 @@ class MediaDetailsInfo {
   final List<String> genres;
   final List<String> productionCompanies;
   final List<MediaItem> relatedItems;
+  final List<MediaItem> recommendations;
   final bool isCollection;
 
   const MediaDetailsInfo({
@@ -106,6 +107,7 @@ class MediaDetailsInfo {
     this.genres = const [],
     this.productionCompanies = const [],
     this.relatedItems = const [],
+    this.recommendations = const [],
     this.isCollection = false,
   });
 
@@ -125,6 +127,7 @@ class MediaDetailsInfo {
     List<String>? genres,
     List<String>? productionCompanies,
     List<MediaItem>? relatedItems,
+    List<MediaItem>? recommendations,
     bool? isCollection,
   }) {
     return MediaDetailsInfo(
@@ -139,6 +142,7 @@ class MediaDetailsInfo {
       genres: genres ?? this.genres,
       productionCompanies: productionCompanies ?? this.productionCompanies,
       relatedItems: relatedItems ?? this.relatedItems,
+      recommendations: recommendations ?? this.recommendations,
       isCollection: isCollection ?? this.isCollection,
     );
   }

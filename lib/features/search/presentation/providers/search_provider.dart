@@ -55,7 +55,14 @@ final mediaDetailsProvider = FutureProvider.family<MediaDetailsInfo?, String>((
       .where((item) => !watchedIds.contains(item.id))
       .toList();
 
-  return details.copyWith(relatedItems: filteredRelated);
+  final filteredRecs = details.recommendations
+      .where((item) => !watchedIds.contains(item.id))
+      .toList();
+
+  return details.copyWith(
+    relatedItems: filteredRelated,
+    recommendations: filteredRecs,
+  );
 });
 
 class SearchQueryNotifier extends Notifier<String> {

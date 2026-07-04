@@ -235,6 +235,7 @@ class SearchRepository {
             .toList() ?? const <String>[];
 
         List<MediaItem> relatedItems = [];
+        List<MediaItem> recommendations = [];
         bool isCollection = false;
 
         if (type == 'movie') {
@@ -276,12 +277,11 @@ class SearchRepository {
               final results = recResponse.data['results'];
               if (results is List) {
                 final existingIds = relatedItems.map((item) => item.id).toSet();
-                final recItems = results
+                recommendations = results
                     .whereType<Map>()
                     .map((json) => MediaItem.fromTmdbJson({...json, 'media_type': 'movie'}))
                     .where((item) => !existingIds.contains(item.id) && item.id != mediaId)
                     .toList();
-                relatedItems.addAll(recItems);
               }
             }
           } catch (e) {
@@ -297,9 +297,10 @@ class SearchRepository {
             if (recResponse.statusCode == 200 && recResponse.data is Map) {
               final results = recResponse.data['results'];
               if (results is List) {
-                relatedItems = results
+                recommendations = results
                     .whereType<Map>()
                     .map((json) => MediaItem.fromTmdbJson({...json, 'media_type': 'tv'}))
+                    .where((item) => item.id != mediaId)
                     .toList();
               }
             }
@@ -327,6 +328,7 @@ class SearchRepository {
           genres: genres,
           productionCompanies: productionCompanies,
           relatedItems: relatedItems,
+          recommendations: recommendations,
           isCollection: isCollection,
         );
       }
