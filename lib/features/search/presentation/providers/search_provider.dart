@@ -222,3 +222,45 @@ final seasonEpisodesProvider = FutureProvider.family<List<Episode>, String>((
   final repo = ref.watch(searchRepositoryProvider);
   return repo.getSeasonEpisodes(seriesId, seasonNumber);
 });
+
+class HighestRatedEpisodeInfo {
+  final Episode episode;
+  final int seasonNumber;
+
+  HighestRatedEpisodeInfo(this.episode, this.seasonNumber);
+}
+
+final highestRatedEpisodeProvider = FutureProvider.family<HighestRatedEpisodeInfo?, String>((
+  ref,
+  seriesId,
+) async {
+  final repo = ref.watch(searchRepositoryProvider);
+  final seasons = await repo.getSeriesSeasons(seriesId);
+  if (seasons.isEmpty) return null;
+
+  final List<List<Episode>> episodesLists = await Future.wait(
+    seasons.map((s) => repo.getSeasonEpisodes(seriesId, s.seasonNumber)),
+  );
+
+  Episode? bestEpisode;
+  int bestSeasonNumber = 1;
+
+  for (var i = 0; i < seasons.length; i++) {
+    final seasonNum = seasons[i].seasonNumber;
+    final episodes = episodesLists[i];
+    for (final ep in episodes) {
+      if (ep.voteAverage != null && ep.voteAverage! > 0) {
+        if (bestEpisode == null || ep.voteAverage! > bestEpisode.voteAverage!) {
+          bestEpisode = ep;
+          bestSeasonNumber = seasonNum;
+        }
+      }
+    }
+  }
+
+  if (bestEpisode != null) {
+    return HighestRatedEpisodeInfo(bestEpisode, bestSeasonNumber);
+  }
+  return null;
+});
+

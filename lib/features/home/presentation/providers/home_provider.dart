@@ -147,6 +147,18 @@ final categoryMediaProvider = FutureProvider.family<List<MediaItem>, String>((re
     final studioKey = key.replaceFirst('studio_', '');
     return ref.watch(studioMediaProvider(studioKey).future);
   }
+  if (key.startsWith('actor_')) {
+    final actorName = key.replaceFirst('actor_', '');
+    return ref.watch(searchRepositoryProvider).getMediaByActor(actorName);
+  }
+  if (key.startsWith('company_')) {
+    final companyName = key.replaceFirst('company_', '');
+    return ref.watch(searchRepositoryProvider).getMediaByProductionCompany(companyName);
+  }
+  if (key.startsWith('genre_')) {
+    final genreName = key.replaceFirst('genre_', '');
+    return ref.watch(searchRepositoryProvider).getMediaByGenreName(genreName);
+  }
   switch (key) {
     case 'recommended_for_you':
       return ref.watch(recommendedForYouProvider.future);

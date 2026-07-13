@@ -1031,6 +1031,129 @@ class SearchRepository {
     return [];
   }
 
+  Future<List<MediaItem>> getMediaByActor(String actorName) async {
+    if (!_hasToken || actorName.trim().isEmpty) return [];
+    try {
+      final response = await _dio.get(
+        'https://api.themoviedb.org/3/search/person',
+        queryParameters: {'query': actorName.trim(), 'language': _tmdbLanguage, 'page': 1},
+        options: _tmdbOptions,
+      );
+      if (response.statusCode == 200 && response.data is Map) {
+        final results = response.data['results'] as List? ?? [];
+        if (results.isNotEmpty) {
+          final firstPerson = results.first;
+          final personId = firstPerson['id'];
+          if (personId != null) {
+            return _getPersonCredits(personId, actorName);
+          }
+        }
+      }
+    } catch (e) {
+      developer.log('Error fetching actor credits: $e', name: 'SearchRepository');
+    }
+    return [];
+  }
+
+  Future<List<MediaItem>> getMediaByProductionCompany(String companyName) async {
+    if (!_hasToken || companyName.trim().isEmpty) return [];
+    try {
+      final searchResponse = await _dio.get(
+        'https://api.themoviedb.org/3/search/company',
+        queryParameters: {'query': companyName.trim(), 'page': 1},
+        options: _tmdbOptions,
+      );
+      if (searchResponse.statusCode == 200 && searchResponse.data is Map) {
+        final results = searchResponse.data['results'] as List? ?? [];
+        if (results.isNotEmpty) {
+          final companyId = results.first['id'];
+          if (companyId != null) {
+            final config = StudioConfig(
+              name: companyName,
+              key: companyName.toLowerCase(),
+              movieCompanyIds: [companyId],
+              tvNetworkIds: [],
+              tvCompanyIds: [companyId],
+            );
+            return getMediaByStudio(config);
+          }
+        }
+      }
+    } catch (e) {
+      developer.log('Error fetching company media: $e', name: 'SearchRepository');
+    }
+    return [];
+  }
+
+  Future<int?> _findGenreId(String genreName) async {
+    if (!_hasToken) return null;
+    try {
+      final movieResponse = await _dio.get(
+        'https://api.themoviedb.org/3/genre/movie/list',
+        queryParameters: {'language': _tmdbLanguage},
+        options: _tmdbOptions,
+      );
+      if (movieResponse.statusCode == 200 && movieResponse.data is Map) {
+        final genres = movieResponse.data['genres'] as List? ?? [];
+        for (final g in genres) {
+          if (g is Map && g['name']?.toString().toLowerCase() == genreName.toLowerCase()) {
+            return g['id'] as int?;
+          }
+        }
+      }
+      final tvResponse = await _dio.get(
+        'https://api.themoviedb.org/3/genre/tv/list',
+        queryParameters: {'language': _tmdbLanguage},
+        options: _tmdbOptions,
+      );
+      if (tvResponse.statusCode == 200 && tvResponse.data is Map) {
+        final genres = tvResponse.data['genres'] as List? ?? [];
+        for (final g in genres) {
+          if (g is Map && g['name']?.toString().toLowerCase() == genreName.toLowerCase()) {
+            return g['id'] as int?;
+          }
+        }
+      }
+    } catch (e) {
+      developer.log('Error fetching genre ID: $e', name: 'SearchRepository');
+    }
+    return null;
+  }
+
+  List<MediaItem> _mergeAndSort(List<MediaItem> list1, List<MediaItem> list2) {
+    final list = [...list1, ...list2];
+    final seen = <String>{};
+    final deduped = <MediaItem>[];
+    for (final item in list) {
+      if (item.id.isEmpty) continue;
+      final key = '${item.type}:${item.id}';
+      if (seen.add(key)) {
+        deduped.add(item);
+      }
+    }
+    deduped.sort((a, b) {
+      final aRating = a.rating ?? 0.0;
+      final bRating = b.rating ?? 0.0;
+      return bRating.compareTo(aRating);
+    });
+    return deduped;
+  }
+
+  Future<List<MediaItem>> getMediaByGenreName(String genreName) async {
+    final genreId = await _findGenreId(genreName);
+    if (genreId == null) {
+      return search(genreName);
+    }
+    final responses = await Future.wait([
+      getMoviesByGenre(genreId),
+      getSeriesByGenre(genreId),
+    ]);
+    final movies = responses[0];
+    final series = responses[1];
+    final merged = _mergeAndSort(movies, series);
+    return merged.take(30).toList();
+  }
+
   Future<List<MediaItem>> getLatestVidSrcMovies({int page = 1}) async {
     try {
       final response = await _dio.get(
@@ -1069,3 +1192,4 @@ class SearchRepository {
     return [];
   }
 }
+

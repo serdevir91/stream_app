@@ -1,3 +1,4 @@
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -12,6 +13,7 @@ import '../../../player/data/repositories/watch_history_repository.dart';
 import '../../../player/domain/entities/watch_history.dart';
 import '../../../player/presentation/providers/player_provider.dart';
 import '../../../player/presentation/screens/player_screen.dart';
+import '../../../home/presentation/screens/category_media_screen.dart';
 
 typedef EpisodeTarget = ({int season, int episode});
 
@@ -27,6 +29,85 @@ class MediaDetailsScreen extends ConsumerStatefulWidget {
 class _MediaDetailsScreenState extends ConsumerState<MediaDetailsScreen> {
   int? _selectedSeason;
   bool _isResolving = false;
+  int? _highlightedEpisodeNumber;
+  final Map<int, GlobalKey> _episodeKeys = {};
+  late final ScrollController _scrollController;
+
+  @override
+  void initState() {
+    super.initState();
+    _scrollController = ScrollController();
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _toggleEpisodeWatched({
+    required int season,
+    required int episodeNumber,
+    required bool isCurrentlyWatched,
+    required Map<String, WatchHistory> tvEpisodeHistory,
+  }) async {
+    final repo = ref.read(watchHistoryRepositoryProvider);
+    final key = _episodeHistoryKey(season, episodeNumber);
+    if (isCurrentlyWatched) {
+      final historyEntry = tvEpisodeHistory[key];
+      if (historyEntry != null) {
+        await repo.deleteByHistoryId(historyEntry.historyId);
+      } else {
+        await repo.deleteByHistoryId('tv_${widget.mediaItem.id}_s${season}_e$episodeNumber');
+      }
+    } else {
+      final newHistory = WatchHistory(
+        mediaId: widget.mediaItem.id,
+        title: widget.mediaItem.title,
+        mediaType: 'tv',
+        season: season,
+        episode: episodeNumber,
+        posterUrl: widget.mediaItem.posterUrl,
+        backdropUrl: widget.mediaItem.backdropUrl,
+        lastPosition: 1,
+        duration: 1,
+        isWatched: true,
+      );
+      await repo.saveProgress(newHistory);
+    }
+  }
+
+  void _scrollToEpisode(int seasonNumber, int episodeNumber) {
+    setState(() {
+      _selectedSeason = seasonNumber;
+    });
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      Future.delayed(const Duration(milliseconds: 150), () {
+        final key = _episodeKeys[episodeNumber];
+        if (key != null && key.currentContext != null) {
+          Scrollable.ensureVisible(
+            key.currentContext!,
+            duration: const Duration(milliseconds: 600),
+            curve: Curves.easeInOut,
+            alignment: 0.5,
+          );
+          
+          setState(() {
+            _highlightedEpisodeNumber = episodeNumber;
+          });
+          
+          Future.delayed(const Duration(seconds: 2), () {
+            if (mounted) {
+              setState(() {
+                _highlightedEpisodeNumber = null;
+              });
+            }
+          });
+        }
+      });
+    });
+  }
 
   String _episodeHistoryKey(int season, int episode) => '${season}_$episode';
 
@@ -126,13 +207,22 @@ class _MediaDetailsScreenState extends ConsumerState<MediaDetailsScreen> {
         latestEpisodeProgress?.episode ??
         fallbackEpisode;
 
-    if (!orderedSeasons.any((item) => item.seasonNumber == season)) {
+    var seasonIndex = orderedSeasons.indexWhere((item) => item.seasonNumber == season);
+    if (seasonIndex == -1) {
       season = fallbackSeason;
       episode = fallbackEpisode;
+      seasonIndex = 0;
     }
 
     final count = _episodeCountForSeason(orderedSeasons, season);
-    if (count > 0) {
+    if (count > 0 && episode > count) {
+      if (seasonIndex + 1 < orderedSeasons.length) {
+        season = orderedSeasons[seasonIndex + 1].seasonNumber;
+        episode = 1;
+      } else {
+        episode = count;
+      }
+    } else if (count > 0) {
       episode = episode.clamp(1, count);
     } else if (episode < 1) {
       episode = 1;
@@ -581,6 +671,7 @@ class _MediaDetailsScreenState extends ConsumerState<MediaDetailsScreen> {
 
     return Scaffold(
       body: CustomScrollView(
+        controller: _scrollController,
         slivers: [
           SliverAppBar(
             expandedHeight: 250,
@@ -733,25 +824,38 @@ class _MediaDetailsScreenState extends ConsumerState<MediaDetailsScreen> {
                       spacing: 8,
                       runSpacing: 8,
                       children: mediaDetails.genres.map((genre) {
-                        return Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 5,
-                          ),
-                          decoration: BoxDecoration(
-                            color: Colors.redAccent.withValues(alpha: 0.12),
-                            borderRadius: BorderRadius.circular(20),
-                            border: Border.all(
-                              color: Colors.redAccent.withValues(alpha: 0.35),
-                              width: 1,
+                        return InkWell(
+                          onTap: () {
+                            Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (_) => CategoryMediaScreen(
+                                  categoryKey: 'genre_$genre',
+                                  title: genre,
+                                ),
+                              ),
+                            );
+                          },
+                          borderRadius: BorderRadius.circular(20),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 5,
                             ),
-                          ),
-                          child: Text(
-                            genre,
-                            style: const TextStyle(
-                              fontSize: 11,
-                              color: Colors.redAccent,
-                              fontWeight: FontWeight.w600,
+                            decoration: BoxDecoration(
+                              color: Colors.redAccent.withValues(alpha: 0.12),
+                              borderRadius: BorderRadius.circular(20),
+                              border: Border.all(
+                                color: Colors.redAccent.withValues(alpha: 0.35),
+                                width: 1,
+                              ),
+                            ),
+                            child: Text(
+                              genre,
+                              style: const TextStyle(
+                                fontSize: 11,
+                                color: Colors.redAccent,
+                                fontWeight: FontWeight.w600,
+                              ),
                             ),
                           ),
                         );
@@ -868,17 +972,41 @@ class _MediaDetailsScreenState extends ConsumerState<MediaDetailsScreen> {
                                         color: Colors.grey,
                                         fontSize: 13,
                                       ),
-                                      children: [
-                                        TextSpan(
-                                          text: mediaDetails.castNames.join(
-                                            ', ',
-                                          ),
-                                          style: const TextStyle(
-                                            color: Colors.white70,
-                                            fontWeight: FontWeight.normal,
-                                          ),
-                                        ),
-                                      ],
+                                      children: List.generate(mediaDetails.castNames.length, (idx) {
+                                        final name = mediaDetails.castNames[idx];
+                                        return TextSpan(
+                                          children: [
+                                            TextSpan(
+                                              text: name,
+                                              style: const TextStyle(
+                                                color: Colors.white70,
+                                                fontWeight: FontWeight.normal,
+                                                decoration: TextDecoration.underline,
+                                              ),
+                                              recognizer: TapGestureRecognizer()
+                                                ..onTap = () {
+                                                  Navigator.of(context).push(
+                                                    MaterialPageRoute(
+                                                      builder: (_) => CategoryMediaScreen(
+                                                        categoryKey: 'actor_$name',
+                                                        title: name,
+                                                      ),
+                                                    ),
+                                                  );
+                                                },
+                                            ),
+                                            if (idx < mediaDetails.castNames.length - 1)
+                                              const TextSpan(
+                                                text: ', ',
+                                                style: TextStyle(
+                                                  color: Colors.white70,
+                                                  fontWeight: FontWeight.normal,
+                                                  decoration: TextDecoration.none,
+                                                ),
+                                              ),
+                                          ],
+                                        );
+                                      }),
                                     ),
                                   ),
                                 ),
@@ -890,10 +1018,9 @@ class _MediaDetailsScreenState extends ConsumerState<MediaDetailsScreen> {
                             Text(
                               text.t('production_companies'),
                               style: const TextStyle(
-                                fontWeight: FontWeight.bold,
-                                fontSize: 13,
-                                color: Colors.grey,
-                              ),
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 13,
+                                  color: Colors.grey),
                             ),
                             const SizedBox(height: 8),
                             Wrap(
@@ -902,36 +1029,102 @@ class _MediaDetailsScreenState extends ConsumerState<MediaDetailsScreen> {
                               children: mediaDetails.productionCompanies.map((
                                 company,
                               ) {
-                                return Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 8,
-                                    vertical: 4,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: Colors.white.withValues(alpha: 0.04),
-                                    borderRadius: BorderRadius.circular(6),
-                                    border: Border.all(color: Colors.white12),
-                                  ),
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      const Icon(
-                                        Icons.business_center_outlined,
-                                        size: 11,
-                                        color: Colors.grey,
-                                      ),
-                                      const SizedBox(width: 4),
-                                      Text(
-                                        company,
-                                        style: const TextStyle(
-                                          fontSize: 11,
-                                          color: Colors.white70,
+                                return InkWell(
+                                  onTap: () {
+                                    Navigator.of(context).push(
+                                      MaterialPageRoute(
+                                        builder: (_) => CategoryMediaScreen(
+                                          categoryKey: 'company_$company',
+                                          title: company,
                                         ),
                                       ),
-                                    ],
+                                    );
+                                  },
+                                  borderRadius: BorderRadius.circular(6),
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 8,
+                                      vertical: 4,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: Colors.white.withValues(alpha: 0.04),
+                                      borderRadius: BorderRadius.circular(6),
+                                      border: Border.all(color: Colors.white12),
+                                    ),
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        const Icon(
+                                          Icons.business_center_outlined,
+                                          size: 11,
+                                          color: Colors.grey,
+                                        ),
+                                        const SizedBox(width: 4),
+                                        Text(
+                                          company,
+                                          style: const TextStyle(
+                                            fontSize: 11,
+                                            color: Colors.white70,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
                                   ),
                                 );
                               }).toList(),
+                            ),
+                          ],
+                          if (item.type == 'tv') ...[
+                            ref.watch(highestRatedEpisodeProvider(item.id)).maybeWhen(
+                              data: (info) {
+                                if (info == null) return const SizedBox.shrink();
+                                return Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    const Divider(color: Colors.white10, height: 20),
+                                    InkWell(
+                                      onTap: () => _scrollToEpisode(info.seasonNumber, info.episode.episodeNumber),
+                                      borderRadius: BorderRadius.circular(8),
+                                      child: Padding(
+                                        padding: const EdgeInsets.symmetric(vertical: 4.0),
+                                        child: Row(
+                                          children: [
+                                            const Icon(
+                                              Icons.star,
+                                              size: 15,
+                                              color: Colors.amber,
+                                            ),
+                                            const SizedBox(width: 8),
+                                            Text(
+                                              text.languageCode == 'tr'
+                                                  ? 'En Yüksek IMDb\'li Bölüm: '
+                                                  : 'Highest Rated Episode: ',
+                                              style: const TextStyle(
+                                                fontWeight: FontWeight.w600,
+                                                color: Colors.grey,
+                                                fontSize: 13,
+                                              ),
+                                            ),
+                                            Expanded(
+                                              child: Text(
+                                                'S${info.seasonNumber}:E${info.episode.episodeNumber} - ${info.episode.name} (${info.episode.voteAverage?.toStringAsFixed(1)})',
+                                                style: const TextStyle(
+                                                  color: Colors.amberAccent,
+                                                  fontWeight: FontWeight.bold,
+                                                  fontSize: 13,
+                                                  decoration: TextDecoration.underline,
+                                                ),
+                                                overflow: TextOverflow.ellipsis,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                );
+                              },
+                              orElse: () => const SizedBox.shrink(),
                             ),
                           ],
                         ],
@@ -1535,125 +1728,145 @@ class _MediaDetailsScreenState extends ConsumerState<MediaDetailsScreen> {
                 )];
             final hasProgress = episodeHistory != null;
             final bool isAired = episode.isAired;
-            return ListTile(
-              leading: ClipRRect(
-                borderRadius: BorderRadius.circular(4),
-                child: episode.stillPath != null
-                    ? Image.network(
-                        episode.stillPath!,
-                        width: 100,
-                        height: 60,
-                        fit: BoxFit.cover,
-                        errorBuilder: (buildContext, error, stackTrace) =>
-                            const ColoredBox(
-                              color: Colors.grey,
-                              child: SizedBox(width: 100, height: 60),
+            final isHighlighted = episode.episodeNumber == _highlightedEpisodeNumber;
+
+            return Container(
+              key: _episodeKeys.putIfAbsent(episode.episodeNumber, () => GlobalKey()),
+              decoration: BoxDecoration(
+                color: isHighlighted
+                    ? Colors.amber.withValues(alpha: 0.15)
+                    : Colors.transparent,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: ListTile(
+                leading: ClipRRect(
+                  borderRadius: BorderRadius.circular(4),
+                  child: episode.stillPath != null
+                      ? Image.network(
+                          episode.stillPath!,
+                          width: 100,
+                          height: 60,
+                          fit: BoxFit.cover,
+                          errorBuilder: (buildContext, error, stackTrace) =>
+                              const ColoredBox(
+                                color: Colors.grey,
+                                child: SizedBox(width: 100, height: 60),
+                              ),
+                        )
+                      : const ColoredBox(
+                          color: Colors.grey,
+                          child: SizedBox(width: 100, height: 60),
+                        ),
+                ),
+                title: Text(
+                  '${episode.episodeNumber}. ${episode.name}',
+                  style: TextStyle(color: isAired ? null : Colors.white54),
+                ),
+                subtitle: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (episode.voteAverage != null && episode.voteAverage! > 0)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 2),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(Icons.star, color: Colors.amber, size: 14),
+                            const SizedBox(width: 4),
+                            Text(
+                              'IMDb ${episode.voteAverage!.toStringAsFixed(1)}',
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: Colors.amber.shade200,
+                                fontWeight: FontWeight.w600,
+                              ),
                             ),
-                      )
-                    : const ColoredBox(
-                        color: Colors.grey,
-                        child: SizedBox(width: 100, height: 60),
+                          ],
+                        ),
                       ),
-              ),
-              title: Text(
-                '${episode.episodeNumber}. ${episode.name}',
-                style: TextStyle(color: isAired ? null : Colors.white54),
-              ),
-              subtitle: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  if (episode.voteAverage != null && episode.voteAverage! > 0)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 2),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const Icon(Icons.star, color: Colors.amber, size: 14),
-                          const SizedBox(width: 4),
-                          Text(
-                            'IMDb ${episode.voteAverage!.toStringAsFixed(1)}',
-                            style: TextStyle(
-                              fontSize: 11,
-                              color: Colors.amber.shade200,
-                              fontWeight: FontWeight.w600,
-                            ),
+                    if (episodeRuntimeMinutes != null &&
+                        episodeRuntimeMinutes > 0)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 4),
+                        child: Text(
+                          '${text.t('episode_runtime')}: $episodeRuntimeMinutes ${text.t('minutes_suffix')}',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: Colors.grey.shade400,
                           ),
-                        ],
-                      ),
-                    ),
-                  if (episodeRuntimeMinutes != null &&
-                      episodeRuntimeMinutes > 0)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 4),
-                      child: Text(
-                        '${text.t('episode_runtime')}: $episodeRuntimeMinutes ${text.t('minutes_suffix')}',
-                        style: TextStyle(
-                          fontSize: 11,
-                          color: Colors.grey.shade400,
                         ),
                       ),
-                    ),
-                  if (!isAired && episode.airDate != null)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 4),
-                      child: Text(
-                        '${text.t('airs_on')}: ${episode.formattedAirDate}',
-                        style: const TextStyle(
-                          fontSize: 12,
-                          color: Colors.orangeAccent,
-                          fontWeight: FontWeight.w500,
+                    if (!isAired && episode.airDate != null)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 4),
+                        child: Text(
+                          '${text.t('airs_on')}: ${episode.formattedAirDate}',
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: Colors.orangeAccent,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      )
+                    else if (isAired && episode.airDate != null && !hasProgress)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 4),
+                        child: Text(
+                          '${text.t('aired_on')}: ${episode.formattedAirDate}',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: Colors.grey.shade500,
+                          ),
                         ),
                       ),
-                    )
-                  else if (isAired && episode.airDate != null && !hasProgress)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 4),
-                      child: Text(
-                        '${text.t('aired_on')}: ${episode.formattedAirDate}',
-                        style: TextStyle(
-                          fontSize: 11,
-                          color: Colors.grey.shade500,
-                        ),
+                    if (hasProgress) ...[
+                      const SizedBox(height: 6),
+                      LinearProgressIndicator(
+                        value: episodeHistory.progressRatio,
+                        minHeight: 4,
                       ),
-                    ),
-                  if (hasProgress) ...[
-                    const SizedBox(height: 6),
-                    LinearProgressIndicator(
-                      value: episodeHistory.progressRatio,
-                      minHeight: 4,
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      episodeHistory.isWatched
-                          ? text.t('completed')
-                          : '${text.t('in_progress')} • ${(episodeHistory.progressRatio * 100).round()}%',
-                      style: const TextStyle(fontSize: 12),
-                    ),
+                      const SizedBox(height: 4),
+                      Text(
+                        episodeHistory.isWatched
+                            ? text.t('completed')
+                            : '${text.t('in_progress')} • ${(episodeHistory.progressRatio * 100).round()}%',
+                        style: const TextStyle(fontSize: 12),
+                      ),
+                    ],
                   ],
-                ],
+                ),
+                trailing: !isAired
+                    ? const Icon(Icons.schedule, color: Colors.orangeAccent)
+                    : IconButton(
+                        icon: Icon(
+                          episodeHistory?.isWatched == true
+                              ? Icons.check_circle
+                              : Icons.check_circle_outline,
+                          color: episodeHistory?.isWatched == true
+                              ? Colors.greenAccent
+                              : Colors.grey,
+                        ),
+                        tooltip: episodeHistory?.isWatched == true
+                            ? (text.languageCode == 'tr' ? 'İzlemedim olarak işaretle' : 'Mark as unwatched')
+                            : (text.languageCode == 'tr' ? 'İzledim olarak işaretle' : 'Mark as watched'),
+                        onPressed: () {
+                          _toggleEpisodeWatched(
+                            season: seasonNumber,
+                            episodeNumber: episode.episodeNumber,
+                            isCurrentlyWatched: episodeHistory?.isWatched == true,
+                            tvEpisodeHistory: tvEpisodeHistory,
+                          );
+                        },
+                      ),
+                onTap: (!isAired || _isResolving)
+                    ? null
+                    : () => _resolveAndPickSource(
+                        season: seasonNumber,
+                        episode: episode.episodeNumber,
+                        runtimeMinutes: episodeRuntimeMinutes,
+                      ),
               ),
-              trailing: !isAired
-                  ? const Icon(Icons.schedule, color: Colors.orangeAccent)
-                  : Icon(
-                      hasProgress
-                          ? (episodeHistory.isWatched
-                                ? Icons.check_circle
-                                : Icons.history)
-                          : Icons.play_arrow,
-                      color: hasProgress
-                          ? (episodeHistory.isWatched
-                                ? Colors.greenAccent
-                                : Colors.amber)
-                          : Colors.lightBlueAccent,
-                    ),
-              onTap: (!isAired || _isResolving)
-                  ? null
-                  : () => _resolveAndPickSource(
-                      season: seasonNumber,
-                      episode: episode.episodeNumber,
-                      runtimeMinutes: episodeRuntimeMinutes,
-                    ),
             );
           },
         );
