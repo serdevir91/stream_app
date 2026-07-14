@@ -640,6 +640,8 @@ class _MediaDetailsScreenState extends ConsumerState<MediaDetailsScreen> {
       data: (value) => value,
       orElse: () => null,
     );
+    final directorsList = mediaDetails?.directorName?.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList() ?? const <String>[];
+    final creatorsList = mediaDetails?.creatorName?.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList() ?? const <String>[];
     final mediaHistoryEntries = ref
         .watch(watchHistoryEntriesProvider)
         .where((history) => history.mediaId == item.id)
@@ -900,7 +902,7 @@ class _MediaDetailsScreenState extends ConsumerState<MediaDetailsScreen> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           if (item.type == 'movie') ...[
-                            if (mediaDetails.directorName != null) ...[
+                            if (directorsList.isNotEmpty) ...[
                               Row(
                                 children: [
                                   const Icon(
@@ -909,30 +911,51 @@ class _MediaDetailsScreenState extends ConsumerState<MediaDetailsScreen> {
                                     color: Colors.grey,
                                   ),
                                   const SizedBox(width: 8),
-                                  Text(
-                                    '${text.t('director')}: ',
-                                    style: const TextStyle(
-                                      fontWeight: FontWeight.w600,
-                                      color: Colors.grey,
-                                    ),
-                                  ),
-                                  InkWell(
-                                    onTap: () {
-                                      Navigator.of(context).push(
-                                        MaterialPageRoute(
-                                          builder: (_) => CategoryMediaScreen(
-                                            categoryKey: 'actor_${mediaDetails.directorName!}',
-                                            title: mediaDetails.directorName!,
-                                            crossAxisCount: 3,
-                                          ),
+                                  Expanded(
+                                    child: RichText(
+                                      text: TextSpan(
+                                        text: '${text.t('director')}: ',
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.w600,
+                                          color: Colors.grey,
+                                          fontSize: 14,
                                         ),
-                                      );
-                                    },
-                                    child: Text(
-                                      mediaDetails.directorName!,
-                                      style: const TextStyle(
-                                        color: Colors.white,
-                                        decoration: TextDecoration.underline,
+                                        children: List.generate(directorsList.length, (idx) {
+                                          final name = directorsList[idx];
+                                          return TextSpan(
+                                            children: [
+                                              TextSpan(
+                                                text: name,
+                                                style: const TextStyle(
+                                                  color: Colors.white,
+                                                  fontWeight: FontWeight.normal,
+                                                  decoration: TextDecoration.underline,
+                                                ),
+                                                recognizer: TapGestureRecognizer()
+                                                  ..onTap = () {
+                                                    Navigator.of(context).push(
+                                                      MaterialPageRoute(
+                                                        builder: (_) => CategoryMediaScreen(
+                                                          categoryKey: 'actor_$name',
+                                                          title: name,
+                                                          crossAxisCount: 3,
+                                                        ),
+                                                      ),
+                                                    );
+                                                  },
+                                              ),
+                                              if (idx < directorsList.length - 1)
+                                                const TextSpan(
+                                                  text: ', ',
+                                                  style: TextStyle(
+                                                    color: Colors.white70,
+                                                    fontWeight: FontWeight.normal,
+                                                    decoration: TextDecoration.none,
+                                                  ),
+                                                ),
+                                            ],
+                                          );
+                                        }),
                                       ),
                                     ),
                                   ),
@@ -941,7 +964,7 @@ class _MediaDetailsScreenState extends ConsumerState<MediaDetailsScreen> {
                               const SizedBox(height: 10),
                             ],
                           ] else ...[
-                            if (mediaDetails.creatorName != null) ...[
+                            if (creatorsList.isNotEmpty) ...[
                               Row(
                                 children: [
                                   const Icon(
@@ -950,30 +973,51 @@ class _MediaDetailsScreenState extends ConsumerState<MediaDetailsScreen> {
                                     color: Colors.grey,
                                   ),
                                   const SizedBox(width: 8),
-                                  Text(
-                                    '${text.t('creator')}: ',
-                                    style: const TextStyle(
-                                      fontWeight: FontWeight.w600,
-                                      color: Colors.grey,
-                                    ),
-                                  ),
-                                  InkWell(
-                                    onTap: () {
-                                      Navigator.of(context).push(
-                                        MaterialPageRoute(
-                                          builder: (_) => CategoryMediaScreen(
-                                            categoryKey: 'actor_${mediaDetails.creatorName!}',
-                                            title: mediaDetails.creatorName!,
-                                            crossAxisCount: 3,
-                                          ),
+                                  Expanded(
+                                    child: RichText(
+                                      text: TextSpan(
+                                        text: '${text.t('creator')}: ',
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.w600,
+                                          color: Colors.grey,
+                                          fontSize: 14,
                                         ),
-                                      );
-                                    },
-                                    child: Text(
-                                      mediaDetails.creatorName!,
-                                      style: const TextStyle(
-                                        color: Colors.white,
-                                        decoration: TextDecoration.underline,
+                                        children: List.generate(creatorsList.length, (idx) {
+                                          final name = creatorsList[idx];
+                                          return TextSpan(
+                                            children: [
+                                              TextSpan(
+                                                text: name,
+                                                style: const TextStyle(
+                                                  color: Colors.white,
+                                                  fontWeight: FontWeight.normal,
+                                                  decoration: TextDecoration.underline,
+                                                ),
+                                                recognizer: TapGestureRecognizer()
+                                                  ..onTap = () {
+                                                    Navigator.of(context).push(
+                                                      MaterialPageRoute(
+                                                        builder: (_) => CategoryMediaScreen(
+                                                          categoryKey: 'actor_$name',
+                                                          title: name,
+                                                          crossAxisCount: 3,
+                                                        ),
+                                                      ),
+                                                    );
+                                                  },
+                                              ),
+                                              if (idx < creatorsList.length - 1)
+                                                const TextSpan(
+                                                  text: ', ',
+                                                  style: TextStyle(
+                                                    color: Colors.white70,
+                                                    fontWeight: FontWeight.normal,
+                                                    decoration: TextDecoration.none,
+                                                  ),
+                                                ),
+                                            ],
+                                          );
+                                        }),
                                       ),
                                     ),
                                   ),

@@ -160,16 +160,18 @@ class SearchRepository {
       return null;
     }
 
+    final names = <String>[];
     for (final entry in crew.whereType<Map>()) {
       final entryJob = (entry['job'] ?? '').toString().trim();
       if (entryJob.toLowerCase() == job.toLowerCase()) {
         final name = (entry['name'] ?? '').toString().trim();
         if (name.isNotEmpty) {
-          return name;
+          names.add(name);
         }
       }
     }
-    return null;
+    if (names.isEmpty) return null;
+    return names.join(', ');
   }
 
   String? _extractCreatorName(Map<String, dynamic> data) {
