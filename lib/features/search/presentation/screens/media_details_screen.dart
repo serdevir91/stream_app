@@ -831,6 +831,7 @@ class _MediaDetailsScreenState extends ConsumerState<MediaDetailsScreen> {
                                 builder: (_) => CategoryMediaScreen(
                                   categoryKey: 'genre_$genre',
                                   title: genre,
+                                  crossAxisCount: 3,
                                 ),
                               ),
                             );
@@ -915,9 +916,25 @@ class _MediaDetailsScreenState extends ConsumerState<MediaDetailsScreen> {
                                       color: Colors.grey,
                                     ),
                                   ),
-                                  Text(
-                                    mediaDetails.directorName!,
-                                    style: const TextStyle(color: Colors.white),
+                                  InkWell(
+                                    onTap: () {
+                                      Navigator.of(context).push(
+                                        MaterialPageRoute(
+                                          builder: (_) => CategoryMediaScreen(
+                                            categoryKey: 'actor_${mediaDetails.directorName!}',
+                                            title: mediaDetails.directorName!,
+                                            crossAxisCount: 3,
+                                          ),
+                                        ),
+                                      );
+                                    },
+                                    child: Text(
+                                      mediaDetails.directorName!,
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        decoration: TextDecoration.underline,
+                                      ),
+                                    ),
                                   ),
                                 ],
                               ),
@@ -940,9 +957,25 @@ class _MediaDetailsScreenState extends ConsumerState<MediaDetailsScreen> {
                                       color: Colors.grey,
                                     ),
                                   ),
-                                  Text(
-                                    mediaDetails.creatorName!,
-                                    style: const TextStyle(color: Colors.white),
+                                  InkWell(
+                                    onTap: () {
+                                      Navigator.of(context).push(
+                                        MaterialPageRoute(
+                                          builder: (_) => CategoryMediaScreen(
+                                            categoryKey: 'actor_${mediaDetails.creatorName!}',
+                                            title: mediaDetails.creatorName!,
+                                            crossAxisCount: 3,
+                                          ),
+                                        ),
+                                      );
+                                    },
+                                    child: Text(
+                                      mediaDetails.creatorName!,
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        decoration: TextDecoration.underline,
+                                      ),
+                                    ),
                                   ),
                                 ],
                               ),
@@ -990,6 +1023,7 @@ class _MediaDetailsScreenState extends ConsumerState<MediaDetailsScreen> {
                                                       builder: (_) => CategoryMediaScreen(
                                                         categoryKey: 'actor_$name',
                                                         title: name,
+                                                        crossAxisCount: 3,
                                                       ),
                                                     ),
                                                   );
@@ -1036,6 +1070,7 @@ class _MediaDetailsScreenState extends ConsumerState<MediaDetailsScreen> {
                                         builder: (_) => CategoryMediaScreen(
                                           categoryKey: 'company_$company',
                                           title: company,
+                                          crossAxisCount: 3,
                                         ),
                                       ),
                                     );
@@ -1836,29 +1871,41 @@ class _MediaDetailsScreenState extends ConsumerState<MediaDetailsScreen> {
                     ],
                   ],
                 ),
-                trailing: !isAired
-                    ? const Icon(Icons.schedule, color: Colors.orangeAccent)
-                    : IconButton(
-                        icon: Icon(
-                          episodeHistory?.isWatched == true
-                              ? Icons.check_circle
-                              : Icons.check_circle_outline,
-                          color: episodeHistory?.isWatched == true
-                              ? Colors.greenAccent
-                              : Colors.grey,
-                        ),
-                        tooltip: episodeHistory?.isWatched == true
-                            ? (text.languageCode == 'tr' ? 'İzlemedim olarak işaretle' : 'Mark as unwatched')
-                            : (text.languageCode == 'tr' ? 'İzledim olarak işaretle' : 'Mark as watched'),
-                        onPressed: () {
-                          _toggleEpisodeWatched(
-                            season: seasonNumber,
-                            episodeNumber: episode.episodeNumber,
-                            isCurrentlyWatched: episodeHistory?.isWatched == true,
-                            tvEpisodeHistory: tvEpisodeHistory,
-                          );
-                        },
-                      ),
+                trailing: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    !isAired
+                        ? const Icon(Icons.schedule, color: Colors.orangeAccent)
+                        : Tooltip(
+                            message: episodeHistory?.isWatched == true
+                                ? (text.languageCode == 'tr' ? 'İzlemedim olarak işaretle' : 'Mark as unwatched')
+                                : (text.languageCode == 'tr' ? 'İzledim olarak işaretle' : 'Mark as watched'),
+                            child: InkWell(
+                              onTap: () {
+                                _toggleEpisodeWatched(
+                                  season: seasonNumber,
+                                  episodeNumber: episode.episodeNumber,
+                                  isCurrentlyWatched: episodeHistory?.isWatched == true,
+                                  tvEpisodeHistory: tvEpisodeHistory,
+                                );
+                              },
+                              borderRadius: BorderRadius.circular(20),
+                              child: Padding(
+                                padding: const EdgeInsets.all(6.0),
+                                child: Icon(
+                                  episodeHistory?.isWatched == true
+                                      ? Icons.check_circle
+                                      : Icons.radio_button_unchecked,
+                                  color: episodeHistory?.isWatched == true
+                                      ? Colors.greenAccent
+                                      : Colors.grey.shade600,
+                                  size: 26,
+                                ),
+                              ),
+                            ),
+                          ),
+                  ],
+                ),
                 onTap: (!isAired || _isResolving)
                     ? null
                     : () => _resolveAndPickSource(

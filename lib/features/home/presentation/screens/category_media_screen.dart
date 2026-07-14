@@ -8,11 +8,13 @@ import '../providers/home_provider.dart';
 class CategoryMediaScreen extends ConsumerWidget {
   final String categoryKey;
   final String title;
+  final int crossAxisCount;
 
   const CategoryMediaScreen({
     super.key,
     required this.categoryKey,
     required this.title,
+    this.crossAxisCount = 3,
   });
 
   @override
@@ -37,9 +39,9 @@ class CategoryMediaScreen extends ConsumerWidget {
           }
           return GridView.builder(
             padding: const EdgeInsets.all(12),
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 2,
-              childAspectRatio: 0.68,
+            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: crossAxisCount,
+              childAspectRatio: crossAxisCount == 3 ? 0.62 : 0.68,
               crossAxisSpacing: 10,
               mainAxisSpacing: 10,
             ),
