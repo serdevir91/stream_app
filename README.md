@@ -8,6 +8,9 @@ watch history, a personal library, and runtime app settings.
 
 - Flutter client for Windows/Android (plus default Flutter platform folders).
 - Local FastAPI backend for stream resolution.
+- Modern Glassmorphic Movie/Series Details UI with horizontal season selector pills and segmented tabs.
+- Auto-normalization of TV series seasons when continue watching reaches season boundary (S1 E10 -> S2 E1).
+- In-Player Subtitle Delay / Sync controls (-10.0s to +10.0s) for live subtitle alignment.
 - Add-on manager (install, enable/disable, remove custom add-ons).
 - Add-on manager supports install from URL and local `.json` manifest file.
 - Movie/series detail pages with source resolution and playback.
@@ -44,18 +47,19 @@ watch history, a personal library, and runtime app settings.
 
 | Architecture | File | Size |
 |-------------|------|------|
-| ARM64 (most devices) | [app-arm64-v8a-release.apk](https://github.com/serdevir91/stream_app/releases/download/v1.0.14/app-arm64-v8a-release.apk) | ~32.7 MB |
-| ARM 32-bit (older devices) | [app-armeabi-v7a-release.apk](https://github.com/serdevir91/stream_app/releases/download/v1.0.14/app-armeabi-v7a-release.apk) | ~29.9 MB |
-| x86_64 (emulators) | [app-x86_64-release.apk](https://github.com/serdevir91/stream_app/releases/download/v1.0.14/app-x86_64-release.apk) | ~37.4 MB |
+| Universal (All Devices) | [app-release.apk](https://github.com/serdevir91/stream_app/releases/download/v1.0.15/app-release.apk) | ~96.7 MB |
+| ARM64 (most devices) | [app-arm64-v8a-release.apk](https://github.com/serdevir91/stream_app/releases/download/v1.0.15/app-arm64-v8a-release.apk) | ~32.7 MB |
+| ARM 32-bit (older devices) | [app-armeabi-v7a-release.apk](https://github.com/serdevir91/stream_app/releases/download/v1.0.15/app-armeabi-v7a-release.apk) | ~29.9 MB |
+| x86_64 (emulators) | [app-x86_64-release.apk](https://github.com/serdevir91/stream_app/releases/download/v1.0.15/app-x86_64-release.apk) | ~37.4 MB |
 
-> Most modern phones use ARM64. If unsure, download the ARM64 version.
+> Most modern phones use ARM64. If unsure, download the Universal or ARM64 version.
 
 ### Windows
 
 | Type | File | Size |
 |------|------|------|
-| Installer (recommended) | [StreamApp-Setup-v1.0.14.exe](https://github.com/serdevir91/stream_app/releases/download/v1.0.14/StreamApp-Setup-v1.0.14.exe) | ~25.1 MB |
-| Portable | [stream_app-windows-x64.zip](https://github.com/serdevir91/stream_app/releases/download/v1.0.14/stream_app-windows-x64.zip) | ~32.5 MB |
+| Installer (recommended) | [StreamApp-Setup-v1.0.15.exe](https://github.com/serdevir91/stream_app/releases/download/v1.0.15/StreamApp-Setup-v1.0.15.exe) | ~25.5 MB |
+| Portable | [stream_app-windows-x64.zip](https://github.com/serdevir91/stream_app/releases/download/v1.0.15/stream_app-windows-x64.zip) | ~32.5 MB |
 
 **Installer**: Run the `.exe` wizard. Creates Start Menu shortcuts and an uninstaller.
 
