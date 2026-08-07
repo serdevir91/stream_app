@@ -21,6 +21,7 @@ import '../../../../core/subtitles/online_subtitle_repository.dart';
 import '../../../../core/i18n/app_text.dart';
 
 import '../providers/player_provider.dart';
+import '../../../search/presentation/providers/search_provider.dart';
 import '../../domain/entities/watch_history.dart';
 import '../../../../core/settings/app_settings_provider.dart';
 
@@ -108,6 +109,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   String _embedCaptionText = '';
   Timer? _embedSubtitleTimer;
   bool _embedSubtitleTickRunning = false;
+  double _subtitleDelaySeconds = 0.0;
 
   String get _selectedVideoPlayer {
     try {
@@ -526,12 +528,93 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   }
 
   String _captionTextAt(Duration position) {
+    final delayOffset = Duration(milliseconds: (_subtitleDelaySeconds * 1000).toInt());
+    final adjusted = position + delayOffset;
     for (final caption in _embedCaptions) {
-      if (position >= caption.start && position <= caption.end) {
+      if (adjusted >= caption.start && adjusted <= caption.end) {
         return caption.text;
       }
     }
     return '';
+  }
+
+  Widget _buildSubtitleSyncControl(StateSetter setModalState) {
+    final text = ref.read(appTextProvider);
+    final delayText = _subtitleDelaySeconds == 0.0
+        ? (text.languageCode == 'tr' ? 'Varsayılan (0.0s)' : 'Default (0.0s)')
+        : '${_subtitleDelaySeconds > 0 ? "+" : ""}${_subtitleDelaySeconds.toStringAsFixed(1)}s';
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.06),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.white12),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  text.languageCode == 'tr' ? 'Altyazı Senkronizasyonu' : 'Subtitle Delay / Sync',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 13,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  delayText,
+                  style: TextStyle(
+                    color: _subtitleDelaySeconds == 0.0 ? Colors.white60 : Colors.amberAccent,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                IconButton(
+                  icon: const Icon(Icons.remove_circle_outline, color: Colors.white70),
+                  onPressed: () {
+                    setModalState(() {
+                      _subtitleDelaySeconds = (_subtitleDelaySeconds - 0.5).clamp(-10.0, 10.0);
+                    });
+                    setState(() {});
+                  },
+                ),
+                IconButton(
+                  icon: const Icon(Icons.refresh, color: Colors.white54, size: 20),
+                  onPressed: () {
+                    setModalState(() {
+                      _subtitleDelaySeconds = 0.0;
+                    });
+                    setState(() {});
+                  },
+                ),
+                IconButton(
+                  icon: const Icon(Icons.add_circle_outline, color: Colors.white70),
+                  onPressed: () {
+                    setModalState(() {
+                      _subtitleDelaySeconds = (_subtitleDelaySeconds + 0.5).clamp(-10.0, 10.0);
+                    });
+                    setState(() {});
+                  },
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   Future<void> _seekAfterReady(Player player, int positionMs) async {
@@ -1877,12 +1960,40 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
         _loadingStatusKey = 'resolving_stream';
       });
 
+      int targetSeason = widget.season;
+      int targetEpisode = widget.episode;
+
+      if (_isTvPlayback) {
+        try {
+          final seasonsAsync = ref.read(seriesSeasonsProvider(widget.mediaId));
+          final seasons = seasonsAsync.value ?? [];
+          if (seasons.isNotEmpty) {
+            final orderedSeasons = [...seasons]
+              ..sort((a, b) => a.seasonNumber.compareTo(b.seasonNumber));
+            final currentSeasonIndex = orderedSeasons.indexWhere((s) => s.seasonNumber == targetSeason);
+            if (currentSeasonIndex != -1) {
+              final currentSeasonCount = orderedSeasons[currentSeasonIndex].episodeCount;
+              if (currentSeasonCount > 0 && targetEpisode > currentSeasonCount) {
+                if (currentSeasonIndex + 1 < orderedSeasons.length) {
+                  targetSeason = orderedSeasons[currentSeasonIndex + 1].seasonNumber;
+                  targetEpisode = 1;
+                } else {
+                  targetEpisode = currentSeasonCount;
+                }
+              }
+            }
+          }
+        } catch (e) {
+          debugPrint('Player season boundary check error: $e');
+        }
+      }
+
       final data = await addonService.resolveFast(
         query: widget.title,
         tmdbId: widget.mediaId,
         contentType: _backendMediaType,
-        season: widget.season,
-        episode: widget.episode,
+        season: targetSeason,
+        episode: targetEpisode,
         addonId: widget.sourceId,
         preferAnimeSources: widget.preferAnimeSources,
       );
@@ -2903,62 +3014,68 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
           borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
         ),
         builder: (sheetContext) {
-          return SafeArea(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Text(
-                    text.t('subtitle_selection'),
-                    style: const TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
+          return StatefulBuilder(
+            builder: (ctx, setModalState) {
+              return SafeArea(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Text(
+                        text.t('subtitle_selection'),
+                        style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
+                      ),
                     ),
-                  ),
+                    _buildSubtitleSyncControl(setModalState),
+                    const Divider(color: Colors.white12),
+                    ListTile(
+                      leading: Icon(
+                        !_embedSubtitlesEnabled
+                            ? Icons.radio_button_checked
+                            : Icons.radio_button_off,
+                        color: Colors.white,
+                      ),
+                      title: Text(
+                        text.t('off'),
+                        style: const TextStyle(color: Colors.white),
+                      ),
+                      onTap: () {
+                        setState(() {
+                          _embedSubtitlesEnabled = false;
+                          _embedCaptionText = '';
+                        });
+                        Navigator.pop(sheetContext);
+                      },
+                    ),
+                    ListTile(
+                      leading: Icon(
+                        _embedSubtitlesEnabled
+                            ? Icons.radio_button_checked
+                            : Icons.radio_button_off,
+                        color: Colors.white,
+                      ),
+                      title: Text(
+                        subtitle.label.isEmpty ? 'Wyzie Subs' : subtitle.label,
+                        style: const TextStyle(color: Colors.white),
+                      ),
+                      onTap: () {
+                        setState(() {
+                          _embedSubtitlesEnabled = true;
+                        });
+                        unawaited(_disableEmbedProviderSubtitles());
+                        _startEmbedSubtitleTimer();
+                        Navigator.pop(sheetContext);
+                      },
+                    ),
+                  ],
                 ),
-                ListTile(
-                  leading: Icon(
-                    !_embedSubtitlesEnabled
-                        ? Icons.radio_button_checked
-                        : Icons.radio_button_off,
-                    color: Colors.white,
-                  ),
-                  title: Text(
-                    text.t('off'),
-                    style: const TextStyle(color: Colors.white),
-                  ),
-                  onTap: () {
-                    setState(() {
-                      _embedSubtitlesEnabled = false;
-                      _embedCaptionText = '';
-                    });
-                    Navigator.pop(sheetContext);
-                  },
-                ),
-                ListTile(
-                  leading: Icon(
-                    _embedSubtitlesEnabled
-                        ? Icons.radio_button_checked
-                        : Icons.radio_button_off,
-                    color: Colors.white,
-                  ),
-                  title: Text(
-                    subtitle.label.isEmpty ? 'Wyzie Subs' : subtitle.label,
-                    style: const TextStyle(color: Colors.white),
-                  ),
-                  onTap: () {
-                    setState(() {
-                      _embedSubtitlesEnabled = true;
-                    });
-                    unawaited(_disableEmbedProviderSubtitles());
-                    _startEmbedSubtitleTimer();
-                    Navigator.pop(sheetContext);
-                  },
-                ),
-              ],
-            ),
+              );
+            },
           );
         },
       );
@@ -2981,88 +3098,94 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
           borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
         ),
         builder: (sheetContext) {
-          return SafeArea(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Text(
-                    text.t('subtitle_selection'),
-                    style: const TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
-                    ),
-                  ),
-                ),
-                ListTile(
-                  leading: Icon(
-                    _selectedSubtitleTrackIndex < 0
-                        ? Icons.radio_button_checked
-                        : Icons.radio_button_off,
-                    color: Colors.white,
-                  ),
-                  title: Text(
-                    text.t('off'),
-                    style: const TextStyle(color: Colors.white),
-                  ),
-                  onTap: () {
-                    _player!.setSubtitleTrack(SubtitleTrack.no());
-                    setState(() => _selectedSubtitleTrackIndex = -1);
-                    Navigator.pop(sheetContext);
-                  },
-                ),
-                if (_activeOnlineSubtitle != null)
-                  ListTile(
-                    leading: Icon(
-                      _selectedSubtitleTrackIndex == -2
-                          ? Icons.radio_button_checked
-                          : Icons.radio_button_off,
-                      color: Colors.white,
-                    ),
-                    title: Text(
-                      _activeOnlineSubtitle!.label.isEmpty
-                          ? 'Wyzie Subs'
-                          : _activeOnlineSubtitle!.label,
-                      style: const TextStyle(color: Colors.white),
-                    ),
-                    onTap: () {
-                      _player!.setSubtitleTrack(
-                        SubtitleTrack.uri(
-                          _activeOnlineSubtitle!.url,
-                          title: _activeOnlineSubtitle!.label,
-                          language: _activeOnlineSubtitle!.languageCode,
+          return StatefulBuilder(
+            builder: (ctx, setModalState) {
+              return SafeArea(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Text(
+                        text.t('subtitle_selection'),
+                        style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
                         ),
+                      ),
+                    ),
+                    _buildSubtitleSyncControl(setModalState),
+                    const Divider(color: Colors.white12),
+                    ListTile(
+                      leading: Icon(
+                        _selectedSubtitleTrackIndex < 0
+                            ? Icons.radio_button_checked
+                            : Icons.radio_button_off,
+                        color: Colors.white,
+                      ),
+                      title: Text(
+                        text.t('off'),
+                        style: const TextStyle(color: Colors.white),
+                      ),
+                      onTap: () {
+                        _player!.setSubtitleTrack(SubtitleTrack.no());
+                        setState(() => _selectedSubtitleTrackIndex = -1);
+                        Navigator.pop(sheetContext);
+                      },
+                    ),
+                    if (_activeOnlineSubtitle != null)
+                      ListTile(
+                        leading: Icon(
+                          _selectedSubtitleTrackIndex == -2
+                              ? Icons.radio_button_checked
+                              : Icons.radio_button_off,
+                          color: Colors.white,
+                        ),
+                        title: Text(
+                          _activeOnlineSubtitle!.label.isEmpty
+                              ? 'Wyzie Subs'
+                              : _activeOnlineSubtitle!.label,
+                          style: const TextStyle(color: Colors.white),
+                        ),
+                        onTap: () {
+                          _player!.setSubtitleTrack(
+                            SubtitleTrack.uri(
+                              _activeOnlineSubtitle!.url,
+                              title: _activeOnlineSubtitle!.label,
+                              language: _activeOnlineSubtitle!.languageCode,
+                            ),
+                          );
+                          setState(() => _selectedSubtitleTrackIndex = -2);
+                          Navigator.pop(sheetContext);
+                        },
+                      ),
+                    ...List.generate(tracks.length, (index) {
+                      final track = tracks[index];
+                      final label =
+                          track.title ?? track.language ?? 'Track ${index + 1}';
+                      return ListTile(
+                        leading: Icon(
+                          _selectedSubtitleTrackIndex == index
+                              ? Icons.radio_button_checked
+                              : Icons.radio_button_off,
+                          color: Colors.white,
+                        ),
+                        title: Text(
+                          label,
+                          style: const TextStyle(color: Colors.white),
+                        ),
+                        onTap: () {
+                          _player!.setSubtitleTrack(track);
+                          setState(() => _selectedSubtitleTrackIndex = index);
+                          Navigator.pop(sheetContext);
+                        },
                       );
-                      setState(() => _selectedSubtitleTrackIndex = -2);
-                      Navigator.pop(sheetContext);
-                    },
-                  ),
-                ...List.generate(tracks.length, (index) {
-                  final track = tracks[index];
-                  final label =
-                      track.title ?? track.language ?? 'Track ${index + 1}';
-                  return ListTile(
-                    leading: Icon(
-                      _selectedSubtitleTrackIndex == index
-                          ? Icons.radio_button_checked
-                          : Icons.radio_button_off,
-                      color: Colors.white,
-                    ),
-                    title: Text(
-                      label,
-                      style: const TextStyle(color: Colors.white),
-                    ),
-                    onTap: () {
-                      _player!.setSubtitleTrack(track);
-                      setState(() => _selectedSubtitleTrackIndex = index);
-                      Navigator.pop(sheetContext);
-                    },
-                  );
-                }),
-              ],
-            ),
+                    }),
+                  ],
+                ),
+              );
+            },
           );
         },
       );
@@ -3085,61 +3208,67 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
           borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
         ),
         builder: (sheetContext) {
-          return SafeArea(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Text(
-                    text.t('subtitle_selection'),
-                    style: const TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
+          return StatefulBuilder(
+            builder: (ctx, setModalState) {
+              return SafeArea(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Text(
+                        text.t('subtitle_selection'),
+                        style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
+                      ),
                     ),
-                  ),
+                    _buildSubtitleSyncControl(setModalState),
+                    const Divider(color: Colors.white12),
+                    ListTile(
+                      leading: Icon(
+                        !_nativeSubtitlesEnabled
+                            ? Icons.radio_button_checked
+                            : Icons.radio_button_off,
+                        color: Colors.white,
+                      ),
+                      title: Text(
+                        text.t('off'),
+                        style: const TextStyle(color: Colors.white),
+                      ),
+                      onTap: () {
+                        _nativeController!.setClosedCaptionFile(null);
+                        setState(() {
+                          _nativeSubtitlesEnabled = false;
+                        });
+                        Navigator.pop(sheetContext);
+                      },
+                    ),
+                    ListTile(
+                      leading: Icon(
+                        _nativeSubtitlesEnabled
+                            ? Icons.radio_button_checked
+                            : Icons.radio_button_off,
+                        color: Colors.white,
+                      ),
+                      title: Text(
+                        subtitle.label.isEmpty ? 'Wyzie Subs' : subtitle.label,
+                        style: const TextStyle(color: Colors.white),
+                      ),
+                      onTap: () {
+                        setState(() {
+                          _nativeSubtitlesEnabled = true;
+                        });
+                        unawaited(_applyNativeSubtitle(subtitle));
+                        Navigator.pop(sheetContext);
+                      },
+                    ),
+                  ],
                 ),
-                ListTile(
-                  leading: Icon(
-                    !_nativeSubtitlesEnabled
-                        ? Icons.radio_button_checked
-                        : Icons.radio_button_off,
-                    color: Colors.white,
-                  ),
-                  title: Text(
-                    text.t('off'),
-                    style: const TextStyle(color: Colors.white),
-                  ),
-                  onTap: () {
-                    _nativeController!.setClosedCaptionFile(null);
-                    setState(() {
-                      _nativeSubtitlesEnabled = false;
-                    });
-                    Navigator.pop(sheetContext);
-                  },
-                ),
-                ListTile(
-                  leading: Icon(
-                    _nativeSubtitlesEnabled
-                        ? Icons.radio_button_checked
-                        : Icons.radio_button_off,
-                    color: Colors.white,
-                  ),
-                  title: Text(
-                    subtitle.label.isEmpty ? 'Wyzie Subs' : subtitle.label,
-                    style: const TextStyle(color: Colors.white),
-                  ),
-                  onTap: () {
-                    setState(() {
-                      _nativeSubtitlesEnabled = true;
-                    });
-                    unawaited(_applyNativeSubtitle(subtitle));
-                    Navigator.pop(sheetContext);
-                  },
-                ),
-              ],
-            ),
+              );
+            },
           );
         },
       );
