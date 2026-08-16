@@ -407,7 +407,31 @@ class _MediaDetailsScreenState extends ConsumerState<MediaDetailsScreen> {
         final preferredMirror = settings.preferredMirror.trim().toLowerCase();
         Map<String, dynamic>? selected;
 
-        if (preferredMirror.isNotEmpty && preferredMirror != 'auto') {
+        // 1. Check user preferred source first
+        if (preferredSourceIdToUse.isNotEmpty) {
+          final matchingStreams = prioritizedStreams
+              .where((s) => s['addon_id']?.toString() == preferredSourceIdToUse)
+              .toList();
+          if (matchingStreams.isNotEmpty) {
+            if (preferredMirror.isNotEmpty && preferredMirror != 'auto') {
+              for (final stream in matchingStreams) {
+                final title = (stream['title'] ?? '').toString().toLowerCase();
+                final provider = (stream['provider'] ?? '').toString().toLowerCase();
+                final url = (stream['url'] ?? '').toString().toLowerCase();
+                if (title.contains(preferredMirror) ||
+                    provider.contains(preferredMirror) ||
+                    url.contains(preferredMirror)) {
+                  selected = stream;
+                  break;
+                }
+              }
+            }
+            selected ??= matchingStreams.first;
+          }
+        }
+
+        // 2. Check mirror preferences if auto source
+        if (selected == null && preferredMirror.isNotEmpty && preferredMirror != 'auto') {
           for (final stream in prioritizedStreams) {
             final title = (stream['title'] ?? '').toString().toLowerCase();
             final provider = (stream['provider'] ?? '').toString().toLowerCase();
@@ -421,17 +445,10 @@ class _MediaDetailsScreenState extends ConsumerState<MediaDetailsScreen> {
           }
         }
 
-        if (selected == null && preferredSourceIdToUse.isNotEmpty) {
-          for (final stream in prioritizedStreams) {
-            if (stream['addon_id']?.toString() == preferredSourceIdToUse) {
-              selected = stream;
-              break;
-            }
-          }
-        }
         selected ??= prioritizedStreams.first;
         _playSelectedStream(
           selected,
+          allStreams: prioritizedStreams,
           season: season,
           episode: episode,
           runtimeMinutes: runtimeMinutes,
@@ -478,6 +495,7 @@ class _MediaDetailsScreenState extends ConsumerState<MediaDetailsScreen> {
 
   void _playSelectedStream(
     Map<String, dynamic> stream, {
+    List<Map<String, dynamic>>? allStreams,
     required int season,
     required int episode,
     int? runtimeMinutes,
@@ -516,6 +534,7 @@ class _MediaDetailsScreenState extends ConsumerState<MediaDetailsScreen> {
           initialStreamUrl: streamUrl,
           initialProvider: provider,
           initialIsDirectLink: isDirectLink,
+          initialStreams: allStreams,
           subtitleLanguage: settings.subtitleLanguage,
           runtimeMinutes: runtimeMinutes,
           nextSeasonNumber: nextTarget?.season,
@@ -633,6 +652,7 @@ class _MediaDetailsScreenState extends ConsumerState<MediaDetailsScreen> {
                                 initialStreamUrl: streamUrl,
                                 initialProvider: provider,
                                 initialIsDirectLink: isDirectLink as bool,
+                                initialStreams: streams,
                                 subtitleLanguage: settings.subtitleLanguage,
                                 runtimeMinutes: runtimeMinutes,
                                 nextSeasonNumber: nextSeasonNumber,

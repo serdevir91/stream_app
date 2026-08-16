@@ -37,6 +37,7 @@ class PlayerScreen extends ConsumerStatefulWidget {
   final String? initialStreamUrl;
   final String? initialProvider;
   final bool initialIsDirectLink;
+  final List<Map<String, dynamic>>? initialStreams;
   final String subtitleLanguage;
   final int? runtimeMinutes;
   final int? nextSeasonNumber;
@@ -58,6 +59,7 @@ class PlayerScreen extends ConsumerStatefulWidget {
     this.initialStreamUrl,
     this.initialProvider,
     this.initialIsDirectLink = true,
+    this.initialStreams,
     this.subtitleLanguage = 'tr',
     this.runtimeMinutes,
     this.nextSeasonNumber,
@@ -145,6 +147,9 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    if (widget.initialStreams != null && widget.initialStreams!.isNotEmpty) {
+      _availableStreams = widget.initialStreams!;
+    }
     _subtitleDelaySeconds = ref.read(appSettingsProvider).defaultSubtitleOffset;
     _enterFullscreenMode();
     _armControlsAutoHide();
@@ -825,10 +830,36 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
           provider: widget.initialProvider,
           isDirectLink: widget.initialIsDirectLink,
         );
+        if (_availableStreams.isEmpty) {
+          unawaited(_backgroundFetchAvailableStreams());
+        }
       } else {
         _fetchStreamAndInitialize();
       }
     }
+  }
+
+  Future<void> _backgroundFetchAvailableStreams() async {
+    try {
+      final addonService = ref.read(addonServiceProvider);
+      final data = await addonService.resolve(
+        query: widget.title,
+        tmdbId: widget.mediaId,
+        contentType: _backendMediaType,
+        season: widget.season,
+        episode: widget.episode,
+        addonId: widget.sourceId,
+      );
+      final streams = (data['streams'] as List<dynamic>? ?? <dynamic>[])
+          .whereType<Map>()
+          .map((item) => Map<String, dynamic>.from(item))
+          .toList();
+      if (!_isDisposed && mounted && streams.isNotEmpty) {
+        setState(() {
+          _availableStreams = streams;
+        });
+      }
+    } catch (_) {}
   }
 
   void _enterFullscreenMode() {
@@ -1059,6 +1090,13 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
       ..reset();
     _embedPositionOffsetMs = 0;
     _directAutoplayAttempt += 1;
+    final previousNative = _nativeController;
+    _nativeController = null;
+    if (previousNative != null) {
+      try {
+        await previousNative.dispose();
+      } catch (_) {}
+    }
     if (previousPlayer != null) {
       unawaited(previousPlayer.dispose());
     }
@@ -1066,23 +1104,44 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
       unawaited(previousWindowsController.dispose());
     }
 
+    int resumeMs = _savedPositionMs;
+    if (resumeMs <= 0 && ref.read(appSettingsProvider).watchHistoryEnabled) {
+      final repo = ref.read(watchHistoryRepositoryProvider);
+      final history = repo.getProgress(
+        widget.mediaId,
+        mediaType: _normalizedMediaType,
+        season: widget.season,
+        episode: widget.episode,
+      );
+      if (history != null && history.lastPosition > 0 && !history.isWatched) {
+        resumeMs = history.lastPosition;
+      }
+    }
+
     if (isDirectLink) {
       setState(() {
         _loadingStatusKey = 'loading_video';
       });
       if (_useNativePlayer) {
-        await _initNativePlayer(streamUrl);
+        await _initNativePlayer(streamUrl, seekMs: resumeMs);
         unawaited(_attachOnlineSubtitle(streamUrl));
       } else {
         final player = Player();
         _player = player;
         _videoController = VideoController(player);
-        player.open(Media(streamUrl), play: true);
+        if (resumeMs > 0) {
+          player.open(Media(streamUrl, start: Duration(milliseconds: resumeMs)), play: true);
+        } else {
+          player.open(Media(streamUrl), play: true);
+        }
         _ensureDirectPlaybackStarts(player);
         setState(() {
           _isLoading = false;
         });
         _startProgressAutosave();
+        if (resumeMs > 0) {
+          _seekAfterReady(player, resumeMs);
+        }
         unawaited(_attachOnlineSubtitle(streamUrl));
       }
     } else {
@@ -1092,7 +1151,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
         _loadingStatusKey = 'preparing_in_app_player';
         _isLoading = true;
       });
-      _initializeEmbedPlayer(localizedUrl);
+      _initializeEmbedPlayer(localizedUrl, startAtMs: resumeMs);
       _startProgressAutosave();
       unawaited(_attachOnlineSubtitleToEmbed(streamUrl, localizedUrl));
     }
@@ -1338,7 +1397,97 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     } catch (_) {}
   }
 
-  Future<void> _initializeEmbedPlayer(String url) async {
+  String _buildUniversalEmbedTrackingScript([int startAtMs = 0]) {
+    final seekSec = startAtMs > 0 ? (startAtMs / 1000.0) : 0.0;
+    return '''
+      (function() {
+        var seekTargetSec = $seekSec;
+        var hasSeeked = false;
+
+        function trySeekVideo(v) {
+          if (seekTargetSec <= 0 || hasSeeked) return;
+          try {
+            if (v.readyState >= 1) {
+              if (Math.abs(v.currentTime - seekTargetSec) > 2) {
+                v.currentTime = seekTargetSec;
+                hasSeeked = true;
+              }
+            } else {
+              v.addEventListener('loadedmetadata', function() {
+                if (!hasSeeked) {
+                  v.currentTime = seekTargetSec;
+                  hasSeeked = true;
+                }
+              }, { once: true });
+            }
+          } catch(e) {}
+        }
+
+        function postState(v) {
+          try {
+            var payload = {
+              currentTime: v.currentTime,
+              duration: v.duration || 0,
+              paused: v.paused
+            };
+            if (window.top.StreamAppChannel && window.top.StreamAppChannel.postMessage) {
+              window.top.StreamAppChannel.postMessage(JSON.stringify(payload));
+            }
+            if (window.top.chrome && window.top.chrome.webview && window.top.chrome.webview.postMessage) {
+              window.top.chrome.webview.postMessage(payload);
+            }
+          } catch(e) {}
+        }
+
+        function attach(v) {
+          if (!v || v.__streamAppAttached) return;
+          v.__streamAppAttached = true;
+          trySeekVideo(v);
+
+          v.addEventListener('play', function() { postState(v); });
+          v.addEventListener('playing', function() { postState(v); });
+          v.addEventListener('pause', function() { postState(v); });
+          v.addEventListener('timeupdate', function() { postState(v); });
+          v.addEventListener('durationchange', function() { postState(v); });
+          v.addEventListener('seeked', function() { postState(v); });
+          v.addEventListener('ended', function() { postState(v); });
+
+          postState(v);
+        }
+
+        function scanVideos() {
+          try {
+            document.querySelectorAll('video').forEach(attach);
+            document.querySelectorAll('iframe').forEach(function(f) {
+              try {
+                if (f.contentWindow && f.contentWindow.document) {
+                  f.contentWindow.document.querySelectorAll('video').forEach(attach);
+                }
+              } catch(e) {}
+            });
+          } catch(e) {}
+        }
+
+        scanVideos();
+        var timer = setInterval(scanVideos, 1000);
+        setTimeout(function() {
+          clearInterval(timer);
+          setInterval(scanVideos, 3000);
+        }, 15000);
+      })();
+    ''';
+  }
+
+  Future<void> _injectUniversalEmbedTrackingScript(
+    WebViewController controller,
+    int startAtMs,
+  ) async {
+    try {
+      await controller.runJavaScript(_buildUniversalEmbedTrackingScript(startAtMs));
+    } catch (_) {}
+  }
+
+  Future<void> _initializeEmbedPlayer(String url, {int startAtMs = 0}) async {
     const userAgent =
         'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36';
 
@@ -1347,20 +1496,21 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
       _trustedEmbedHosts = _buildTrustedEmbedHosts(uri);
 
       // Reset embed tracking variables
-      _lastEmbedPositionMs = null;
+      _lastEmbedPositionMs = startAtMs > 0 ? startAtMs : null;
       _lastEmbedDurationMs = null;
       _embedVideoPaused = true;
 
-      final repo = ref.read(watchHistoryRepositoryProvider);
-      final history = repo.getProgress(
-        widget.mediaId,
-        mediaType: _normalizedMediaType,
-        season: widget.season,
-        episode: widget.episode,
-      );
-      int startAtMs = 0;
-      if (history != null && history.lastPosition > 0 && !history.isWatched) {
-        startAtMs = history.lastPosition;
+      if (startAtMs <= 0) {
+        final repo = ref.read(watchHistoryRepositoryProvider);
+        final history = repo.getProgress(
+          widget.mediaId,
+          mediaType: _normalizedMediaType,
+          season: widget.season,
+          episode: widget.episode,
+        );
+        if (history != null && history.lastPosition > 0 && !history.isWatched) {
+          startAtMs = history.lastPosition;
+        }
       }
       _embedPositionOffsetMs = startAtMs;
 
@@ -1424,6 +1574,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                 return;
               }
               unawaited(_injectEmbedAntiPopupScript(controller));
+              unawaited(_injectUniversalEmbedTrackingScript(controller, startAtMs));
               unawaited(
                 _syncEmbedSubtitleLanguage(uri, webController: controller),
               );
@@ -1489,6 +1640,9 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
       // Inject anti-popup and overlay click bypass script for Windows WebViews
       await controller.addScriptToExecuteOnDocumentCreated(
         _getAntiPopupScript(),
+      );
+      await controller.addScriptToExecuteOnDocumentCreated(
+        _buildUniversalEmbedTrackingScript(startAtMs),
       );
 
       if (_isStreamImdbEmbedHost(entryUri.host)) {
@@ -2123,12 +2277,12 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     if (!_isDirectLink) {
       try {
         final elapsed = await _getEmbedVideoPositionMs();
-        if (elapsed < 10000) {
+        if (elapsed < 5000) {
           return;
         }
 
         final runtimeMs = await _getEmbedVideoDurationMs();
-        final position = elapsed.clamp(10000, runtimeMs - 1000);
+        final position = elapsed.clamp(0, runtimeMs - 1000);
         final isWatched = position >= (runtimeMs * completionThreshold);
 
         await repo.saveProgress(
@@ -2155,11 +2309,11 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     // Native player (video_player package)
     if (_nativeController != null && _nativeController!.value.isInitialized) {
       try {
-        final pos = _nativeController!.value.position;
-        final dur = _nativeController!.value.duration;
-        if (pos.inMilliseconds > 0 && dur.inMilliseconds > 0) {
-          final isWatched =
-              pos.inMilliseconds >= dur.inMilliseconds * completionThreshold;
+        final pos = _nativeController!.value.position.inMilliseconds;
+        final rawDur = _nativeController!.value.duration.inMilliseconds;
+        final dur = rawDur > 0 ? rawDur : _episodeRuntimeMs();
+        if (pos > 0 && dur > 0) {
+          final isWatched = pos >= dur * completionThreshold;
           await repo.saveProgress(
             WatchHistory(
               mediaId: widget.mediaId,
@@ -2170,8 +2324,8 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
               posterUrl: widget.posterUrl,
               backdropUrl: widget.backdropUrl,
               sourceId: widget.sourceId,
-              lastPosition: pos.inMilliseconds,
-              duration: dur.inMilliseconds,
+              lastPosition: pos,
+              duration: dur,
               isWatched: isWatched,
             ),
           );
@@ -2185,13 +2339,12 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     // Media kit player
     if (_player == null) return;
     try {
-      final position = _player!.state.position;
-      final duration = _player!.state.duration;
+      final pos = _player!.state.position.inMilliseconds;
+      final rawDur = _player!.state.duration.inMilliseconds;
+      final dur = rawDur > 0 ? rawDur : _episodeRuntimeMs();
 
-      if (position.inMilliseconds > 0 && duration.inMilliseconds > 0) {
-        final isWatched =
-            position.inMilliseconds >=
-            duration.inMilliseconds * completionThreshold;
+      if (pos > 0 && dur > 0) {
+        final isWatched = pos >= dur * completionThreshold;
 
         await repo.saveProgress(
           WatchHistory(
@@ -2203,8 +2356,8 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
             posterUrl: widget.posterUrl,
             backdropUrl: widget.backdropUrl,
             sourceId: widget.sourceId,
-            lastPosition: position.inMilliseconds,
-            duration: duration.inMilliseconds,
+            lastPosition: pos,
+            duration: dur,
             isWatched: isWatched,
           ),
         );
@@ -2320,10 +2473,12 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
 
     if (_isDirectLink &&
         capturedPositionMs != null &&
-        capturedDurationMs != null &&
-        capturedDurationMs > 0) {
+        capturedPositionMs > 0) {
+      final finalDur = (capturedDurationMs != null && capturedDurationMs > 0)
+          ? capturedDurationMs
+          : _episodeRuntimeMs();
       final isWatched =
-          capturedPositionMs >= capturedDurationMs * completionThreshold;
+          capturedPositionMs >= finalDur * completionThreshold;
       try {
         await repo.saveProgress(
           WatchHistory(
@@ -2336,7 +2491,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
             backdropUrl: widget.backdropUrl,
             sourceId: widget.sourceId,
             lastPosition: capturedPositionMs,
-            duration: capturedDurationMs,
+            duration: finalDur,
             isWatched: isWatched,
           ),
         );
@@ -2347,9 +2502,14 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     }
 
     // Embed mode fallback.
-    if (embedElapsedMs < 10000) return;
-    final runtimeMs = _episodeRuntimeMs();
-    final position = embedElapsedMs.clamp(10000, runtimeMs - 1000);
+    final pos = (_lastEmbedPositionMs != null && _lastEmbedPositionMs! > 0)
+        ? _lastEmbedPositionMs!
+        : (embedElapsedMs > 5000 ? embedElapsedMs : 0);
+    if (pos < 5000) return;
+    final runtimeMs = (_lastEmbedDurationMs != null && _lastEmbedDurationMs! > 0)
+        ? _lastEmbedDurationMs!
+        : _episodeRuntimeMs();
+    final position = pos.clamp(0, runtimeMs - 1000);
     final isWatched = position >= (runtimeMs * completionThreshold);
     try {
       await repo.saveProgress(
@@ -2558,8 +2718,12 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
             ),
           ),
         ],
-        if (!_showOverlayControls && !_isDirectLink)
-          Positioned.fill(
+        if (!_showOverlayControls && !_isDirectLink) ...[
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            height: 48,
             child: GestureDetector(
               behavior: HitTestBehavior.translucent,
               onTap: () {
@@ -2568,9 +2732,49 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                 });
                 _armControlsAutoHide();
               },
-              child: const SizedBox.expand(),
             ),
           ),
+          Positioned(
+            top: 10,
+            right: 12,
+            child: SafeArea(
+              child: Material(
+                color: Colors.black.withValues(alpha: 0.65),
+                borderRadius: BorderRadius.circular(20),
+                elevation: 3,
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(20),
+                  onTap: () {
+                    setState(() {
+                      _showOverlayControls = true;
+                    });
+                    _armControlsAutoHide();
+                  },
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.dns_rounded, color: Colors.blueAccent, size: 16),
+                        const SizedBox(width: 5),
+                        Text(
+                          _currentMirrorName?.replaceAll('VidBox - ', '') ?? 'Mirror',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        const Icon(Icons.keyboard_arrow_down_rounded, color: Colors.white70, size: 16),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
         if (_showNextEpisodeOverlay)
           Positioned.fill(
             child: Container(
@@ -3013,6 +3217,56 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     );
   }
 
+  Future<void> _switchMirror(Map<String, dynamic> stream) async {
+    final newUrl = stream['url']?.toString() ?? '';
+    if (newUrl.isEmpty) return;
+
+    // Capture current playback position before switching
+    int currentPos = 0;
+    if (_isDirectLink) {
+      if (_nativeController != null && _nativeController!.value.isInitialized) {
+        currentPos = _nativeController!.value.position.inMilliseconds;
+      } else if (_player != null) {
+        currentPos = _player!.state.position.inMilliseconds;
+      }
+    } else {
+      currentPos = _currentEmbedPositionMs;
+    }
+    if (currentPos > 0) {
+      _savedPositionMs = currentPos;
+      // Also save progress in background
+      final repo = ref.read(watchHistoryRepositoryProvider);
+      final dur = _isDirectLink
+          ? (_nativeController?.value.duration.inMilliseconds ?? _player?.state.duration.inMilliseconds ?? _episodeRuntimeMs())
+          : _episodeRuntimeMs();
+      final completionThreshold = ref.read(appSettingsProvider).completionPercentage / 100.0;
+      final isWatched = currentPos >= (dur * completionThreshold);
+      unawaited(
+        repo.saveProgress(
+          WatchHistory(
+            mediaId: widget.mediaId,
+            title: widget.title,
+            mediaType: _normalizedMediaType,
+            season: widget.season,
+            episode: widget.episode,
+            posterUrl: widget.posterUrl,
+            backdropUrl: widget.backdropUrl,
+            sourceId: stream['addon_id']?.toString() ?? widget.sourceId,
+            lastPosition: currentPos,
+            duration: dur > 0 ? dur : _episodeRuntimeMs(),
+            isWatched: isWatched,
+          ),
+        ),
+      );
+    }
+
+    _initializePlayer(
+      newUrl,
+      provider: stream['provider']?.toString() ?? stream['title']?.toString(),
+      isDirectLink: stream['is_direct_link'] == true,
+    );
+  }
+
   void _showMirrorSelectorSheet() {
     final text = ref.read(appTextProvider);
     final streams = _availableStreams;
@@ -3127,11 +3381,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                           ),
                           onTap: () {
                             Navigator.pop(sheetContext);
-                            _initializePlayer(
-                              stream['url'].toString(),
-                              provider: stream['provider']?.toString(),
-                              isDirectLink: isDirect,
-                            );
+                            _switchMirror(stream);
                           },
                         );
                       },

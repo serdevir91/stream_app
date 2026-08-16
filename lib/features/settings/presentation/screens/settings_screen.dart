@@ -133,6 +133,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         .toSet();
     final cleanedPreferredSourceId =
         _preferredSourceId.isNotEmpty &&
+            activeAddonIds.isNotEmpty &&
             !activeAddonIds.contains(_preferredSourceId)
         ? ''
         : _preferredSourceId;
@@ -884,8 +885,13 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 SwitchListTile.adaptive(
                   contentPadding: EdgeInsets.zero,
                   value: _autoSelectSource,
-                  onChanged: (value) =>
-                      setState(() => _autoSelectSource = value),
+                  onChanged: (value) {
+                    setState(() => _autoSelectSource = value);
+                    final currentSettings = ref.read(appSettingsProvider);
+                    ref.read(appSettingsProvider.notifier).saveSettings(
+                          currentSettings.copyWith(autoSelectSource: value),
+                        );
+                  },
                   title: Text(
                     text.t('source_auto_play'),
                     style: const TextStyle(
@@ -902,6 +908,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 ),
                 const SizedBox(height: 12),
                 DropdownButtonFormField<String>(
+                  key: ValueKey('source_${selectedSourceId}_${addons.length}'),
                   initialValue: selectedSourceId,
                   items: [
                     DropdownMenuItem<String>(
@@ -916,8 +923,14 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     ),
                   ],
                   onChanged: _autoSelectSource
-                      ? (value) =>
-                            setState(() => _preferredSourceId = value ?? '')
+                      ? (value) {
+                          final nextSource = value ?? '';
+                          setState(() => _preferredSourceId = nextSource);
+                          final currentSettings = ref.read(appSettingsProvider);
+                          ref.read(appSettingsProvider.notifier).saveSettings(
+                                currentSettings.copyWith(preferredSourceId: nextSource),
+                              );
+                        }
                       : null,
                   decoration: InputDecoration(
                     labelText: text.t('source_preferred'),
@@ -978,6 +991,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 ),
                 const SizedBox(height: 10),
                 DropdownButtonFormField<String>(
+                  key: ValueKey('mirror_$_preferredMirror'),
                   initialValue:
                       supportedVidBoxMirrors.containsKey(_preferredMirror)
                       ? _preferredMirror
@@ -993,6 +1007,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   onChanged: (val) {
                     if (val == null) return;
                     setState(() => _preferredMirror = val);
+                    final currentSettings = ref.read(appSettingsProvider);
+                    ref.read(appSettingsProvider.notifier).saveSettings(
+                          currentSettings.copyWith(preferredMirror: val),
+                        );
                   },
                   decoration: InputDecoration(
                     labelText: text.t('vidbox_preferred_mirror'),
@@ -1073,6 +1091,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 ),
                 const SizedBox(height: 8),
                 DropdownButtonFormField<String>(
+                  key: ValueKey('sub_$_subtitleLanguage'),
                   initialValue: _subtitleLanguage,
                   items: supportedSubtitleLanguages.entries
                       .map(
@@ -1085,6 +1104,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   onChanged: (value) {
                     if (value == null) return;
                     setState(() => _subtitleLanguage = value);
+                    final currentSettings = ref.read(appSettingsProvider);
+                    ref.read(appSettingsProvider.notifier).saveSettings(
+                          currentSettings.copyWith(subtitleLanguage: value),
+                        );
                   },
                   decoration: InputDecoration(
                     border: OutlineInputBorder(
@@ -1100,8 +1123,13 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 SwitchListTile.adaptive(
                   contentPadding: EdgeInsets.zero,
                   value: _autoSelectSubtitle,
-                  onChanged: (value) =>
-                      setState(() => _autoSelectSubtitle = value),
+                  onChanged: (value) {
+                    setState(() => _autoSelectSubtitle = value);
+                    final currentSettings = ref.read(appSettingsProvider);
+                    ref.read(appSettingsProvider.notifier).saveSettings(
+                          currentSettings.copyWith(autoSelectSubtitle: value),
+                        );
+                  },
                   title: Text(
                     text.t('auto_select_subtitle'),
                     style: const TextStyle(
@@ -1167,11 +1195,14 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   label: '${_defaultSubtitleOffset.toStringAsFixed(2)}s',
                   activeColor: Colors.amberAccent,
                   onChanged: (val) {
+                    final nextOffset = double.parse(val.toStringAsFixed(2));
                     setState(() {
-                      _defaultSubtitleOffset = double.parse(
-                        val.toStringAsFixed(2),
-                      );
+                      _defaultSubtitleOffset = nextOffset;
                     });
+                    final currentSettings = ref.read(appSettingsProvider);
+                    ref.read(appSettingsProvider.notifier).saveSettings(
+                          currentSettings.copyWith(defaultSubtitleOffset: nextOffset),
+                        );
                   },
                 ),
                 Wrap(
@@ -1198,8 +1229,13 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       backgroundColor: Colors.white10,
                       side: BorderSide.none,
                       padding: const EdgeInsets.symmetric(horizontal: 4),
-                      onPressed: () =>
-                          setState(() => _defaultSubtitleOffset = 0.0),
+                      onPressed: () {
+                        setState(() => _defaultSubtitleOffset = 0.0);
+                        final currentSettings = ref.read(appSettingsProvider);
+                        ref.read(appSettingsProvider.notifier).saveSettings(
+                              currentSettings.copyWith(defaultSubtitleOffset: 0.0),
+                            );
+                      },
                     ),
                     _offsetButton('+0.1s', 0.1),
                     _offsetButton('+0.5s', 0.5),
@@ -1224,6 +1260,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 ),
                 const SizedBox(height: 8),
                 DropdownButtonFormField<String>(
+                  key: ValueKey('player_$_videoPlayer'),
                   initialValue: _videoPlayer,
                   items: supportedVideoPlayers.entries
                       .map(
@@ -1236,6 +1273,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   onChanged: (value) {
                     if (value == null) return;
                     setState(() => _videoPlayer = value);
+                    final currentSettings = ref.read(appSettingsProvider);
+                    ref.read(appSettingsProvider.notifier).saveSettings(
+                          currentSettings.copyWith(videoPlayer: value),
+                        );
                   },
                   decoration: InputDecoration(
                     border: OutlineInputBorder(
