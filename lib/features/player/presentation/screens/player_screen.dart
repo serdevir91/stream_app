@@ -110,6 +110,8 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   Timer? _embedSubtitleTimer;
   bool _embedSubtitleTickRunning = false;
   double _subtitleDelaySeconds = 0.0;
+  List<Map<String, dynamic>> _availableStreams = const [];
+  String? _currentMirrorName;
 
   String get _selectedVideoPlayer {
     try {
@@ -490,18 +492,54 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     }
   }
 
+  String _decodeTurkishSubtitleBytes(List<int> bytes) {
+    if (bytes.isEmpty) return '';
+    String text;
+    try {
+      text = utf8.decode(bytes);
+    } catch (_) {
+      try {
+        text = latin1.decode(bytes);
+      } catch (_) {
+        text = String.fromCharCodes(bytes);
+      }
+    }
+
+    const mojibakeMap = <String, String>{
+      'Ã§': 'ç', 'Ã‡': 'Ç',
+      'Ã¶': 'ö', 'Ã–': 'Ö',
+      'Ã¼': 'ü', 'Ãœ': 'Ü',
+      'ÄŸ': 'ğ', 'Äž': 'Ğ',
+      'Ä±': 'ı', 'Ä°': 'İ',
+      'ÅŸ': 'ş', 'Åž': 'Ş',
+      'Ã½': 'ı',
+      'Ã ': 'à', 'Ã©': 'é',
+      'ð': 'ğ', 'Ð': 'Ğ',
+      'ý': 'ı', 'Ý': 'İ',
+      'þ': 'ş', 'Þ': 'Ş',
+      'Ãž': 'Ş',
+    };
+
+    mojibakeMap.forEach((wrong, correct) {
+      text = text.replaceAll(wrong, correct);
+    });
+
+    return text;
+  }
+
   Future<vp.ClosedCaptionFile> _loadClosedCaptionFile(
     OnlineSubtitleResult subtitle,
   ) async {
-    final response = await Dio().get<String>(
+    final response = await Dio().get<List<int>>(
       subtitle.url,
       options: Options(
-        responseType: ResponseType.plain,
+        responseType: ResponseType.bytes,
         receiveTimeout: const Duration(seconds: 12),
         sendTimeout: const Duration(seconds: 8),
       ),
     );
-    final content = response.data ?? '';
+    final bytes = response.data ?? <int>[];
+    final content = _decodeTurkishSubtitleBytes(bytes);
     if (subtitle.format.toLowerCase() == 'vtt' ||
         content.trimLeft().startsWith('WEBVTT')) {
       return vp.WebVTTCaptionFile(content);
@@ -849,31 +887,17 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     return runtimeMinutes * 60 * 1000;
   }
 
-  int get _currentEmbedPositionMs =>
-      _embedPositionOffsetMs + _embedWatchStopwatch.elapsedMilliseconds;
+  int get _currentEmbedPositionMs {
+    if (_embedVideoPaused) {
+      return _lastEmbedPositionMs ?? _embedPositionOffsetMs;
+    }
+    return _embedPositionOffsetMs + _embedWatchStopwatch.elapsedMilliseconds;
+  }
 
   Future<int> _getEmbedVideoPositionMs() async {
-    if (_embedVideoPaused && _lastEmbedPositionMs != null) {
-      return _lastEmbedPositionMs!;
+    if (_embedVideoPaused) {
+      return _lastEmbedPositionMs ?? _embedPositionOffsetMs;
     }
-    if (_lastEmbedPositionMs != null) {
-      return _currentEmbedPositionMs;
-    }
-    const js =
-        '(function(){var v=document.querySelector("video");return v?v.currentTime:0;})()';
-    try {
-      final result = await _embedWebViewController
-          ?.runJavaScriptReturningResult(js);
-      final seconds = double.tryParse(result.toString()) ?? 0;
-      if (seconds > 1) return (seconds * 1000).toInt();
-    } catch (_) {}
-    try {
-      if (_windowsEmbedController != null) {
-        final result = await _windowsEmbedController?.executeScript(js);
-        final seconds = double.tryParse(result.toString()) ?? 0;
-        if (seconds > 1) return (seconds * 1000).toInt();
-      }
-    } catch (_) {}
     return _currentEmbedPositionMs;
   }
 
@@ -921,7 +945,9 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
       final durationSec = double.tryParse(data['duration']?.toString() ?? '');
       final paused = data['paused'] == true;
 
-      if (currentTimeSec != null) {
+      _embedVideoPaused = paused;
+
+      if (currentTimeSec != null && currentTimeSec >= 0) {
         final positionMs = (currentTimeSec * 1000).toInt();
         _lastEmbedPositionMs = positionMs;
         _embedPositionOffsetMs = positionMs;
@@ -935,12 +961,15 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
             _embedWatchStopwatch.stop();
           }
         }
+      } else if (paused) {
+        if (_embedWatchStopwatch.isRunning) {
+          _embedWatchStopwatch.stop();
+        }
       }
 
       if (durationSec != null && durationSec > 0) {
         _lastEmbedDurationMs = (durationSec * 1000).toInt();
       }
-      _embedVideoPaused = paused;
     } catch (e) {
       debugPrint("Error handling embed message: $e");
     }
@@ -984,6 +1013,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     final previousWindowsController = _windowsEmbedController;
 
     _currentStreamUrl = isDirectLink ? streamUrl : null;
+    _currentMirrorName = provider;
     setState(() {
       _isDirectLink = isDirectLink;
       _errorMessageKey = null;
@@ -1832,68 +1862,37 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
             node = node.parentElement;
           }
           if (!node || !node.href) { return; }
-          if (node.target === '_blank') {
-            evt.preventDefault();
-            evt.stopPropagation();
+          var href = node.href.toLowerCase();
+          if (node.target === '_blank' || (href.indexOf('http') === 0 && href.indexOf(window.location.host) === -1)) {
+            if (href.indexOf('cinesrc') === -1 &&
+                href.indexOf('vidup') === -1 &&
+                href.indexOf('vidnest') === -1 &&
+                href.indexOf('videasy') === -1 &&
+                href.indexOf('primesrc') === -1 &&
+                href.indexOf('peachify') === -1 &&
+                href.indexOf('vidfast') === -1 &&
+                href.indexOf('vidsrc') === -1 &&
+                href.indexOf('vidking') === -1 &&
+                href.indexOf('zxcstream') === -1 &&
+                href.indexOf('cinemaos') === -1) {
+              evt.preventDefault();
+              evt.stopPropagation();
+            }
           }
         }, true);
 
-        // Inject CSS styling to disable tap highlights and pointer events on transparent overlays
-        var style = document.createElement('style');
-        style.innerHTML = `
-          * {
-            -webkit-tap-highlight-color: transparent !important;
-            -webkit-tap-highlight-color: rgba(0,0,0,0) !important;
-          }
-          div[style*="position: absolute"][style*="z-index"][style*="width: 100%"][style*="height: 100%"],
-          div[style*="position: fixed"][style*="z-index"][style*="width: 100%"][style*="height: 100%"],
-          div[style*="position: absolute"][style*="z-index: 2147483647"],
-          div[style*="position: fixed"][style*="z-index: 2147483647"],
-          div[class*="overlay"],
-          div[id*="overlay"],
-          div[class*="popup"],
-          div[id*="popup"],
-          #player_overlay,
-          .player-overlay,
-          #play-overlay,
-          .play-overlay,
-          div[onclick*="window.open"],
-          div[style*="z-index"][onclick] {
-            pointer-events: none !important;
-            background: transparent !important;
-            display: none !important;
-            opacity: 0 !important;
-            visibility: hidden !important;
-          }
-        `;
-        document.head.appendChild(style);
-
-        // Scan periodically to remove/disable viewport-covering overlays
+        // Remove only known pure ad elements
         setInterval(function() {
-          var divs = document.getElementsByTagName('div');
-          for (var i = 0; i < divs.length; i++) {
-            var div = divs[i];
-            var styleStr = window.getComputedStyle(div);
-            var zIndex = parseInt(styleStr.zIndex);
-            if (!isNaN(zIndex) && zIndex > 10) {
-              var rect = div.getBoundingClientRect();
-              var isOverlay = rect.width > window.innerWidth * 0.9 && rect.height > window.innerHeight * 0.9;
-              var hasVideo = div.getElementsByTagName('video').length > 0 || div.getElementsByTagName('iframe').length > 0;
-              if (isOverlay && !hasVideo) {
-                div.style.pointerEvents = 'none';
-                div.style.display = 'none';
-                div.style.zIndex = '-9999';
-              }
-            }
-          }
-          var adClasses = ['banner', 'ads', 'popunder', 'clickforce', 'mgid', 'exoclick'];
+          var adClasses = ['banner', 'ads', 'popunder', 'clickforce', 'mgid', 'exoclick', 'ad-container', 'ad_container'];
           adClasses.forEach(function(cls) {
-            var elements = document.querySelectorAll('.' + cls + ', [id*="' + cls + '"], [class*="' + cls + '"]');
+            var elements = document.querySelectorAll('.' + cls + ', [id*="' + cls + '"]');
             elements.forEach(function(el) {
-              el.remove();
+              if (el && el.tagName !== 'VIDEO' && el.tagName !== 'IFRAME') {
+                el.remove();
+              }
             });
           });
-        }, 500);
+        }, 1000);
       })();
     ''';
   }
@@ -2171,6 +2170,10 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
           .whereType<Map>()
           .map((item) => Map<String, dynamic>.from(item))
           .toList();
+
+      setState(() {
+        _availableStreams = streams;
+      });
 
       if (streams.isNotEmpty) {
         final selectedStream = _selectPreferredStream(streams);
@@ -2681,8 +2684,8 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                         ),
                       ),
                     const SizedBox(width: 4),
-                    if (_isDirectLink || _embedCaptions.isNotEmpty)
-                      _buildSubtitleButton(),
+                    _buildMirrorSelectorButton(),
+                    _buildSubtitleButton(),
                   ],
                 ),
               ),
@@ -2716,22 +2719,16 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
           ),
         ],
         if (!_showOverlayControls && !_isDirectLink)
-          Positioned(
-            top: 0,
-            left: 0,
-            right: 0,
-            height: 80,
-            child: SafeArea(
-              child: GestureDetector(
-                behavior: HitTestBehavior.translucent,
-                onTap: () {
-                  setState(() {
-                    _showOverlayControls = true;
-                  });
-                  _armControlsAutoHide();
-                },
-                child: const SizedBox.expand(),
-              ),
+          Positioned.fill(
+            child: GestureDetector(
+              behavior: HitTestBehavior.translucent,
+              onTap: () {
+                setState(() {
+                  _showOverlayControls = true;
+                });
+                _armControlsAutoHide();
+              },
+              child: const SizedBox.expand(),
             ),
           ),
         if (_showNextEpisodeOverlay)
@@ -3146,6 +3143,153 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     );
   }
 
+  Widget _buildMirrorSelectorButton() {
+    return IconButton(
+      icon: const Icon(
+        Icons.dns_outlined,
+        color: Colors.white,
+        size: 22,
+      ),
+      tooltip: 'Mirror / Kaynak Seç',
+      onPressed: () {
+        _armControlsAutoHide();
+        _showMirrorSelectorSheet();
+      },
+    );
+  }
+
+  void _showMirrorSelectorSheet() {
+    final text = ref.read(appTextProvider);
+    final streams = _availableStreams;
+
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: const Color(0xFF181822),
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (sheetContext) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: Colors.white24,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    const Icon(Icons.dns_rounded, color: Colors.blueAccent, size: 20),
+                    const SizedBox(width: 8),
+                    Text(
+                      text.languageCode == 'tr' ? 'VidBox Mirror / Kaynak Seçici' : 'Select VidBox Mirror / Source',
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  text.languageCode == 'tr'
+                      ? 'Çalışmayan veya altyazısı olmayan mirror yerine listeden başka bir mirror seçebilirsiniz.'
+                      : 'Switch to another mirror server if current stream is buffering or missing subtitles.',
+                  style: const TextStyle(fontSize: 12, color: Colors.grey),
+                ),
+                const SizedBox(height: 14),
+                if (streams.isEmpty)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 24.0),
+                    child: Center(
+                      child: Text(
+                        text.t('stream_source_not_found'),
+                        style: const TextStyle(color: Colors.white70),
+                      ),
+                    ),
+                  )
+                else
+                  ConstrainedBox(
+                    constraints: BoxConstraints(
+                      maxHeight: MediaQuery.of(context).size.height * 0.45,
+                    ),
+                    child: ListView.separated(
+                      shrinkWrap: true,
+                      itemCount: streams.length,
+                      separatorBuilder: (_, _) => const Divider(height: 1, color: Colors.white10),
+                      itemBuilder: (ctx, index) {
+                        final stream = streams[index];
+                        final title = stream['title']?.toString() ?? 'Mirror ${index + 1}';
+                        final provider = stream['provider']?.toString() ?? '';
+                        final quality = stream['quality']?.toString() ?? 'HD';
+                        final isDirect = stream['is_direct_link'] == true;
+                        final isCurrent = _currentMirrorName == provider || _currentStreamUrl == stream['url'];
+
+                        return ListTile(
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                          leading: Icon(
+                            isCurrent ? Icons.check_circle_rounded : (isDirect ? Icons.flash_on_rounded : Icons.stream_rounded),
+                            color: isCurrent ? Colors.greenAccent : (isDirect ? Colors.amberAccent : Colors.blueAccent),
+                          ),
+                          title: Text(
+                            title,
+                            style: TextStyle(
+                              color: isCurrent ? Colors.greenAccent : Colors.white,
+                              fontWeight: isCurrent ? FontWeight.bold : FontWeight.w500,
+                              fontSize: 14,
+                            ),
+                          ),
+                          subtitle: Text(
+                            '$provider • $quality',
+                            style: const TextStyle(fontSize: 11, color: Colors.grey),
+                          ),
+                          trailing: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                            decoration: BoxDecoration(
+                              color: isDirect ? Colors.amber.withValues(alpha: 0.15) : Colors.blue.withValues(alpha: 0.15),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Text(
+                              quality,
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold,
+                                color: isDirect ? Colors.amberAccent : Colors.blueAccent,
+                              ),
+                            ),
+                          ),
+                          onTap: () {
+                            Navigator.pop(sheetContext);
+                            _initializePlayer(
+                              stream['url'].toString(),
+                              provider: stream['provider']?.toString(),
+                              isDirectLink: isDirect,
+                            );
+                          },
+                        );
+                      },
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   Widget _buildSubtitleButton() {
     final subtitlesActive = _player != null
         ? _selectedSubtitleTrackIndex != -1
@@ -3169,12 +3313,6 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     final text = ref.read(appTextProvider);
     if (!_isDirectLink) {
       final subtitle = _activeOnlineSubtitle;
-      if (subtitle == null || _embedCaptions.isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(text.t('online_subtitle_not_found'))),
-        );
-        return;
-      }
 
       showModalBottomSheet<void>(
         context: context,
@@ -3202,45 +3340,71 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                     ),
                     _buildSubtitleSyncControl(setModalState),
                     const Divider(color: Colors.white12),
-                    ListTile(
-                      leading: Icon(
-                        !_embedSubtitlesEnabled
-                            ? Icons.radio_button_checked
-                            : Icons.radio_button_off,
-                        color: Colors.white,
+                    if (subtitle != null && _embedCaptions.isNotEmpty) ...[
+                      ListTile(
+                        leading: Icon(
+                          !_embedSubtitlesEnabled
+                              ? Icons.radio_button_checked
+                              : Icons.radio_button_off,
+                          color: Colors.white,
+                        ),
+                        title: Text(
+                          text.t('off'),
+                          style: const TextStyle(color: Colors.white),
+                        ),
+                        onTap: () {
+                          setState(() {
+                            _embedSubtitlesEnabled = false;
+                            _embedCaptionText = '';
+                          });
+                          Navigator.pop(sheetContext);
+                        },
                       ),
-                      title: Text(
-                        text.t('off'),
-                        style: const TextStyle(color: Colors.white),
+                      ListTile(
+                        leading: Icon(
+                          _embedSubtitlesEnabled
+                              ? Icons.radio_button_checked
+                              : Icons.radio_button_off,
+                          color: Colors.white,
+                        ),
+                        title: Text(
+                          subtitle.label.isEmpty ? 'Wyzie Subs' : subtitle.label,
+                          style: const TextStyle(color: Colors.white),
+                        ),
+                        onTap: () {
+                          setState(() {
+                            _embedSubtitlesEnabled = true;
+                          });
+                          unawaited(_disableEmbedProviderSubtitles());
+                          _startEmbedSubtitleTimer();
+                          Navigator.pop(sheetContext);
+                        },
                       ),
-                      onTap: () {
-                        setState(() {
-                          _embedSubtitlesEnabled = false;
-                          _embedCaptionText = '';
-                        });
-                        Navigator.pop(sheetContext);
-                      },
-                    ),
-                    ListTile(
-                      leading: Icon(
-                        _embedSubtitlesEnabled
-                            ? Icons.radio_button_checked
-                            : Icons.radio_button_off,
-                        color: Colors.white,
+                    ] else
+                      Padding(
+                        padding: const EdgeInsets.all(16.0),
+                        child: ElevatedButton.icon(
+                          onPressed: () async {
+                            Navigator.pop(sheetContext);
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('Altyazı aranıyor...')),
+                            );
+                            await _attachOnlineSubtitleToEmbed(
+                              _currentStreamUrl ?? '',
+                              _embedUrl ?? '',
+                            );
+                            if (mounted) {
+                              _showSubtitleSelector();
+                            }
+                          },
+                          icon: const Icon(Icons.search_rounded),
+                          label: const Text('Türkçe Altyazı Ara ve Bağla'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Theme.of(context).colorScheme.primary,
+                            foregroundColor: Colors.white,
+                          ),
+                        ),
                       ),
-                      title: Text(
-                        subtitle.label.isEmpty ? 'Wyzie Subs' : subtitle.label,
-                        style: const TextStyle(color: Colors.white),
-                      ),
-                      onTap: () {
-                        setState(() {
-                          _embedSubtitlesEnabled = true;
-                        });
-                        unawaited(_disableEmbedProviderSubtitles());
-                        _startEmbedSubtitleTimer();
-                        Navigator.pop(sheetContext);
-                      },
-                    ),
                   ],
                 ),
               );

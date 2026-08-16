@@ -808,30 +808,32 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   ),
                 ),
                 const SizedBox(height: 8),
-                SegmentedButton<String>(
-                  segments: [
-                    ButtonSegment(
-                      value: 'dark',
-                      label: Text(text.t('theme_dark')),
-                      icon: const Icon(Icons.dark_mode_outlined, size: 16),
+                Row(
+                  children: [
+                    _buildThemeOptionCard(
+                      mode: 'dark',
+                      label: text.t('theme_dark'),
+                      icon: Icons.dark_mode_outlined,
+                      color: Colors.blueAccent,
+                      isSelected: _themeMode == 'dark',
                     ),
-                    ButtonSegment(
-                      value: 'amoled',
-                      label: Text(text.t('theme_amoled')),
-                      icon: const Icon(Icons.brightness_2, size: 16),
+                    const SizedBox(width: 8),
+                    _buildThemeOptionCard(
+                      mode: 'amoled',
+                      label: text.t('theme_amoled'),
+                      icon: Icons.brightness_2,
+                      color: Colors.purpleAccent,
+                      isSelected: _themeMode == 'amoled',
                     ),
-                    ButtonSegment(
-                      value: 'light',
-                      label: Text(text.t('theme_light')),
-                      icon: const Icon(Icons.light_mode_outlined, size: 16),
+                    const SizedBox(width: 8),
+                    _buildThemeOptionCard(
+                      mode: 'light',
+                      label: text.t('theme_light'),
+                      icon: Icons.light_mode_outlined,
+                      color: Colors.amberAccent,
+                      isSelected: _themeMode == 'light',
                     ),
                   ],
-                  selected: {_themeMode},
-                  onSelectionChanged: (set) {
-                    setState(() {
-                      _themeMode = set.first;
-                    });
-                  },
                 ),
                 const SizedBox(height: 16),
                 Text(
@@ -855,6 +857,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   onChanged: (value) {
                     if (value == null) return;
                     setState(() => _appLanguage = value);
+                    final currentSettings = ref.read(appSettingsProvider);
+                    ref.read(appSettingsProvider.notifier).saveSettings(
+                          currentSettings.copyWith(appLanguage: value),
+                        );
                   },
                   decoration: InputDecoration(
                     border: OutlineInputBorder(
@@ -1545,6 +1551,65 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     );
   }
 
+  Widget _buildThemeOptionCard({
+    required String mode,
+    required String label,
+    required IconData icon,
+    required Color color,
+    required bool isSelected,
+  }) {
+    return Expanded(
+      child: InkWell(
+        onTap: () {
+          setState(() {
+            _themeMode = mode;
+          });
+          final currentSettings = ref.read(appSettingsProvider);
+          ref.read(appSettingsProvider.notifier).saveSettings(
+                currentSettings.copyWith(themeMode: mode),
+              );
+        },
+        borderRadius: BorderRadius.circular(12),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+          decoration: BoxDecoration(
+            color: isSelected
+                ? color.withValues(alpha: 0.15)
+                : Colors.white.withValues(alpha: 0.04),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: isSelected ? color : Colors.white12,
+              width: isSelected ? 1.8 : 1.0,
+            ),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                icon,
+                color: isSelected ? color : Colors.grey,
+                size: 24,
+              ),
+              const SizedBox(height: 6),
+              Text(
+                label,
+                textAlign: TextAlign.center,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                  color: isSelected ? Colors.white : Colors.grey,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _mirrorChip(String key, String label) {
     final isSelected = _preferredMirror == key;
     return ChoiceChip(
@@ -1553,6 +1618,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       onSelected: (selected) {
         if (selected) {
           setState(() => _preferredMirror = key);
+          final currentSettings = ref.read(appSettingsProvider);
+          ref.read(appSettingsProvider.notifier).saveSettings(
+                currentSettings.copyWith(preferredMirror: key),
+              );
         }
       },
     );
