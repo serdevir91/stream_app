@@ -424,7 +424,7 @@ class _HomeContentState extends ConsumerState<HomeContent> {
                 );
               },
               loading: () => const SizedBox.shrink(),
-              error: (_, __) => const SizedBox.shrink(),
+              error: (error, stack) => const SizedBox.shrink(),
             ),
             if (libraryItems.isNotEmpty) ...[
               _buildSectionTitle(text.t('my_list')),

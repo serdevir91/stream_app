@@ -48,6 +48,7 @@ class AddonService {
 
   void _registerBuiltins() {
     for (final factory in [
+      () => VidBoxAddon(),
       () => VidSrcAddon(),
       () => TwoEmbedAddon(),
       () => SuperEmbedAddon(),
@@ -131,6 +132,16 @@ class AddonService {
     }
 
     if (data == null) {
+      if (normalizedUrl.contains('vidbox.cx') ||
+          normalizedUrl.contains('vidbox.to')) {
+        final addon = VidBoxAddon();
+        _addons[addon.manifest.id] = addon;
+        _enabled[addon.manifest.id] = true;
+        _removedBuiltins.remove(addon.manifest.id);
+        await _saveConfig();
+        return (addon.manifest, null);
+      }
+
       final manifest = _buildWebSourceManifest(normalizedUrl);
       final addon = WebSourceAddon(
         sourceUrl: normalizedUrl,
@@ -489,28 +500,30 @@ class AddonService {
 
   int _addonPriority(String addonId, bool preferAnimeSources) {
     final animeOrder = <String, int>{
-      'builtin.streamimdb': 0,
-      'builtin.vidsrccc': 1,
-      'builtin.vidsrc': 2,
-      'builtin.videasy': 3,
-      'builtin.embedsu': 4,
-      'builtin.pstream': 5,
-      'builtin.smashystream': 6,
-      'builtin.vidlink': 7,
-      'builtin.twoembed': 8,
-      'builtin.superembed': 9,
+      'builtin.vidbox': 0,
+      'builtin.streamimdb': 1,
+      'builtin.vidsrccc': 2,
+      'builtin.vidsrc': 3,
+      'builtin.videasy': 4,
+      'builtin.embedsu': 5,
+      'builtin.pstream': 6,
+      'builtin.smashystream': 7,
+      'builtin.vidlink': 8,
+      'builtin.twoembed': 9,
+      'builtin.superembed': 10,
     };
     final defaultOrder = <String, int>{
-      'builtin.vidsrc': 0,
-      'builtin.vidsrccc': 1,
-      'builtin.streamimdb': 2,
-      'builtin.videasy': 3,
-      'builtin.embedsu': 4,
-      'builtin.pstream': 5,
-      'builtin.smashystream': 6,
-      'builtin.vidlink': 7,
-      'builtin.twoembed': 8,
-      'builtin.superembed': 9,
+      'builtin.vidbox': 0,
+      'builtin.vidsrc': 1,
+      'builtin.vidsrccc': 2,
+      'builtin.streamimdb': 3,
+      'builtin.videasy': 4,
+      'builtin.embedsu': 5,
+      'builtin.pstream': 6,
+      'builtin.smashystream': 7,
+      'builtin.vidlink': 8,
+      'builtin.twoembed': 9,
+      'builtin.superembed': 10,
     };
     final order = preferAnimeSources ? animeOrder : defaultOrder;
     return order[addonId] ?? 100;

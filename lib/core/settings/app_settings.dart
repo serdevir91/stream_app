@@ -27,7 +27,7 @@ const List<String> defaultHomeCategories = [
 ];
 
 class AppSettings {
-  static const int schemaVersion = 10;
+  static const int schemaVersion = 11;
 
   final String appLanguage;
   final String subtitleLanguage;
@@ -36,8 +36,11 @@ class AppSettings {
   final String backendUrl;
   final bool autoSelectSource;
   final String preferredSourceId;
-  final String videoPlayer; // 'native' or 'media_kit'
+  final String preferredMirror; // 'auto', 'vidx', 'cargo', 'cabin', 'glow', 'boxr', 'gale', 'tile', 'pixel', 'hatch', 'veil', 'crate', 'cube', 'aero', etc.
+  final String videoPlayer; // 'native', 'media_kit', 'webview'
   final bool autoSelectSubtitle;
+  final double defaultSubtitleOffset; // Subtitle delay in seconds (e.g. 0.0, 0.5, -1.0)
+  final String themeMode; // 'dark', 'light', 'amoled'
   final String librarySort;
   final bool watchHistoryEnabled;
   final bool newEpisodeNotificationsEnabled;
@@ -52,8 +55,11 @@ class AppSettings {
     required this.backendUrl,
     required this.autoSelectSource,
     required this.preferredSourceId,
+    this.preferredMirror = 'auto',
     required this.videoPlayer,
     required this.autoSelectSubtitle,
+    this.defaultSubtitleOffset = 0.0,
+    this.themeMode = 'dark',
     required this.librarySort,
     required this.watchHistoryEnabled,
     required this.newEpisodeNotificationsEnabled,
@@ -69,8 +75,11 @@ class AppSettings {
     backendUrl: 'http://127.0.0.1:8000',
     autoSelectSource: true,
     preferredSourceId: '',
+    preferredMirror: 'auto',
     videoPlayer: 'native',
     autoSelectSubtitle: false,
+    defaultSubtitleOffset: 0.0,
+    themeMode: 'dark',
     librarySort: 'recent',
     watchHistoryEnabled: true,
     newEpisodeNotificationsEnabled: true,
@@ -86,8 +95,11 @@ class AppSettings {
     String? backendUrl,
     bool? autoSelectSource,
     String? preferredSourceId,
+    String? preferredMirror,
     String? videoPlayer,
     bool? autoSelectSubtitle,
+    double? defaultSubtitleOffset,
+    String? themeMode,
     String? librarySort,
     bool? watchHistoryEnabled,
     bool? newEpisodeNotificationsEnabled,
@@ -102,8 +114,12 @@ class AppSettings {
       backendUrl: backendUrl ?? this.backendUrl,
       autoSelectSource: autoSelectSource ?? this.autoSelectSource,
       preferredSourceId: preferredSourceId ?? this.preferredSourceId,
+      preferredMirror: preferredMirror ?? this.preferredMirror,
       videoPlayer: videoPlayer ?? this.videoPlayer,
       autoSelectSubtitle: autoSelectSubtitle ?? this.autoSelectSubtitle,
+      defaultSubtitleOffset:
+          defaultSubtitleOffset ?? this.defaultSubtitleOffset,
+      themeMode: themeMode ?? this.themeMode,
       librarySort: librarySort ?? this.librarySort,
       watchHistoryEnabled: watchHistoryEnabled ?? this.watchHistoryEnabled,
       newEpisodeNotificationsEnabled:
@@ -123,8 +139,11 @@ class AppSettings {
       'backendUrl': backendUrl,
       'autoSelectSource': autoSelectSource,
       'preferredSourceId': preferredSourceId,
+      'preferredMirror': preferredMirror,
       'videoPlayer': videoPlayer,
       'autoSelectSubtitle': autoSelectSubtitle,
+      'defaultSubtitleOffset': defaultSubtitleOffset,
+      'themeMode': themeMode,
       'librarySort': librarySort,
       'watchHistoryEnabled': watchHistoryEnabled,
       'newEpisodeNotificationsEnabled': newEpisodeNotificationsEnabled,
@@ -142,8 +161,13 @@ class AppSettings {
       backendUrl: (map['backendUrl'] ?? 'http://127.0.0.1:8000').toString(),
       autoSelectSource: (map['autoSelectSource'] ?? true) == true,
       preferredSourceId: (map['preferredSourceId'] ?? '').toString(),
+      preferredMirror: (map['preferredMirror'] ?? 'auto').toString(),
       videoPlayer: (map['videoPlayer'] ?? 'native').toString(),
       autoSelectSubtitle: (map['autoSelectSubtitle'] ?? false) == true,
+      defaultSubtitleOffset: (map['defaultSubtitleOffset'] is num)
+          ? (map['defaultSubtitleOffset'] as num).toDouble()
+          : 0.0,
+      themeMode: (map['themeMode'] ?? 'dark').toString(),
       librarySort: (map['librarySort'] ?? 'recent').toString(),
       watchHistoryEnabled: (map['watchHistoryEnabled'] ?? true) == true,
       newEpisodeNotificationsEnabled:
@@ -158,6 +182,34 @@ class AppSettings {
     );
   }
 }
+
+const Map<String, String> supportedVidBoxMirrors = {
+  'auto': 'Otomatik (En Hızlı)',
+  'vidx': 'Vidx (1080p CineSrc)',
+  'cargo': 'Cargo (1080p VidUp)',
+  'cabin': 'Cabin (HD VidNest)',
+  'boxr': 'Boxr (1080p Peachify)',
+  'tile': 'Tile (1080p PrimeSrc)',
+  'cube': 'Cube (HD Videasy)',
+  'gale': 'Gale / Maze (ZxcStream)',
+  'glow': 'Glow / Theta (CinemaOS)',
+  'hatch': 'Hatch (1080p VidKing)',
+  'veil': 'Veil / Ember (Xpass)',
+  'pixel': 'Pixel (AirFlix)',
+  'halo': 'Halo / Photon (VidFast)',
+  'crate': 'Crate (1080p VidCore)',
+  'aero': 'Aero / Atlas (VidRock)',
+  'comet': 'Comet / Kite (MoviesApi)',
+  'pulse': 'Pulse / Drift (VSEmbed)',
+  'tide': 'Tide / Flux (VAPlayer)',
+  'umbra': 'Umbra / Opal (VidZen)',
+};
+
+const Map<String, String> supportedThemeModes = {
+  'dark': 'Koyu Tema',
+  'amoled': 'AMOLED Saf Siyah',
+  'light': 'Açık Tema',
+};
 
 const Map<String, String> supportedVideoPlayers = {
   'native': 'Native Player (ExoPlayer)',

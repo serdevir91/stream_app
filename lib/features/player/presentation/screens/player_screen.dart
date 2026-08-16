@@ -143,6 +143,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _subtitleDelaySeconds = ref.read(appSettingsProvider).defaultSubtitleOffset;
     _enterFullscreenMode();
     _armControlsAutoHide();
     _configureAudioSession();
@@ -458,11 +459,32 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     } catch (_) {}
   }
 
+  vp.ClosedCaptionFile? _cachedCaptionFile;
+
+  List<vp.Caption> _shiftCaptions(List<vp.Caption> base, double delaySec) {
+    final offset = Duration(milliseconds: (delaySec * 1000).toInt());
+    return base.map((c) {
+      final start = c.start + offset;
+      final end = c.end + offset;
+      return vp.Caption(
+        number: c.number,
+        start: start.isNegative ? Duration.zero : start,
+        end: end.isNegative ? Duration.zero : end,
+        text: c.text,
+      );
+    }).toList();
+  }
+
   Future<void> _applyNativeSubtitle(OnlineSubtitleResult subtitle) async {
     final controller = _nativeController;
     if (controller == null) return;
     try {
-      await controller.setClosedCaptionFile(_loadClosedCaptionFile(subtitle));
+      final baseFile = await _loadClosedCaptionFile(subtitle);
+      _cachedCaptionFile = baseFile;
+      final shifted = _shiftCaptions(baseFile.captions, _subtitleDelaySeconds);
+      await controller.setClosedCaptionFile(
+        Future.value(_ShiftedClosedCaptionFile(shifted)),
+      );
     } catch (e) {
       debugPrint('Native subtitle attach failed: $e');
     }
@@ -490,7 +512,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   void _startEmbedSubtitleTimer() {
     _embedSubtitleTimer?.cancel();
     if (_embedCaptions.isEmpty) return;
-    _embedSubtitleTimer = Timer.periodic(const Duration(milliseconds: 500), (
+    _embedSubtitleTimer = Timer.periodic(const Duration(milliseconds: 150), (
       _,
     ) {
       if (_embedSubtitleTickRunning || _isDisposed || _isDirectLink) {
@@ -528,7 +550,9 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   }
 
   String _captionTextAt(Duration position) {
-    final delayOffset = Duration(milliseconds: (_subtitleDelaySeconds * 1000).toInt());
+    final delayOffset = Duration(
+      milliseconds: (_subtitleDelaySeconds * 1000).toInt(),
+    );
     final adjusted = position + delayOffset;
     for (final caption in _embedCaptions) {
       if (adjusted >= caption.start && adjusted <= caption.end) {
@@ -538,80 +562,180 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     return '';
   }
 
+  void _updateSubtitleDelay(double newDelay) {
+    _subtitleDelaySeconds = double.parse(
+      newDelay.toStringAsFixed(2),
+    ).clamp(-15.0, 15.0);
+    if (_nativeController != null && _cachedCaptionFile != null) {
+      final shifted = _shiftCaptions(
+        _cachedCaptionFile!.captions,
+        _subtitleDelaySeconds,
+      );
+      _nativeController!.setClosedCaptionFile(
+        Future.value(_ShiftedClosedCaptionFile(shifted)),
+      );
+    }
+    if (_player != null) {
+      try {
+        (_player!.platform as dynamic)?.setProperty(
+          'sub-delay',
+          '$_subtitleDelaySeconds',
+        );
+      } catch (_) {}
+    }
+    unawaited(_updateEmbedSubtitleText());
+    setState(() {});
+  }
+
   Widget _buildSubtitleSyncControl(StateSetter setModalState) {
     final text = ref.read(appTextProvider);
     final delayText = _subtitleDelaySeconds == 0.0
         ? (text.languageCode == 'tr' ? 'Varsayılan (0.0s)' : 'Default (0.0s)')
-        : '${_subtitleDelaySeconds > 0 ? "+" : ""}${_subtitleDelaySeconds.toStringAsFixed(1)}s';
+        : '${_subtitleDelaySeconds > 0 ? "+" : ""}${_subtitleDelaySeconds.toStringAsFixed(2)}s';
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
           color: Colors.white.withValues(alpha: 0.06),
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(14),
           border: Border.all(color: Colors.white12),
         ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(
-                  text.languageCode == 'tr' ? 'Altyazı Senkronizasyonu' : 'Subtitle Delay / Sync',
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 13,
-                  ),
+                Row(
+                  children: [
+                    const Icon(
+                      Icons.sync_alt_rounded,
+                      color: Colors.amberAccent,
+                      size: 18,
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      text.languageCode == 'tr'
+                          ? 'Altyazı Senkronizasyonu'
+                          : 'Subtitle Sync / Offset',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 13,
+                      ),
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 2),
-                Text(
-                  delayText,
-                  style: TextStyle(
-                    color: _subtitleDelaySeconds == 0.0 ? Colors.white60 : Colors.amberAccent,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 2,
+                  ),
+                  decoration: BoxDecoration(
+                    color: _subtitleDelaySeconds == 0.0
+                        ? Colors.white10
+                        : Colors.amberAccent.withValues(alpha: 0.2),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Text(
+                    delayText,
+                    style: TextStyle(
+                      color: _subtitleDelaySeconds == 0.0
+                          ? Colors.white70
+                          : Colors.amberAccent,
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                 ),
               ],
             ),
-            Row(
-              mainAxisSize: MainAxisSize.min,
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              alignment: WrapAlignment.center,
               children: [
-                IconButton(
-                  icon: const Icon(Icons.remove_circle_outline, color: Colors.white70),
-                  onPressed: () {
-                    setModalState(() {
-                      _subtitleDelaySeconds = (_subtitleDelaySeconds - 0.5).clamp(-10.0, 10.0);
-                    });
-                    setState(() {});
-                  },
+                _syncButton(
+                  '-1.0s',
+                  () => setModalState(
+                    () => _updateSubtitleDelay(_subtitleDelaySeconds - 1.0),
+                  ),
                 ),
-                IconButton(
-                  icon: const Icon(Icons.refresh, color: Colors.white54, size: 20),
-                  onPressed: () {
-                    setModalState(() {
-                      _subtitleDelaySeconds = 0.0;
-                    });
-                    setState(() {});
-                  },
+                _syncButton(
+                  '-0.5s',
+                  () => setModalState(
+                    () => _updateSubtitleDelay(_subtitleDelaySeconds - 0.5),
+                  ),
                 ),
-                IconButton(
-                  icon: const Icon(Icons.add_circle_outline, color: Colors.white70),
-                  onPressed: () {
-                    setModalState(() {
-                      _subtitleDelaySeconds = (_subtitleDelaySeconds + 0.5).clamp(-10.0, 10.0);
-                    });
-                    setState(() {});
-                  },
+                _syncButton(
+                  '-0.1s',
+                  () => setModalState(
+                    () => _updateSubtitleDelay(_subtitleDelaySeconds - 0.1),
+                  ),
+                ),
+                ActionChip(
+                  avatar: const Icon(
+                    Icons.restart_alt,
+                    size: 14,
+                    color: Colors.white70,
+                  ),
+                  label: Text(
+                    text.t('reset'),
+                    style: const TextStyle(color: Colors.white70, fontSize: 11),
+                  ),
+                  backgroundColor: Colors.white10,
+                  side: BorderSide.none,
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                  onPressed: () =>
+                      setModalState(() => _updateSubtitleDelay(0.0)),
+                ),
+                _syncButton(
+                  '+0.1s',
+                  () => setModalState(
+                    () => _updateSubtitleDelay(_subtitleDelaySeconds + 0.1),
+                  ),
+                ),
+                _syncButton(
+                  '+0.5s',
+                  () => setModalState(
+                    () => _updateSubtitleDelay(_subtitleDelaySeconds + 0.5),
+                  ),
+                ),
+                _syncButton(
+                  '+1.0s',
+                  () => setModalState(
+                    () => _updateSubtitleDelay(_subtitleDelaySeconds + 1.0),
+                  ),
                 ),
               ],
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _syncButton(String label, VoidCallback onTap) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(6),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(6),
+        ),
+        child: Text(
+          label,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 11,
+            fontWeight: FontWeight.w600,
+          ),
         ),
       ),
     );
@@ -1592,6 +1716,27 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
       'cloudflare.com',
       'akamaized.net',
       'jwplayer.com',
+      'cinesrc.st',
+      'vidup.to',
+      'vidnest.fun',
+      'cinemaos.tech',
+      'zxcstream.xyz',
+      'peachify.top',
+      'vidsync.xyz',
+      'primesrc.me',
+      'vidfast.pro',
+      'airflix1.com',
+      'vidking.net',
+      'play.xpass.top',
+      'moviesapi.to',
+      'vidcore.net',
+      'player.videasy.net',
+      'videasy.net',
+      'vidrock.ru',
+      'vsembed.ru',
+      'vidzen.fun',
+      'vidbox.cx',
+      'vidbox.to',
     };
     return hosts;
   }
@@ -1781,6 +1926,30 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   ) {
     if (streams.isEmpty) {
       return null;
+    }
+
+    final settings = ref.read(appSettingsProvider);
+    final preferredMirror = settings.preferredMirror.trim().toLowerCase();
+    if (preferredMirror.isNotEmpty && preferredMirror != 'auto') {
+      for (final stream in streams) {
+        final title = (stream['title'] ?? '').toString().toLowerCase();
+        final provider = (stream['provider'] ?? '').toString().toLowerCase();
+        final url = (stream['url'] ?? '').toString().toLowerCase();
+        if (title.contains(preferredMirror) ||
+            provider.contains(preferredMirror) ||
+            url.contains(preferredMirror)) {
+          return stream;
+        }
+      }
+    }
+
+    final preferredSourceId = settings.preferredSourceId.trim();
+    if (preferredSourceId.isNotEmpty) {
+      for (final stream in streams) {
+        if (stream['addon_id']?.toString() == preferredSourceId) {
+          return stream;
+        }
+      }
     }
 
     // On mobile prefer direct links to avoid embed ad redirects.
@@ -3309,3 +3478,11 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     );
   }
 }
+
+class _ShiftedClosedCaptionFile extends vp.ClosedCaptionFile {
+  final List<vp.Caption> _shiftedCaptions;
+  _ShiftedClosedCaptionFile(this._shiftedCaptions);
+  @override
+  List<vp.Caption> get captions => _shiftedCaptions;
+}
+

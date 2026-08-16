@@ -446,3 +446,321 @@ class StreamImdbAddon extends BaseAddon {
     ];
   }
 }
+
+class VidBoxAddon extends BaseAddon {
+  @override
+  final AddonManifest manifest = AddonManifest(
+    id: 'builtin.vidbox',
+    name: 'VidBox',
+    description:
+        'VidBox multi-mirror streaming provider with 19+ mirror servers (Vidx, Cargo, Cabin, Gale, Boxr, Tile, Pixel, Hatch, Veil, Crate, Cube, Aero, etc.).',
+    version: '1.0.0',
+    types: ['movie', 'series'],
+    icon: '📦',
+    isBuiltin: true,
+  );
+
+  @override
+  Future<List<SearchResult>> search(String query, String contentType) async =>
+      [];
+
+  @override
+  Future<List<StreamResult>> getStreams(
+    String contentId,
+    String contentType,
+    int season,
+    int episode,
+  ) async {
+    final isMovie = contentType == 'movie';
+    final cid = contentId.trim();
+
+    if (isMovie) {
+      return [
+        StreamResult(
+          url:
+              'https://cinesrc.st/embed/movie/$cid?color=%23e50914&autoskip=true&quality=1080',
+          title: 'VidBox (Vidx 1080p)',
+          quality: '1080p',
+          provider: 'VidBox - Vidx',
+          isDirectLink: false,
+        ),
+        StreamResult(
+          url:
+              'https://vidup.to/movie/$cid?autoPlay=true&theme=e50914&sub=en&chromecast=false',
+          title: 'VidBox (Cargo 1080p)',
+          quality: '1080p',
+          provider: 'VidBox - Cargo',
+          isDirectLink: false,
+        ),
+        StreamResult(
+          url: 'https://vidnest.fun/movie/$cid',
+          title: 'VidBox (Cabin HD)',
+          quality: 'HD',
+          provider: 'VidBox - Cabin',
+          isDirectLink: false,
+        ),
+        StreamResult(
+          url:
+              'https://peachify.top/embed/movie/$cid?autoPlay=true&sub=English&cast=hide&pip=hide&accent=e50914',
+          title: 'VidBox (Boxr 1080p)',
+          quality: '1080p',
+          provider: 'VidBox - Boxr',
+          isDirectLink: false,
+        ),
+        StreamResult(
+          url:
+              'https://primesrc.me/embed/movie?tmdb=$cid&fallback=true&serverOrder=PrimeVid',
+          title: 'VidBox (Tile 1080p)',
+          quality: '1080p',
+          provider: 'VidBox - Tile',
+          isDirectLink: false,
+        ),
+        StreamResult(
+          url: 'https://player.videasy.net/movie/$cid?color=e50914&overlay=true',
+          title: 'VidBox (Cube HD)',
+          quality: 'HD',
+          provider: 'VidBox - Cube',
+          isDirectLink: false,
+        ),
+        StreamResult(
+          url:
+              'https://www.vidking.net/embed/movie/$cid?autoPlay=true&color=e50914',
+          title: 'VidBox (Hatch 1080p)',
+          quality: '1080p',
+          provider: 'VidBox - Hatch',
+          isDirectLink: false,
+        ),
+        StreamResult(
+          url: 'https://www.zxcstream.xyz/player/movie/$cid',
+          title: 'VidBox (Gale HD)',
+          quality: 'HD',
+          provider: 'VidBox - Gale',
+          isDirectLink: false,
+        ),
+        StreamResult(
+          url: 'https://cinemaos.tech/player/$cid',
+          title: 'VidBox (Glow HD)',
+          quality: 'HD',
+          provider: 'VidBox - Glow',
+          isDirectLink: false,
+        ),
+        StreamResult(
+          url: 'https://play.xpass.top/e/movie/$cid',
+          title: 'VidBox (Veil HD)',
+          quality: 'HD',
+          provider: 'VidBox - Veil',
+          isDirectLink: false,
+        ),
+        StreamResult(
+          url: 'https://airflix1.com/embed/movie/$cid',
+          title: 'VidBox (Pixel HD)',
+          quality: 'HD',
+          provider: 'VidBox - Pixel',
+          isDirectLink: false,
+        ),
+        StreamResult(
+          url: 'https://vidfast.pro/movie/$cid',
+          title: 'VidBox (Halo HD)',
+          quality: 'HD',
+          provider: 'VidBox - Halo',
+          isDirectLink: false,
+        ),
+        StreamResult(
+          url:
+              'https://vidcore.net/movie/$cid?autoPlay=true&theme=e50914&sub=en&chromecast=false',
+          title: 'VidBox (Crate 1080p)',
+          quality: '1080p',
+          provider: 'VidBox - Crate',
+          isDirectLink: false,
+        ),
+        StreamResult(
+          url: 'https://vidrock.ru/movie/$cid',
+          title: 'VidBox (Aero HD)',
+          quality: 'HD',
+          provider: 'VidBox - Aero',
+          isDirectLink: false,
+        ),
+        StreamResult(
+          url: 'https://moviesapi.to/movie/$cid',
+          title: 'VidBox (Comet HD)',
+          quality: 'HD',
+          provider: 'VidBox - Comet',
+          isDirectLink: false,
+        ),
+        StreamResult(
+          url: 'https://vsembed.ru/embed/movie/$cid',
+          title: 'VidBox (Pulse HD)',
+          quality: 'HD',
+          provider: 'VidBox - Pulse',
+          isDirectLink: false,
+        ),
+        StreamResult(
+          url: 'https://vaplayer.ru/embed/movie/$cid',
+          title: 'VidBox (Tide HD)',
+          quality: 'HD',
+          provider: 'VidBox - Tide',
+          isDirectLink: false,
+        ),
+        StreamResult(
+          url: 'https://vidzen.fun/movie/$cid',
+          title: 'VidBox (Umbra HD)',
+          quality: 'HD',
+          provider: 'VidBox - Umbra',
+          isDirectLink: false,
+        ),
+        StreamResult(
+          url: 'https://vidsync.xyz/embed/movie/$cid?autoPlay=true&theme=e50914',
+          title: 'VidBox (Stash HD)',
+          quality: 'HD',
+          provider: 'VidBox - Stash',
+          isDirectLink: false,
+        ),
+      ];
+    } else {
+      return [
+        StreamResult(
+          url:
+              'https://cinesrc.st/embed/tv/$cid?s=$season&e=$episode&color=%23e50914&autonext=true&autoskip=true&quality=1080',
+          title: 'VidBox (Vidx 1080p)',
+          quality: '1080p',
+          provider: 'VidBox - Vidx',
+          isDirectLink: false,
+        ),
+        StreamResult(
+          url:
+              'https://vidup.to/tv/$cid/$season/$episode?autoPlay=true&autoNext=true&nextButton=true&theme=e50914&sub=en&chromecast=false',
+          title: 'VidBox (Cargo 1080p)',
+          quality: '1080p',
+          provider: 'VidBox - Cargo',
+          isDirectLink: false,
+        ),
+        StreamResult(
+          url: 'https://vidnest.fun/tv/$cid/$season/$episode',
+          title: 'VidBox (Cabin HD)',
+          quality: 'HD',
+          provider: 'VidBox - Cabin',
+          isDirectLink: false,
+        ),
+        StreamResult(
+          url:
+              'https://peachify.top/embed/tv/$cid/$season/$episode?autoPlay=true&autoNext=30&showNextBtn=true&sub=English&cast=hide&pip=hide&accent=e50914',
+          title: 'VidBox (Boxr 1080p)',
+          quality: '1080p',
+          provider: 'VidBox - Boxr',
+          isDirectLink: false,
+        ),
+        StreamResult(
+          url:
+              'https://primesrc.me/embed/tv?tmdb=$cid&season=$season&episode=$episode&fallback=true&serverOrder=PrimeVid',
+          title: 'VidBox (Tile 1080p)',
+          quality: '1080p',
+          provider: 'VidBox - Tile',
+          isDirectLink: false,
+        ),
+        StreamResult(
+          url:
+              'https://player.videasy.net/tv/$cid/$season/$episode?color=e50914&overlay=true&nextEpisode=true&autoplayNextEpisode=true&episodeSelector=true',
+          title: 'VidBox (Cube HD)',
+          quality: 'HD',
+          provider: 'VidBox - Cube',
+          isDirectLink: false,
+        ),
+        StreamResult(
+          url:
+              'https://www.vidking.net/embed/tv/$cid/$season/$episode?autoPlay=true&color=e50914&nextEpisode=true&episodeSelector=true',
+          title: 'VidBox (Hatch 1080p)',
+          quality: '1080p',
+          provider: 'VidBox - Hatch',
+          isDirectLink: false,
+        ),
+        StreamResult(
+          url: 'https://www.zxcstream.xyz/player/tv/$cid/$season/$episode',
+          title: 'VidBox (Gale / Maze HD)',
+          quality: 'HD',
+          provider: 'VidBox - Gale',
+          isDirectLink: false,
+        ),
+        StreamResult(
+          url: 'https://cinemaos.tech/player/$cid/$season/$episode',
+          title: 'VidBox (Glow / Theta HD)',
+          quality: 'HD',
+          provider: 'VidBox - Glow',
+          isDirectLink: false,
+        ),
+        StreamResult(
+          url: 'https://play.xpass.top/e/tv/$cid/$season/$episode',
+          title: 'VidBox (Veil / Ember HD)',
+          quality: 'HD',
+          provider: 'VidBox - Veil',
+          isDirectLink: false,
+        ),
+        StreamResult(
+          url: 'https://airflix1.com/embed/tv/$cid/$season/$episode',
+          title: 'VidBox (Pixel HD)',
+          quality: 'HD',
+          provider: 'VidBox - Pixel',
+          isDirectLink: false,
+        ),
+        StreamResult(
+          url: 'https://vidfast.pro/tv/$cid/$season/$episode',
+          title: 'VidBox (Halo / Cobra HD)',
+          quality: 'HD',
+          provider: 'VidBox - Halo',
+          isDirectLink: false,
+        ),
+        StreamResult(
+          url:
+              'https://vidcore.net/tv/$cid/$season/$episode?autoPlay=true&theme=e50914&sub=en&chromecast=false',
+          title: 'VidBox (Crate 1080p)',
+          quality: '1080p',
+          provider: 'VidBox - Crate',
+          isDirectLink: false,
+        ),
+        StreamResult(
+          url: 'https://vidrock.ru/tv/$cid/$season/$episode',
+          title: 'VidBox (Aero HD)',
+          quality: 'HD',
+          provider: 'VidBox - Aero',
+          isDirectLink: false,
+        ),
+        StreamResult(
+          url: 'https://moviesapi.to/tv/$cid/$season/$episode',
+          title: 'VidBox (Comet / Raze HD)',
+          quality: 'HD',
+          provider: 'VidBox - Comet',
+          isDirectLink: false,
+        ),
+        StreamResult(
+          url: 'https://vsembed.ru/embed/tv/$cid/$season/$episode',
+          title: 'VidBox (Pulse / Drift HD)',
+          quality: 'HD',
+          provider: 'VidBox - Pulse',
+          isDirectLink: false,
+        ),
+        StreamResult(
+          url: 'https://vaplayer.ru/embed/tv/$cid/$season/$episode',
+          title: 'VidBox (Tide / Flux HD)',
+          quality: 'HD',
+          provider: 'VidBox - Tide',
+          isDirectLink: false,
+        ),
+        StreamResult(
+          url: 'https://vidzen.fun/tv/$cid/$season/$episode',
+          title: 'VidBox (Umbra / Opal HD)',
+          quality: 'HD',
+          provider: 'VidBox - Umbra',
+          isDirectLink: false,
+        ),
+        StreamResult(
+          url:
+              'https://vidsync.xyz/embed/tv/$cid/$season/$episode?autoPlay=true&autoNext=true&nextButton=true&theme=e50914',
+          title: 'VidBox (Stash HD)',
+          quality: 'HD',
+          provider: 'VidBox - Stash',
+          isDirectLink: false,
+        ),
+      ];
+    }
+  }
+}
+

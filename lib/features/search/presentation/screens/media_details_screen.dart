@@ -404,9 +404,24 @@ class _MediaDetailsScreenState extends ConsumerState<MediaDetailsScreen> {
             preferredSourceId?.trim().isNotEmpty == true
             ? preferredSourceId!.trim()
             : settings.preferredSourceId.trim();
+        final preferredMirror = settings.preferredMirror.trim().toLowerCase();
         Map<String, dynamic>? selected;
 
-        if (preferredSourceIdToUse.isNotEmpty) {
+        if (preferredMirror.isNotEmpty && preferredMirror != 'auto') {
+          for (final stream in prioritizedStreams) {
+            final title = (stream['title'] ?? '').toString().toLowerCase();
+            final provider = (stream['provider'] ?? '').toString().toLowerCase();
+            final url = (stream['url'] ?? '').toString().toLowerCase();
+            if (title.contains(preferredMirror) ||
+                provider.contains(preferredMirror) ||
+                url.contains(preferredMirror)) {
+              selected = stream;
+              break;
+            }
+          }
+        }
+
+        if (selected == null && preferredSourceIdToUse.isNotEmpty) {
           for (final stream in prioritizedStreams) {
             if (stream['addon_id']?.toString() == preferredSourceIdToUse) {
               selected = stream;

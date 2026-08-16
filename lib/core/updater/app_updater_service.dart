@@ -6,7 +6,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-const String currentAppVersionFallback = '1.0.9';
+const String currentAppVersionFallback = '1.0.16';
 
 class AppUpdateInfo {
   final String latestVersion;

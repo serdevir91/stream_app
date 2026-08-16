@@ -9,6 +9,7 @@ import 'core/backend/addon_service_provider.dart';
 import 'core/backend/addons/addon_config_repository.dart';
 import 'core/backend_bootstrap_service.dart';
 import 'core/settings/app_settings_repository.dart';
+import 'core/settings/app_settings_provider.dart';
 import 'features/sources/data/repositories/sources_repository.dart';
 
 import 'features/home/presentation/screens/home_screen.dart';
@@ -61,21 +62,48 @@ void main() async {
   runApp(const ProviderScope(child: MyApp()));
 }
 
-class MyApp extends StatelessWidget {
+class MyApp extends ConsumerWidget {
   const MyApp({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Stream App',
-      debugShowCheckedModeBanner: false,
-      theme: ThemeData.dark(useMaterial3: true).copyWith(
+  Widget build(BuildContext context, WidgetRef ref) {
+    final settings = ref.watch(appSettingsProvider);
+    final themeMode = settings.themeMode;
+
+    ThemeData theme;
+    if (themeMode == 'light') {
+      theme = ThemeData.light(useMaterial3: true).copyWith(
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: Colors.deepPurple,
+          brightness: Brightness.light,
+        ),
+      );
+    } else if (themeMode == 'amoled') {
+      theme = ThemeData.dark(useMaterial3: true).copyWith(
+        scaffoldBackgroundColor: Colors.black,
+        canvasColor: Colors.black,
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: Colors.deepPurple,
+          brightness: Brightness.dark,
+          surface: Colors.black,
+        ),
+      );
+    } else {
+      theme = ThemeData.dark(useMaterial3: true).copyWith(
+        scaffoldBackgroundColor: const Color(0xFF0F0F13),
         colorScheme: ColorScheme.fromSeed(
           seedColor: Colors.deepPurple,
           brightness: Brightness.dark,
         ),
-      ),
+      );
+    }
+
+    return MaterialApp(
+      title: 'Stream App',
+      debugShowCheckedModeBanner: false,
+      theme: theme,
       home: const HomeScreen(),
     );
   }
 }
+
