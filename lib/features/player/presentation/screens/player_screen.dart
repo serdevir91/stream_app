@@ -432,24 +432,21 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
         function disableIn(root) {
           try {
             var doc = root.document;
-            doc.querySelectorAll('video track').forEach(function(track) {
-              try { track.track.mode = 'disabled'; } catch (e) {}
-              try { track.mode = 'disabled'; } catch (e) {}
-            });
-            doc.querySelectorAll('.subtitles,#subtitles,.subtitle-text,#subtitleText').forEach(function(el) {
-              el.style.setProperty('display', 'none', 'important');
-              el.style.setProperty('visibility', 'hidden', 'important');
-              el.style.setProperty('opacity', '0', 'important');
-            });
+            var tracks = doc.querySelectorAll('video track');
+            for (var i = 0; i < tracks.length; i++) {
+              try { tracks[i].track.mode = 'disabled'; } catch (e) {}
+              try { tracks[i].mode = 'disabled'; } catch (e) {}
+            }
           } catch (e) {}
         }
         disableIn(window);
         try {
-          document.querySelectorAll('iframe').forEach(function(frame) {
+          var frames = document.querySelectorAll('iframe');
+          for (var j = 0; j < frames.length; j++) {
             try {
-              if (frame.contentWindow) disableIn(frame.contentWindow);
+              if (frames[j].contentWindow) disableIn(frames[j].contentWindow);
             } catch (e) {}
-          });
+          }
         } catch (e) {}
       })();
     ''';
@@ -840,9 +837,31 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
         (defaultTargetPlatform == TargetPlatform.android ||
             defaultTargetPlatform == TargetPlatform.iOS)) {
       SystemChrome.setPreferredOrientations(const [
+        DeviceOrientation.portraitUp,
+        DeviceOrientation.portraitDown,
         DeviceOrientation.landscapeLeft,
         DeviceOrientation.landscapeRight,
       ]);
+    }
+  }
+
+  void _toggleOrientation() {
+    if (!kIsWeb &&
+        (defaultTargetPlatform == TargetPlatform.android ||
+            defaultTargetPlatform == TargetPlatform.iOS)) {
+      final isPortrait =
+          MediaQuery.of(context).orientation == Orientation.portrait;
+      if (isPortrait) {
+        SystemChrome.setPreferredOrientations(const [
+          DeviceOrientation.landscapeLeft,
+          DeviceOrientation.landscapeRight,
+        ]);
+      } else {
+        SystemChrome.setPreferredOrientations(const [
+          DeviceOrientation.portraitUp,
+          DeviceOrientation.portraitDown,
+        ]);
+      }
     }
   }
 
@@ -1160,6 +1179,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
         var osLang = $osLang;
         var lang2 = $lang2;
         var startAtMs = $startAtMs;
+
         function applySubtitleLanguage() {
           try { localStorage.setItem('subtitleLang', osLang); } catch (e) {}
           try { localStorage.setItem('lastSubLang', lang2); } catch (e) {}
@@ -1174,8 +1194,8 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
           } catch (e) {}
         }
         applySubtitleLanguage();
-        setTimeout(applySubtitleLanguage, 250);
-        setTimeout(applySubtitleLanguage, 1000);
+        setTimeout(applySubtitleLanguage, 300);
+        setTimeout(applySubtitleLanguage, 1200);
 
         function fixTurkishMojibake(text) {
           if (!text || typeof text !== 'string') return text;
@@ -1195,216 +1215,39 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
           });
         }
 
-        function fixTextNode(node) {
-          var fixed = fixTurkishMojibake(node.nodeValue);
-          if (fixed !== node.nodeValue) node.nodeValue = fixed;
-        }
-
-        function fixTextTracks(rootWindow) {
+        function fixTextTracks(win) {
           try {
-            var videos = rootWindow.document.querySelectorAll('video');
+            var doc = win.document;
+            var videos = doc.querySelectorAll('video');
             videos.forEach(function(video) {
               try {
                 var tracks = video.textTracks || [];
                 for (var i = 0; i < tracks.length; i++) {
-                  var cueLists = [tracks[i].cues, tracks[i].activeCues];
-                  for (var j = 0; j < cueLists.length; j++) {
-                    var cues = cueLists[j];
-                    if (!cues) continue;
-                    for (var k = 0; k < cues.length; k++) {
-                      var cue = cues[k];
-                      if (!cue || typeof cue.text !== 'string') continue;
-                      var fixed = fixTurkishMojibake(cue.text);
-                      if (fixed !== cue.text) cue.text = fixed;
+                  var track = tracks[i];
+                  if (!track.__streamAppBound) {
+                    track.__streamAppBound = true;
+                    track.addEventListener('cuechange', function() {
+                      var active = track.activeCues;
+                      if (!active) return;
+                      for (var k = 0; k < active.length; k++) {
+                        var c = active[k];
+                        if (c && c.text) {
+                          var f = fixTurkishMojibake(c.text);
+                          if (f !== c.text) c.text = f;
+                        }
+                      }
+                    });
+                  }
+                  var cues = track.cues;
+                  if (cues) {
+                    for (var j = 0; j < cues.length; j++) {
+                      var cue = cues[j];
+                      if (cue && cue.text) {
+                        var fixed = fixTurkishMojibake(cue.text);
+                        if (fixed !== cue.text) cue.text = fixed;
+                      }
                     }
                   }
-                }
-              } catch (e) {}
-            });
-          } catch (e) {}
-        }
-
-        function patchTextSetters(rootWindow) {
-          try {
-            if (rootWindow.__streamAppTurkishSetterFixInstalled) return;
-            rootWindow.__streamAppTurkishSetterFixInstalled = true;
-
-            var elementProto = rootWindow.Element && rootWindow.Element.prototype;
-            var nodeProto = rootWindow.Node && rootWindow.Node.prototype;
-
-            function patchSetter(proto, prop) {
-              if (!proto) return;
-              var desc = rootWindow.Object.getOwnPropertyDescriptor(proto, prop);
-              if (!desc || !desc.set || !desc.get) return;
-              rootWindow.Object.defineProperty(proto, prop, {
-                configurable: true,
-                enumerable: desc.enumerable,
-                get: desc.get,
-                set: function(value) {
-                  if (typeof value === 'string') {
-                    value = fixTurkishMojibake(value);
-                  }
-                  return desc.set.call(this, value);
-                }
-              });
-            }
-
-            patchSetter(elementProto, 'innerHTML');
-            patchSetter(nodeProto, 'textContent');
-            patchSetter(nodeProto, 'nodeValue');
-          } catch (e) {}
-        }
-
-        function patchFetchForTurkishSubtitles(rootWindow) {
-          try {
-            if (rootWindow.__streamAppTurkishFetchFixInstalled) return;
-            rootWindow.__streamAppTurkishFetchFixInstalled = true;
-            var originalFetch = rootWindow.fetch;
-            if (!originalFetch) return;
-            rootWindow.fetch = function(input, init) {
-              try {
-                var url = typeof input === 'string' ? input : (input && input.url) || '';
-                if (url.indexOf('sub.wyzie.io/') !== -1 && url.indexOf('encoding=') !== -1) {
-                  url = url.replace(/encoding=[^&]*/i, 'encoding=windows-1254');
-                  if (typeof input === 'string') {
-                    input = url;
-                  } else if (rootWindow.Request && input instanceof rootWindow.Request) {
-                    input = new rootWindow.Request(url, input);
-                  }
-                }
-              } catch (e) {}
-              return originalFetch.call(this, input, init).then(function(response) {
-                try {
-                  var responseUrl = response && response.url ? response.url : '';
-                  if (responseUrl.indexOf('sub.wyzie.io/') === -1) return response;
-                  return response.clone().text().then(function(text) {
-                    var fixed = fixTurkishMojibake(text);
-                    if (fixed === text) return response;
-                    return new rootWindow.Response(fixed, {
-                      status: response.status,
-                      statusText: response.statusText,
-                      headers: response.headers
-                    });
-                  }).catch(function() { return response; });
-                } catch (e) {
-                  return response;
-                }
-              });
-            };
-          } catch (e) {}
-        }
-
-        function patchTextDecoderForTurkishSubtitles(rootWindow) {
-          try {
-            if (osLang !== 'tur') return;
-            if (rootWindow.__streamAppTurkishDecoderFixInstalled) return;
-            rootWindow.__streamAppTurkishDecoderFixInstalled = true;
-
-            var NativeTextDecoder = rootWindow.TextDecoder;
-            if (!NativeTextDecoder) return;
-            var windows1254Decoder = new NativeTextDecoder('windows-1254');
-
-            function scoreTurkish(text) {
-              if (!text || typeof text !== 'string') return -999;
-              var score = 0;
-              var good = text.match(/[ğĞıİşŞçÇöÖüÜ]/g);
-              var bad = text.match(/[ðÐýÝþÞ]|Ã.|Ä.|Å.|/g);
-              if (good) score += good.length * 3;
-              if (bad) score -= bad.length * 5;
-              if (/\\b(ve|bir|için|değil|çok|şey|evet|hayır|öyle)\\b/i.test(text)) {
-                score += 2;
-              }
-              return score;
-            }
-
-            rootWindow.TextDecoder = function(label, options) {
-              var requested = String(label || 'utf-8').toLowerCase();
-              var nativeDecoder = new NativeTextDecoder(label, options);
-              var shouldPrefer1254 =
-                requested === 'utf-8' ||
-                requested === 'utf8' ||
-                requested === 'windows-1252' ||
-                requested === 'iso-8859-1' ||
-                requested === 'latin1' ||
-                requested === 'us-ascii';
-
-              return {
-                get encoding() { return nativeDecoder.encoding; },
-                get fatal() { return nativeDecoder.fatal; },
-                get ignoreBOM() { return nativeDecoder.ignoreBOM; },
-                decode: function(input, decodeOptions) {
-                  var decoded = nativeDecoder.decode(input, decodeOptions);
-                  if (!shouldPrefer1254 || !input) {
-                    return fixTurkishMojibake(decoded);
-                  }
-                  try {
-                    var candidate = windows1254Decoder.decode(input, decodeOptions);
-                    var fixedDecoded = fixTurkishMojibake(decoded);
-                    return scoreTurkish(candidate) > scoreTurkish(fixedDecoded)
-                      ? candidate
-                      : fixedDecoded;
-                  } catch (e) {
-                    return fixTurkishMojibake(decoded);
-                  }
-                }
-              };
-            };
-            rootWindow.TextDecoder.prototype = NativeTextDecoder.prototype;
-          } catch (e) {}
-        }
-
-        function fixRoot(root) {
-          try {
-            var walker = root.document.createTreeWalker(
-              root.document.body || root.document,
-              root.NodeFilter.SHOW_TEXT
-            );
-            var node;
-            while ((node = walker.nextNode())) fixTextNode(node);
-          } catch (e) {}
-        }
-
-        function installSubtitleTextFix(rootWindow) {
-          try {
-            var doc = rootWindow.document;
-            if (!doc || doc.__streamAppTurkishFixInstalled) return;
-            doc.__streamAppTurkishFixInstalled = true;
-
-            patchTextSetters(rootWindow);
-            patchFetchForTurkishSubtitles(rootWindow);
-            patchTextDecoderForTurkishSubtitles(rootWindow);
-            var apply = function() { fixRoot(rootWindow); };
-            fixTextTracks(rootWindow);
-            apply();
-            new rootWindow.MutationObserver(function(mutations) {
-              for (var i = 0; i < mutations.length; i++) {
-                var m = mutations[i];
-                if (m.type === 'characterData') {
-                  fixTextNode(m.target);
-                } else {
-                  apply();
-                }
-              }
-            }).observe(doc.documentElement || doc.body, {
-              childList: true,
-              subtree: true,
-              characterData: true
-            });
-          } catch (e) {}
-        }
-
-        function installAllTextFixes() {
-          installSubtitleTextFix(window);
-          patchTextSetters(window);
-          patchFetchForTurkishSubtitles(window);
-          patchTextDecoderForTurkishSubtitles(window);
-          fixTextTracks(window);
-          try {
-            document.querySelectorAll('iframe').forEach(function(frame) {
-              try {
-                if (frame.contentWindow && frame.contentWindow.document) {
-                  installSubtitleTextFix(frame.contentWindow);
-                  fixTextTracks(frame.contentWindow);
                 }
               } catch (e) {}
             });
@@ -1455,27 +1298,23 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
           } catch (e) {}
         }
 
-        function trackAllVideos() {
+        function runCycle() {
           trackVideo(window);
+          fixTextTracks(window);
           try {
             document.querySelectorAll('iframe').forEach(function(frame) {
               try {
                 if (frame.contentWindow) {
                   trackVideo(frame.contentWindow);
+                  fixTextTracks(frame.contentWindow);
                 }
               } catch (e) {}
             });
           } catch (e) {}
         }
 
-        installAllTextFixes();
-        trackAllVideos();
-        setInterval(function() {
-          installAllTextFixes();
-          fixRoot(window);
-          fixTextTracks(window);
-          trackAllVideos();
-        }, 500);
+        runCycle();
+        setInterval(runCycle, 1500);
       })();
     ''';
   }
@@ -2684,6 +2523,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                         ),
                       ),
                     const SizedBox(width: 4),
+                    _buildOrientationButton(),
                     _buildMirrorSelectorButton(),
                     _buildSubtitleButton(),
                   ],
@@ -3140,6 +2980,21 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildOrientationButton() {
+    return IconButton(
+      icon: const Icon(
+        Icons.screen_rotation_rounded,
+        color: Colors.white,
+        size: 22,
+      ),
+      tooltip: 'Ekranı Döndür (Yatay / Dikey)',
+      onPressed: () {
+        _armControlsAutoHide();
+        _toggleOrientation();
+      },
     );
   }
 
