@@ -119,13 +119,25 @@ class _MediaDetailsScreenState extends ConsumerState<MediaDetailsScreen> {
     return 'movie';
   }
 
+  String _formatDuration(int ms) {
+    if (ms <= 0) return '00:00';
+    final duration = Duration(milliseconds: ms);
+    final hours = duration.inHours;
+    final minutes = duration.inMinutes.remainder(60);
+    final seconds = duration.inSeconds.remainder(60);
+    if (hours > 0) {
+      return '$hours:${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
+    }
+    return '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
+  }
+
   ({int season, int episode})? _latestEpisodeProgress(
     List<WatchHistory> items,
   ) {
     WatchHistory? latest;
     for (final item in items) {
       if (_normalizeType(item.mediaType) != 'tv' ||
-          item.mediaId != widget.mediaItem.id) {
+          item.mediaId.trim() != widget.mediaItem.id.trim()) {
         continue;
       }
       if (latest == null || item.updatedAtMs > latest.updatedAtMs) {
@@ -145,7 +157,7 @@ class _MediaDetailsScreenState extends ConsumerState<MediaDetailsScreen> {
     WatchHistory? latest;
     for (final item in items) {
       if (_normalizeType(item.mediaType) != _normalizeType(mediaType) ||
-          item.mediaId != widget.mediaItem.id) {
+          item.mediaId.trim() != widget.mediaItem.id.trim()) {
         continue;
       }
       if (latest == null || item.updatedAtMs > latest.updatedAtMs) {
@@ -159,7 +171,7 @@ class _MediaDetailsScreenState extends ConsumerState<MediaDetailsScreen> {
     final byKey = <String, WatchHistory>{};
     for (final item in items) {
       if (_normalizeType(item.mediaType) != 'tv' ||
-          item.mediaId != widget.mediaItem.id) {
+          item.mediaId.trim() != widget.mediaItem.id.trim()) {
         continue;
       }
       final key = _episodeHistoryKey(item.season, item.episode);
@@ -174,7 +186,7 @@ class _MediaDetailsScreenState extends ConsumerState<MediaDetailsScreen> {
   ContinueWatchItem? _continueItemForMedia(List<ContinueWatchItem> items) {
     for (final item in items) {
       if (_normalizeType(item.baseHistory.mediaType) == 'tv' &&
-          item.baseHistory.mediaId == widget.mediaItem.id) {
+          item.baseHistory.mediaId.trim() == widget.mediaItem.id.trim()) {
         return item;
       }
     }
@@ -690,20 +702,21 @@ class _MediaDetailsScreenState extends ConsumerState<MediaDetailsScreen> {
     final creatorsList = mediaDetails?.creatorName?.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList() ?? const <String>[];
     final mediaHistoryEntries = ref
         .watch(watchHistoryEntriesProvider)
-        .where((history) => history.mediaId == item.id)
+        .where((history) => history.mediaId.trim() == item.id.trim())
         .toList();
+    final isTv = _normalizeType(item.type) == 'tv';
     final latestMediaProgress = _latestMediaProgress(
       mediaHistoryEntries,
       item.type,
     );
-    final latestEpisodeProgress = item.type == 'tv'
+    final latestEpisodeProgress = isTv
         ? _latestEpisodeProgress(mediaHistoryEntries)
         : null;
-    final tvEpisodeHistory = item.type == 'tv'
+    final tvEpisodeHistory = isTv
         ? _tvEpisodeProgressByKey(mediaHistoryEntries)
         : const <String, WatchHistory>{};
     final continueWatchingAsync = ref.watch(continueWatchingProvider);
-    final continueItem = item.type == 'tv'
+    final continueItem = isTv
         ? _continueItemForMedia(continueWatchingAsync.value ?? const [])
         : null;
     final inLibrary = ref.watch(
@@ -716,8 +729,6 @@ class _MediaDetailsScreenState extends ConsumerState<MediaDetailsScreen> {
         (items) => items.any((watchedItem) => watchedItem.id == item.id),
       ),
     );
-
-    final isTv = item.type == 'tv';
 
     return Scaffold(
       backgroundColor: const Color(0xFF0F0F13),
@@ -985,7 +996,9 @@ class _MediaDetailsScreenState extends ConsumerState<MediaDetailsScreen> {
                   // Movie Play Button (if Movie)
                   if (!isTv) ...[
                     const SizedBox(height: 12),
-                    if (latestMediaProgress != null) ...[
+                    if (latestMediaProgress != null &&
+                        (latestMediaProgress.lastPosition > 0 ||
+                            latestMediaProgress.isWatched)) ...[
                       InkWell(
                         borderRadius: BorderRadius.circular(12),
                         onTap: _isResolving
@@ -1004,27 +1017,77 @@ class _MediaDetailsScreenState extends ConsumerState<MediaDetailsScreen> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text(
-                                text.t('watch_history'),
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.w600,
-                                  color: Colors.white,
-                                  fontSize: 13,
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Row(
+                                    children: [
+                                      Icon(
+                                        latestMediaProgress.isWatched
+                                            ? Icons.check_circle_rounded
+                                            : Icons.play_circle_fill_rounded,
+                                        size: 16,
+                                        color: latestMediaProgress.isWatched
+                                            ? const Color(0xFF00E054)
+                                            : Colors.redAccent,
+                                      ),
+                                      const SizedBox(width: 6),
+                                      Text(
+                                        text.t('watch_history'),
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.w600,
+                                          color: Colors.white,
+                                          fontSize: 13,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  Text(
+                                    latestMediaProgress.isWatched
+                                        ? text.t('completed')
+                                        : '%${(latestMediaProgress.progressRatio * 100).clamp(0, 100).round()}',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.bold,
+                                      color: latestMediaProgress.isWatched
+                                          ? const Color(0xFF00E054)
+                                          : Colors.redAccent,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 8),
+                              ClipRRect(
+                                borderRadius: BorderRadius.circular(4),
+                                child: LinearProgressIndicator(
+                                  value: latestMediaProgress.isWatched
+                                      ? 1.0
+                                      : latestMediaProgress.progressRatio.clamp(0.0, 1.0),
+                                  minHeight: 6,
+                                  backgroundColor: Colors.white10,
+                                  valueColor: AlwaysStoppedAnimation<Color>(
+                                    latestMediaProgress.isWatched
+                                        ? const Color(0xFF00E054)
+                                        : Colors.redAccent,
+                                  ),
                                 ),
                               ),
                               const SizedBox(height: 6),
-                              LinearProgressIndicator(
-                                value: latestMediaProgress.progressRatio,
-                                minHeight: 5,
-                                backgroundColor: Colors.white10,
-                                color: Colors.redAccent,
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                latestMediaProgress.isWatched
-                                    ? text.t('completed')
-                                    : '${text.t('in_progress')} • ${(latestMediaProgress.progressRatio * 100).round()}%',
-                                style: const TextStyle(fontSize: 11, color: Colors.white60),
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Text(
+                                    latestMediaProgress.isWatched
+                                        ? text.t('completed')
+                                        : text.t('in_progress'),
+                                    style: const TextStyle(fontSize: 11, color: Colors.white60),
+                                  ),
+                                  if (latestMediaProgress.duration > 0)
+                                    Text(
+                                      '${_formatDuration(latestMediaProgress.lastPosition)} / ${_formatDuration(latestMediaProgress.duration)}',
+                                      style: const TextStyle(fontSize: 11, color: Colors.white60, fontWeight: FontWeight.w500),
+                                    ),
+                                ],
                               ),
                             ],
                           ),
@@ -1449,11 +1512,14 @@ class _MediaDetailsScreenState extends ConsumerState<MediaDetailsScreen> {
         final primaryHistory = tvEpisodeHistory[_episodeHistoryKey(
           primaryTarget.season,
           primaryTarget.episode,
-        )];
+        )] ?? (shouldAdvanceToNextEpisode ? null : continueItem?.baseHistory);
         final primaryWatched = primaryHistory?.isWatched ?? false;
+        final primaryProgressRatio = (primaryHistory != null && primaryHistory.duration > 0)
+            ? primaryHistory.progressRatio.clamp(0.0, 1.0)
+            : (primaryWatched ? 1.0 : 0.0);
         final primaryLabel = shouldAdvanceToNextEpisode
             ? text.t('next_episode')
-            : text.t('last_watched_episode');
+            : (primaryProgressRatio > 0 ? text.t('in_progress') : text.t('last_watched_episode'));
 
         _selectedSeason ??= continueTarget.season;
 
@@ -1474,35 +1540,88 @@ class _MediaDetailsScreenState extends ConsumerState<MediaDetailsScreen> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text(
-                        '$primaryLabel: S${primaryTarget.season}:E${primaryTarget.episode}',
-                        style: const TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.white,
-                        ),
+                      Row(
+                        children: [
+                          Icon(
+                            primaryWatched
+                                ? Icons.check_circle_rounded
+                                : (primaryProgressRatio > 0
+                                    ? Icons.play_circle_fill_rounded
+                                    : Icons.play_arrow_rounded),
+                            size: 16,
+                            color: primaryWatched
+                                ? const Color(0xFF00E054)
+                                : Colors.redAccent,
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            '$primaryLabel: S${primaryTarget.season}:E${primaryTarget.episode}',
+                            style: const TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ],
                       ),
                       if (primaryWatched)
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                           decoration: BoxDecoration(
-                            color: Colors.greenAccent.withValues(alpha: 0.2),
+                            color: const Color(0xFF00E054).withValues(alpha: 0.2),
                             borderRadius: BorderRadius.circular(4),
                           ),
                           child: Text(
                             text.t('completed'),
-                            style: const TextStyle(fontSize: 10, color: Colors.greenAccent, fontWeight: FontWeight.bold),
+                            style: const TextStyle(
+                              fontSize: 10,
+                              color: Color(0xFF00E054),
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        )
+                      else if (primaryProgressRatio > 0)
+                        Text(
+                          '%${(primaryProgressRatio * 100).round()}',
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: Colors.redAccent,
+                            fontWeight: FontWeight.bold,
                           ),
                         ),
                     ],
                   ),
                   const SizedBox(height: 8),
-                  LinearProgressIndicator(
-                    value: primaryHistory?.progressRatio ?? 0.0,
-                    minHeight: 5,
-                    backgroundColor: Colors.white10,
-                    color: Colors.redAccent,
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(4),
+                    child: LinearProgressIndicator(
+                      value: primaryWatched ? 1.0 : primaryProgressRatio,
+                      minHeight: 6,
+                      backgroundColor: Colors.white10,
+                      valueColor: AlwaysStoppedAnimation<Color>(
+                        primaryWatched
+                            ? const Color(0xFF00E054)
+                            : Colors.redAccent,
+                      ),
+                    ),
                   ),
+                  if (primaryHistory != null &&
+                      primaryHistory.duration > 0 &&
+                      !primaryWatched &&
+                      primaryProgressRatio > 0) ...[
+                    const SizedBox(height: 4),
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: Text(
+                        '${_formatDuration(primaryHistory.lastPosition)} / ${_formatDuration(primaryHistory.duration)}',
+                        style: const TextStyle(
+                          fontSize: 10,
+                          color: Colors.white54,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ),
+                  ],
                   const SizedBox(height: 12),
                   Row(
                     children: [
@@ -1658,7 +1777,7 @@ class _MediaDetailsScreenState extends ConsumerState<MediaDetailsScreen> {
 
             // Horizontal Season Selector Pills
             SizedBox(
-              height: 40,
+              height: 38,
               child: ListView.builder(
                 scrollDirection: Axis.horizontal,
                 itemCount: seasons.length,
@@ -1668,12 +1787,15 @@ class _MediaDetailsScreenState extends ConsumerState<MediaDetailsScreen> {
                   return Padding(
                     padding: const EdgeInsets.only(right: 8),
                     child: ChoiceChip(
-                      label: Text('${season.name} (${season.episodeCount})'),
+                      label: Text(season.name.isNotEmpty ? season.name : 'Sezon ${season.seasonNumber}'),
                       selected: isSelected,
                       selectedColor: Colors.redAccent,
-                      backgroundColor: Colors.white.withValues(alpha: 0.05),
+                      backgroundColor: Colors.white.withValues(alpha: 0.08),
                       side: BorderSide(
                         color: isSelected ? Colors.redAccent : Colors.white12,
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
                       ),
                       labelStyle: TextStyle(
                         color: isSelected ? Colors.white : Colors.grey.shade400,
@@ -1744,7 +1866,12 @@ class _MediaDetailsScreenState extends ConsumerState<MediaDetailsScreen> {
               seasonNumber,
               episode.episodeNumber,
             )];
-            final hasProgress = episodeHistory != null;
+            final isEpisodeWatched = episodeHistory?.isWatched == true;
+            final hasProgress = episodeHistory != null &&
+                (episodeHistory.lastPosition > 0 || isEpisodeWatched);
+            final episodeProgressRatio = episodeHistory != null
+                ? (isEpisodeWatched ? 1.0 : episodeHistory.progressRatio.clamp(0.0, 1.0))
+                : 0.0;
             final bool isAired = episode.isAired;
             final isHighlighted = episode.episodeNumber == _highlightedEpisodeNumber;
 
@@ -1764,35 +1891,56 @@ class _MediaDetailsScreenState extends ConsumerState<MediaDetailsScreen> {
                 contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                 leading: ClipRRect(
                   borderRadius: BorderRadius.circular(8),
-                  child: Stack(
-                    alignment: Alignment.center,
-                    children: [
-                      episode.stillPath != null
-                          ? Image.network(
-                              episode.stillPath!,
-                              width: 100,
-                              height: 60,
-                              fit: BoxFit.cover,
-                              errorBuilder: (buildContext, error, stackTrace) =>
-                                  const ColoredBox(
-                                    color: Colors.white10,
-                                    child: SizedBox(width: 100, height: 60, child: Icon(Icons.movie, color: Colors.grey)),
-                                  ),
-                            )
-                          : const ColoredBox(
-                              color: Colors.white10,
-                              child: SizedBox(width: 100, height: 60, child: Icon(Icons.movie, color: Colors.grey)),
+                  child: SizedBox(
+                    width: 100,
+                    height: 60,
+                    child: Stack(
+                      fit: StackFit.expand,
+                      alignment: Alignment.center,
+                      children: [
+                        episode.stillPath != null
+                            ? Image.network(
+                                episode.stillPath!,
+                                fit: BoxFit.cover,
+                                errorBuilder: (buildContext, error, stackTrace) =>
+                                    const ColoredBox(
+                                      color: Colors.white10,
+                                      child: Icon(Icons.movie, color: Colors.grey),
+                                    ),
+                              )
+                            : const ColoredBox(
+                                color: Colors.white10,
+                                child: Icon(Icons.movie, color: Colors.grey),
+                              ),
+                        if (isAired)
+                          Center(
+                            child: Container(
+                              padding: const EdgeInsets.all(6),
+                              decoration: BoxDecoration(
+                                color: Colors.black.withValues(alpha: 0.5),
+                                shape: BoxShape.circle,
+                              ),
+                              child: const Icon(Icons.play_arrow_rounded, color: Colors.white, size: 20),
                             ),
-                      if (isAired)
-                        Container(
-                          padding: const EdgeInsets.all(6),
-                          decoration: BoxDecoration(
-                            color: Colors.black.withValues(alpha: 0.5),
-                            shape: BoxShape.circle,
                           ),
-                          child: const Icon(Icons.play_arrow_rounded, color: Colors.white, size: 20),
-                        ),
-                    ],
+                        if (hasProgress && episodeProgressRatio > 0)
+                          Positioned(
+                            left: 0,
+                            right: 0,
+                            bottom: 0,
+                            child: LinearProgressIndicator(
+                              value: episodeProgressRatio,
+                              minHeight: 4,
+                              backgroundColor: Colors.black54,
+                              valueColor: AlwaysStoppedAnimation<Color>(
+                                isEpisodeWatched
+                                    ? const Color(0xFF00E054)
+                                    : Colors.redAccent,
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
                   ),
                 ),
                 title: Text(
@@ -1836,19 +1984,45 @@ class _MediaDetailsScreenState extends ConsumerState<MediaDetailsScreen> {
                           style: const TextStyle(fontSize: 11, color: Colors.orangeAccent, fontWeight: FontWeight.w500),
                         ),
                       ),
-                    if (hasProgress) ...[
+                    if (hasProgress && episodeProgressRatio > 0) ...[
                       const SizedBox(height: 6),
-                      LinearProgressIndicator(
-                        value: episodeHistory.progressRatio,
-                        minHeight: 3,
-                        backgroundColor: Colors.white10,
-                        color: Colors.redAccent,
+                      Row(
+                        children: [
+                          Expanded(
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(2),
+                              child: LinearProgressIndicator(
+                                value: episodeProgressRatio,
+                                minHeight: 3,
+                                backgroundColor: Colors.white10,
+                                valueColor: AlwaysStoppedAnimation<Color>(
+                                  isEpisodeWatched
+                                      ? const Color(0xFF00E054)
+                                      : Colors.redAccent,
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            isEpisodeWatched
+                                ? text.t('completed')
+                                : '%${(episodeProgressRatio * 100).round()}',
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                              color: isEpisodeWatched
+                                  ? const Color(0xFF00E054)
+                                  : Colors.redAccent,
+                            ),
+                          ),
+                        ],
                       ),
                     ],
                   ],
                 ),
                 trailing: Tooltip(
-                  message: episodeHistory?.isWatched == true
+                  message: isEpisodeWatched
                       ? (text.languageCode == 'tr' ? 'İzlemedim olarak işaretle' : 'Mark as unwatched')
                       : (text.languageCode == 'tr' ? 'İzledim olarak işaretle' : 'Mark as watched'),
                   child: InkWell(
@@ -1856,7 +2030,7 @@ class _MediaDetailsScreenState extends ConsumerState<MediaDetailsScreen> {
                       _toggleEpisodeWatched(
                         season: seasonNumber,
                         episodeNumber: episode.episodeNumber,
-                        isCurrentlyWatched: episodeHistory?.isWatched == true,
+                        isCurrentlyWatched: isEpisodeWatched,
                         tvEpisodeHistory: tvEpisodeHistory,
                       );
                     },
@@ -1864,10 +2038,10 @@ class _MediaDetailsScreenState extends ConsumerState<MediaDetailsScreen> {
                     child: Padding(
                       padding: const EdgeInsets.all(6.0),
                       child: Icon(
-                        episodeHistory?.isWatched == true
+                        isEpisodeWatched
                             ? Icons.check_circle_rounded
                             : Icons.radio_button_unchecked_rounded,
-                        color: episodeHistory?.isWatched == true
+                        color: isEpisodeWatched
                             ? const Color(0xFF00E054)
                             : Colors.white30,
                         size: 24,

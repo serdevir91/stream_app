@@ -677,9 +677,10 @@ class _HomeContentState extends ConsumerState<HomeContent> {
                             Align(
                               alignment: Alignment.bottomCenter,
                               child: LinearProgressIndicator(
-                                value: progress,
+                                value: progress.clamp(0.0, 1.0),
                                 minHeight: 4,
-                                backgroundColor: Colors.black45,
+                                backgroundColor: Colors.black54,
+                                valueColor: const AlwaysStoppedAnimation<Color>(Colors.redAccent),
                               ),
                             ),
                           ],
