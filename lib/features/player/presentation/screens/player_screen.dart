@@ -99,7 +99,6 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   int _embedPositionOffsetMs = 0;
   int? _lastEmbedPositionMs;
   int? _lastEmbedDurationMs;
-  bool _embedVideoPaused = true;
   String? _currentStreamUrl;
   int _savedPositionMs = 0;
   vp.VideoPlayerController? _nativeController;
@@ -305,10 +304,10 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
         ctrl.dispose();
         return;
       }
+      await ctrl.play();
       if (seekMs > 0) {
         await ctrl.seekTo(Duration(milliseconds: seekMs));
       }
-      await ctrl.play();
       setState(() {
         _nativeController = ctrl;
         _isLoading = false;
@@ -938,16 +937,42 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   }
 
   int get _currentEmbedPositionMs {
-    if (_embedVideoPaused) {
-      return _lastEmbedPositionMs ?? _embedPositionOffsetMs;
+    if (_lastEmbedPositionMs != null && _lastEmbedPositionMs! > 0) {
+      return _lastEmbedPositionMs!;
     }
-    return _embedPositionOffsetMs + _embedWatchStopwatch.elapsedMilliseconds;
+    if (_embedWatchStopwatch.isRunning) {
+      return _embedPositionOffsetMs + _embedWatchStopwatch.elapsedMilliseconds;
+    }
+    return _embedPositionOffsetMs;
   }
 
   Future<int> _getEmbedVideoPositionMs() async {
-    if (_embedVideoPaused) {
-      return _lastEmbedPositionMs ?? _embedPositionOffsetMs;
+    if (_lastEmbedPositionMs != null && _lastEmbedPositionMs! > 0) {
+      return _lastEmbedPositionMs!;
     }
+    const js =
+        '(function(){var v=document.querySelector("video");return v?v.currentTime:0;})()';
+    try {
+      final result = await _embedWebViewController
+          ?.runJavaScriptReturningResult(js);
+      final seconds = double.tryParse(result.toString()) ?? 0;
+      if (seconds > 1) {
+        final ms = (seconds * 1000).toInt();
+        _lastEmbedPositionMs = ms;
+        return ms;
+      }
+    } catch (_) {}
+    try {
+      if (_windowsEmbedController != null) {
+        final result = await _windowsEmbedController?.executeScript(js);
+        final seconds = double.tryParse(result.toString()) ?? 0;
+        if (seconds > 1) {
+          final ms = (seconds * 1000).toInt();
+          _lastEmbedPositionMs = ms;
+          return ms;
+        }
+      }
+    } catch (_) {}
     return _currentEmbedPositionMs;
   }
 
@@ -994,8 +1019,6 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
       );
       final durationSec = double.tryParse(data['duration']?.toString() ?? '');
       final paused = data['paused'] == true;
-
-      _embedVideoPaused = paused;
 
       if (currentTimeSec != null && currentTimeSec >= 0) {
         final positionMs = (currentTimeSec * 1000).toInt();
@@ -1146,14 +1169,15 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
       }
     } else {
       final localizedUrl = _applyEmbedSubtitleLanguage(streamUrl);
+      final urlWithTime = _applyEmbedPlaybackParameters(localizedUrl, startAtMs: resumeMs);
       setState(() {
-        _embedUrl = localizedUrl;
+        _embedUrl = urlWithTime;
         _loadingStatusKey = 'preparing_in_app_player';
         _isLoading = true;
       });
-      _initializeEmbedPlayer(localizedUrl, startAtMs: resumeMs);
+      _initializeEmbedPlayer(urlWithTime, startAtMs: resumeMs);
       _startProgressAutosave();
-      unawaited(_attachOnlineSubtitleToEmbed(streamUrl, localizedUrl));
+      unawaited(_attachOnlineSubtitleToEmbed(streamUrl, urlWithTime));
     }
 
     if (provider != null && provider.isNotEmpty) {
@@ -1164,6 +1188,29 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     }
 
     _initPlaybackPosition();
+  }
+
+  String _applyEmbedPlaybackParameters(String url, {int startAtMs = 0}) {
+    if (startAtMs <= 5000) return url;
+
+    try {
+      final uri = Uri.parse(url);
+      final startSeconds = (startAtMs / 1000).floor();
+      final queryParams = Map<String, String>.from(uri.queryParameters);
+
+      // Add common start time query params for popular embed players (vidsrc, videasy, cinesrc, etc.)
+      queryParams['start'] = '$startSeconds';
+      queryParams['time'] = '$startSeconds';
+      queryParams['t'] = '$startSeconds';
+      queryParams['progress'] = '$startSeconds';
+
+      return uri.replace(
+        queryParameters: queryParams,
+        fragment: 't=$startSeconds',
+      ).toString();
+    } catch (_) {
+      return url;
+    }
   }
 
   String _applyEmbedSubtitleLanguage(String url) {
@@ -1404,6 +1451,17 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
         var seekTargetSec = $seekSec;
         var hasSeeked = false;
 
+        function sendSeekToWindow(w) {
+          if (seekTargetSec <= 0 || !w) return;
+          try {
+            var msgObj = { type: 'SEEK', time: seekTargetSec, currentTime: seekTargetSec, action: 'seek', seconds: seekTargetSec };
+            w.postMessage(JSON.stringify(msgObj), '*');
+            w.postMessage(msgObj, '*');
+            w.postMessage({ event: 'command', func: 'seekTo', args: [seekTargetSec, true] }, '*');
+            w.postMessage({ event: 'seek', value: seekTargetSec }, '*');
+          } catch(e) {}
+        }
+
         function trySeekVideo(v) {
           if (seekTargetSec <= 0 || hasSeeked) return;
           try {
@@ -1460,6 +1518,9 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
             document.querySelectorAll('video').forEach(attach);
             document.querySelectorAll('iframe').forEach(function(f) {
               try {
+                if (seekTargetSec > 0 && !hasSeeked && f.contentWindow) {
+                  sendSeekToWindow(f.contentWindow);
+                }
                 if (f.contentWindow && f.contentWindow.document) {
                   f.contentWindow.document.querySelectorAll('video').forEach(attach);
                 }
@@ -1498,9 +1559,8 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
       // Reset embed tracking variables
       _lastEmbedPositionMs = startAtMs > 0 ? startAtMs : null;
       _lastEmbedDurationMs = null;
-      _embedVideoPaused = true;
 
-      if (startAtMs <= 0) {
+      if (startAtMs <= 0 && ref.read(appSettingsProvider).watchHistoryEnabled) {
         final repo = ref.read(watchHistoryRepositoryProvider);
         final history = repo.getProgress(
           widget.mediaId,
@@ -1513,6 +1573,8 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
         }
       }
       _embedPositionOffsetMs = startAtMs;
+      _embedWatchStopwatch.reset();
+      _embedWatchStopwatch.start();
 
       if (defaultTargetPlatform == TargetPlatform.windows) {
         final controller = windows_webview.WebviewController();

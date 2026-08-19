@@ -991,107 +991,117 @@ class _MediaDetailsScreenState extends ConsumerState<MediaDetailsScreen> {
                         ),
                       ),
                     ],
-                  ),
-
-                  // Movie Play Button (if Movie)
+                  ),                  // Movie Play Button (if Movie)
                   if (!isTv) ...[
                     const SizedBox(height: 12),
                     if (latestMediaProgress != null &&
                         (latestMediaProgress.lastPosition > 0 ||
                             latestMediaProgress.isWatched)) ...[
-                      InkWell(
-                        borderRadius: BorderRadius.circular(12),
-                        onTap: _isResolving
-                            ? null
-                            : () => _resolveAndPickSource(
-                                runtimeMinutes: mediaDetails?.runtimeMinutes,
-                              ),
-                        child: Container(
-                          width: double.infinity,
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: Colors.white.withValues(alpha: 0.05),
+                      Builder(
+                        builder: (context) {
+                          final detailsRuntime = mediaDetails?.runtimeMinutes;
+                          final movieEffectiveDuration = (latestMediaProgress.duration > 1)
+                              ? latestMediaProgress.duration
+                              : ((detailsRuntime != null && detailsRuntime > 0)
+                                  ? detailsRuntime * 60 * 1000
+                                  : 120 * 60 * 1000);
+                          final movieProgressRatio = latestMediaProgress.isWatched
+                              ? 1.0
+                              : (latestMediaProgress.lastPosition / movieEffectiveDuration).clamp(0.0, 1.0);
+
+                          return InkWell(
                             borderRadius: BorderRadius.circular(12),
-                            border: Border.all(color: Colors.white12),
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            onTap: _isResolving
+                                ? null
+                                : () => _resolveAndPickSource(
+                                    runtimeMinutes: mediaDetails?.runtimeMinutes,
+                                  ),
+                            child: Container(
+                              width: double.infinity,
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: Colors.white.withValues(alpha: 0.05),
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(color: Colors.white12),
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Row(
+                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                     children: [
-                                      Icon(
-                                        latestMediaProgress.isWatched
-                                            ? Icons.check_circle_rounded
-                                            : Icons.play_circle_fill_rounded,
-                                        size: 16,
-                                        color: latestMediaProgress.isWatched
-                                            ? const Color(0xFF00E054)
-                                            : Colors.redAccent,
+                                      Row(
+                                        children: [
+                                          Icon(
+                                            latestMediaProgress.isWatched
+                                                ? Icons.check_circle_rounded
+                                                : Icons.play_circle_fill_rounded,
+                                            size: 16,
+                                            color: latestMediaProgress.isWatched
+                                                ? const Color(0xFF00E054)
+                                                : Colors.redAccent,
+                                          ),
+                                          const SizedBox(width: 6),
+                                          Text(
+                                            text.t('watch_history'),
+                                            style: const TextStyle(
+                                              fontWeight: FontWeight.w600,
+                                              color: Colors.white,
+                                              fontSize: 13,
+                                            ),
+                                          ),
+                                        ],
                                       ),
-                                      const SizedBox(width: 6),
                                       Text(
-                                        text.t('watch_history'),
-                                        style: const TextStyle(
-                                          fontWeight: FontWeight.w600,
-                                          color: Colors.white,
-                                          fontSize: 13,
+                                        latestMediaProgress.isWatched
+                                            ? text.t('completed')
+                                            : '%${(movieProgressRatio * 100).clamp(0, 100).round()}',
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.bold,
+                                          color: latestMediaProgress.isWatched
+                                              ? const Color(0xFF00E054)
+                                              : Colors.redAccent,
                                         ),
                                       ),
                                     ],
                                   ),
-                                  Text(
-                                    latestMediaProgress.isWatched
-                                        ? text.t('completed')
-                                        : '%${(latestMediaProgress.progressRatio * 100).clamp(0, 100).round()}',
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.bold,
-                                      color: latestMediaProgress.isWatched
-                                          ? const Color(0xFF00E054)
-                                          : Colors.redAccent,
+                                  const SizedBox(height: 8),
+                                  ClipRRect(
+                                    borderRadius: BorderRadius.circular(4),
+                                    child: LinearProgressIndicator(
+                                      value: movieProgressRatio,
+                                      minHeight: 6,
+                                      backgroundColor: Colors.white10,
+                                      valueColor: AlwaysStoppedAnimation<Color>(
+                                        latestMediaProgress.isWatched
+                                            ? const Color(0xFF00E054)
+                                            : Colors.redAccent,
+                                      ),
                                     ),
+                                  ),
+                                  const SizedBox(height: 6),
+                                  Row(
+                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Text(
+                                        latestMediaProgress.isWatched
+                                            ? text.t('completed')
+                                            : text.t('in_progress'),
+                                        style: const TextStyle(fontSize: 11, color: Colors.white60),
+                                      ),
+                                      if (movieEffectiveDuration > 0)
+                                        Text(
+                                          '${_formatDuration(latestMediaProgress.lastPosition)} / ${_formatDuration(movieEffectiveDuration)}',
+                                          style: const TextStyle(fontSize: 11, color: Colors.white60, fontWeight: FontWeight.w500),
+                                        ),
+                                    ],
                                   ),
                                 ],
                               ),
-                              const SizedBox(height: 8),
-                              ClipRRect(
-                                borderRadius: BorderRadius.circular(4),
-                                child: LinearProgressIndicator(
-                                  value: latestMediaProgress.isWatched
-                                      ? 1.0
-                                      : latestMediaProgress.progressRatio.clamp(0.0, 1.0),
-                                  minHeight: 6,
-                                  backgroundColor: Colors.white10,
-                                  valueColor: AlwaysStoppedAnimation<Color>(
-                                    latestMediaProgress.isWatched
-                                        ? const Color(0xFF00E054)
-                                        : Colors.redAccent,
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(height: 6),
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                children: [
-                                  Text(
-                                    latestMediaProgress.isWatched
-                                        ? text.t('completed')
-                                        : text.t('in_progress'),
-                                    style: const TextStyle(fontSize: 11, color: Colors.white60),
-                                  ),
-                                  if (latestMediaProgress.duration > 0)
-                                    Text(
-                                      '${_formatDuration(latestMediaProgress.lastPosition)} / ${_formatDuration(latestMediaProgress.duration)}',
-                                      style: const TextStyle(fontSize: 11, color: Colors.white60, fontWeight: FontWeight.w500),
-                                    ),
-                                ],
-                              ),
-                            ],
-                          ),
-                        ),
+                            ),
+                          );
+                        },
                       ),
                       const SizedBox(height: 12),
                     ],
@@ -1512,11 +1522,19 @@ class _MediaDetailsScreenState extends ConsumerState<MediaDetailsScreen> {
         final primaryHistory = tvEpisodeHistory[_episodeHistoryKey(
           primaryTarget.season,
           primaryTarget.episode,
-        )] ?? (shouldAdvanceToNextEpisode ? null : continueItem?.baseHistory);
+        )];
         final primaryWatched = primaryHistory?.isWatched ?? false;
-        final primaryProgressRatio = (primaryHistory != null && primaryHistory.duration > 0)
-            ? primaryHistory.progressRatio.clamp(0.0, 1.0)
-            : (primaryWatched ? 1.0 : 0.0);
+        final continueRuntimeMs = (runtimeMinutes != null && runtimeMinutes > 0)
+            ? runtimeMinutes * 60 * 1000
+            : 45 * 60 * 1000;
+        final primaryDuration = (primaryHistory != null && primaryHistory.duration > 0)
+            ? primaryHistory.duration
+            : continueRuntimeMs;
+        final primaryProgressRatio = primaryWatched
+            ? 1.0
+            : ((primaryHistory != null && primaryDuration > 0)
+                ? (primaryHistory.lastPosition / primaryDuration).clamp(0.0, 1.0)
+                : 0.0);
         final primaryLabel = shouldAdvanceToNextEpisode
             ? text.t('next_episode')
             : (primaryProgressRatio > 0 ? text.t('in_progress') : text.t('last_watched_episode'));
@@ -1869,9 +1887,16 @@ class _MediaDetailsScreenState extends ConsumerState<MediaDetailsScreen> {
             final isEpisodeWatched = episodeHistory?.isWatched == true;
             final hasProgress = episodeHistory != null &&
                 (episodeHistory.lastPosition > 0 || isEpisodeWatched);
-            final episodeProgressRatio = episodeHistory != null
-                ? (isEpisodeWatched ? 1.0 : episodeHistory.progressRatio.clamp(0.0, 1.0))
-                : 0.0;
+            final episodeEffectiveDuration = (episodeHistory != null && episodeHistory.duration > 0)
+                ? episodeHistory.duration
+                : ((episodeRuntimeMinutes != null && episodeRuntimeMinutes > 0)
+                    ? episodeRuntimeMinutes * 60 * 1000
+                    : 45 * 60 * 1000);
+            final episodeProgressRatio = isEpisodeWatched
+                ? 1.0
+                : ((episodeHistory != null && episodeEffectiveDuration > 0)
+                    ? (episodeHistory.lastPosition / episodeEffectiveDuration).clamp(0.0, 1.0)
+                    : 0.0);
             final bool isAired = episode.isAired;
             final isHighlighted = episode.episodeNumber == _highlightedEpisodeNumber;
 
@@ -1921,22 +1946,6 @@ class _MediaDetailsScreenState extends ConsumerState<MediaDetailsScreen> {
                                 shape: BoxShape.circle,
                               ),
                               child: const Icon(Icons.play_arrow_rounded, color: Colors.white, size: 20),
-                            ),
-                          ),
-                        if (hasProgress && episodeProgressRatio > 0)
-                          Positioned(
-                            left: 0,
-                            right: 0,
-                            bottom: 0,
-                            child: LinearProgressIndicator(
-                              value: episodeProgressRatio,
-                              minHeight: 4,
-                              backgroundColor: Colors.black54,
-                              valueColor: AlwaysStoppedAnimation<Color>(
-                                isEpisodeWatched
-                                    ? const Color(0xFF00E054)
-                                    : Colors.redAccent,
-                              ),
                             ),
                           ),
                       ],

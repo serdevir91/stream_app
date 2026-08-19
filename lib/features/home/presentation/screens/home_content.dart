@@ -626,9 +626,10 @@ class _HomeContentState extends ConsumerState<HomeContent> {
           final item = items[index];
           final history = item.baseHistory;
           final image = history.posterUrl ?? history.backdropUrl;
+          final effectiveDuration = history.duration > 1 ? history.duration : 45 * 60 * 1000;
           final progress = item.startFromBeginning
               ? 0.0
-              : history.progressRatio;
+              : (history.lastPosition > 0 ? (history.lastPosition / effectiveDuration).clamp(0.0, 1.0) : history.progressRatio);
 
           String subtitle;
           if (history.mediaType == 'tv') {
