@@ -129,18 +129,54 @@ class LocalBackupService {
     final libraryBox = await _openOrCreateBox<dynamic>(
       LibraryRepository.boxName,
     );
-    final library = libraryBox.values
-        .whereType<Map>()
-        .map((item) => Map<String, dynamic>.from(item))
-        .toList();
+    final library = <Map<String, dynamic>>[];
+    for (final entry in libraryBox.toMap().entries) {
+      if (entry.value is Map) {
+        final normalized = _normalizeMediaMap(
+          entry.value as Map,
+          fallbackId: entry.key.toString(),
+        );
+        if (normalized['id'].toString().isNotEmpty) {
+          library.add(normalized);
+        }
+      }
+    }
 
     final watchedBox = await _openOrCreateBox<dynamic>(
       WatchedRepository.boxName,
     );
-    final watched = watchedBox.values
-        .whereType<Map>()
-        .map((item) => Map<String, dynamic>.from(item))
-        .toList();
+    final watchedMapById = <String, Map<String, dynamic>>{};
+    for (final entry in watchedBox.toMap().entries) {
+      if (entry.value is Map) {
+        final normalized = _normalizeMediaMap(
+          entry.value as Map,
+          fallbackId: entry.key.toString(),
+        );
+        final id = normalized['id'].toString();
+        if (id.isNotEmpty) {
+          watchedMapById[id] = normalized;
+        }
+      }
+    }
+
+    // Merge watched movies/series from watchHistoryBox where isWatched is true
+    for (final h in watchHistoryBox.values) {
+      if (h.isWatched && h.mediaId.isNotEmpty) {
+        if (!watchedMapById.containsKey(h.mediaId)) {
+          watchedMapById[h.mediaId] = {
+            'id': h.mediaId,
+            'title': h.title,
+            'type': h.mediaType,
+            'posterUrl': h.posterUrl,
+            'backdropUrl': h.backdropUrl,
+            'description': null,
+            'rating': null,
+            'updated_at_ms': h.updatedAtMs,
+          };
+        }
+      }
+    }
+    final watched = watchedMapById.values.toList();
 
     final addonConfigBox = await _openOrCreateBox<dynamic>(_addonConfigBoxName);
     final addonConfig = <String, dynamic>{
@@ -250,9 +286,13 @@ class LocalBackupService {
         ? payload['library'] as List
         : [];
     for (final item in library.whereType<Map>()) {
-      final id = item['id']?.toString() ?? '';
+      final normalized = _normalizeMediaMap(
+        item,
+        fallbackId: item['id']?.toString() ?? '',
+      );
+      final id = normalized['id'] as String;
       if (id.isEmpty) continue;
-      await libraryBox.put(id, Map<String, dynamic>.from(item));
+      await libraryBox.put(id, normalized);
     }
 
     final watchedBox = await _openOrCreateBox<dynamic>(
@@ -263,9 +303,13 @@ class LocalBackupService {
         ? payload['watched'] as List
         : [];
     for (final item in watched.whereType<Map>()) {
-      final id = item['id']?.toString() ?? '';
+      final normalized = _normalizeMediaMap(
+        item,
+        fallbackId: item['id']?.toString() ?? '',
+      );
+      final id = normalized['id'] as String;
       if (id.isEmpty) continue;
-      await watchedBox.put(id, Map<String, dynamic>.from(item));
+      await watchedBox.put(id, normalized);
     }
 
     final addonConfigBox = await _openOrCreateBox<dynamic>(_addonConfigBoxName);
@@ -294,12 +338,47 @@ class LocalBackupService {
     final syncMetaBox = await _openOrCreateBox<dynamic>(_syncMetaBoxName);
     await syncMetaBox.clear();
 
+    // Notify repositories so UI updates immediately
+    try {
+      LibraryRepository().notifyChanges();
+      WatchedRepository().notifyChanges();
+      WatchHistoryRepository().notifyChanges();
+    } catch (_) {}
+
     return LocalBackupRestoreResult(
       sourceCount: sourcesBox.length,
       watchHistoryCount: watchHistoryBox.length,
       libraryCount: libraryBox.length,
       watchedCount: watchedBox.length,
     );
+  }
+
+  static Map<String, dynamic> _normalizeMediaMap(
+    Map raw, {
+    required String fallbackId,
+  }) {
+    final id = (raw['id'] ?? raw['media_id'] ?? fallbackId).toString().trim();
+    final title = (raw['title'] ?? raw['name'] ?? 'Unknown').toString().trim();
+    final rawType = (raw['type'] ?? raw['media_type'] ?? 'movie').toString().trim().toLowerCase();
+    final type = (rawType == 'tv' || rawType == 'series' || rawType == 'show') ? 'tv' : 'movie';
+    final posterUrl = (raw['posterUrl'] ?? raw['poster_url'])?.toString();
+    final backdropUrl = (raw['backdropUrl'] ?? raw['backdrop_url'])?.toString();
+    final description = raw['description']?.toString() ?? raw['overview']?.toString();
+    final rating = raw['rating'] is num ? (raw['rating'] as num).toDouble() : null;
+    final updatedAtMs = raw['updated_at_ms'] is int
+        ? raw['updated_at_ms'] as int
+        : (raw['updatedAtMs'] is int ? raw['updatedAtMs'] as int : DateTime.now().millisecondsSinceEpoch);
+
+    return {
+      'id': id,
+      'title': title,
+      'type': type,
+      'posterUrl': posterUrl,
+      'backdropUrl': backdropUrl,
+      'description': description,
+      'rating': rating,
+      'updated_at_ms': updatedAtMs,
+    };
   }
 
   static Future<Box<T>> _openOrCreateBox<T>(String boxName) async {

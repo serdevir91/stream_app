@@ -1047,7 +1047,7 @@ class SearchRepository {
           final firstPerson = results.first;
           final personId = firstPerson['id'];
           if (personId != null) {
-            return _getPersonCredits(personId, actorName);
+            return await _getPersonCredits(personId, actorName);
           }
         }
       }
@@ -1077,7 +1077,7 @@ class SearchRepository {
               tvNetworkIds: [],
               tvCompanyIds: [companyId],
             );
-            return getMediaByStudio(config);
+            return await getMediaByStudio(config);
           }
         }
       }
@@ -1192,6 +1192,100 @@ class SearchRepository {
       );
     }
     return [];
+  }
+
+  Future<List<MediaItem>> discoverCards({
+    int? genreId,
+    String mediaType = 'all', // 'all', 'movie', 'tv'
+    double? minRating,
+    String sortBy = 'rating', // 'rating', 'popularity'
+    int page = 1,
+  }) async {
+    if (!_hasToken) {
+      final vidsrc = mediaType == 'tv'
+          ? await getLatestVidSrcSeries(page: page)
+          : await getLatestVidSrcMovies(page: page);
+      return vidsrc;
+    }
+
+    final queryParams = <String, dynamic>{
+      'language': _tmdbLanguage,
+      'page': page,
+    };
+    if (genreId != null && genreId > 0) {
+      queryParams['with_genres'] = genreId;
+    }
+    if (sortBy == 'rating') {
+      queryParams['sort_by'] = 'vote_average.desc';
+      queryParams['vote_count.gte'] = 50;
+    } else {
+      queryParams['sort_by'] = 'popularity.desc';
+    }
+    if (minRating != null && minRating > 0) {
+      queryParams['vote_average.gte'] = minRating;
+    }
+
+    final results = <MediaItem>[];
+
+    if (mediaType == 'all' || mediaType == 'movie') {
+      try {
+        final res = await _dio.get(
+          'https://api.themoviedb.org/3/discover/movie',
+          queryParameters: queryParams,
+          options: _tmdbOptions,
+        );
+        if (res.statusCode == 200 && res.data is Map) {
+          final list = (res.data['results'] as List? ?? [])
+              .map((j) => MediaItem.fromTmdbJson({...j, 'media_type': 'movie'}))
+              .toList();
+          results.addAll(list);
+        }
+      } catch (e) {
+        developer.log('Discover movie fetch error: $e', name: 'SearchRepository');
+      }
+    }
+
+    if (mediaType == 'all' || mediaType == 'tv') {
+      try {
+        final tvQueryParams = Map<String, dynamic>.from(queryParams);
+        if (genreId != null) {
+          int tvGenreId = genreId;
+          if (genreId == 28) {
+            tvGenreId = 10759;
+          } else if (genreId == 878) {
+            tvGenreId = 10765;
+          }
+          tvQueryParams['with_genres'] = tvGenreId;
+        }
+        final res = await _dio.get(
+          'https://api.themoviedb.org/3/discover/tv',
+          queryParameters: tvQueryParams,
+          options: _tmdbOptions,
+        );
+        if (res.statusCode == 200 && res.data is Map) {
+          final list = (res.data['results'] as List? ?? [])
+              .map((j) => MediaItem.fromTmdbJson({...j, 'media_type': 'tv'}))
+              .toList();
+          results.addAll(list);
+        }
+      } catch (e) {
+        developer.log('Discover tv fetch error: $e', name: 'SearchRepository');
+      }
+    }
+
+    if (mediaType == 'all') {
+      results.sort((a, b) {
+        final aRating = a.rating ?? 0.0;
+        final bRating = b.rating ?? 0.0;
+        return bRating.compareTo(aRating);
+      });
+    }
+
+    final seen = <String>{};
+    return results.where((item) {
+      if (item.posterUrl == null || item.posterUrl!.isEmpty) return false;
+      return seen.add('${item.type}:${item.id}');
+    }).toList();
   }
 }
 

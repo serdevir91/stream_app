@@ -76,7 +76,14 @@ final continueWatchingProvider = FutureProvider<List<ContinueWatchItem>>((ref) a
             orElse: () => Episode(episodeNumber: -1, name: '', airDate: '9999-12-31'),
           );
           if (firstEp.episodeNumber != -1 && firstEp.isAired) {
-            filteredItems.add(item);
+            filteredItems.add(
+              ContinueWatchItem(
+                baseHistory: item.baseHistory,
+                targetSeason: nextSeason.seasonNumber,
+                targetEpisode: 1,
+                startFromBeginning: true,
+              ),
+            );
           }
         }
       }

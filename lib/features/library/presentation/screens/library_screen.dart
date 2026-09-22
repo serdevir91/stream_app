@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/i18n/app_text.dart';
 import '../../../search/domain/entities/media_item.dart';
 import '../../../search/presentation/screens/media_details_screen.dart';
+import '../../../downloads/presentation/screens/downloads_tab.dart';
 import '../providers/library_provider.dart';
 import '../providers/watched_provider.dart';
 
@@ -13,21 +14,34 @@ class LibraryScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final text = ref.watch(appTextProvider);
+    final isTr = text.languageCode == 'tr';
+    final isAr = text.languageCode == 'ar';
+    final isFa = text.languageCode == 'fa';
     final libraryItems = ref.watch(sortedLibraryProvider);
     final newEpisodes = ref.watch(newEpisodesProvider);
     final watchedItems = ref.watch(sortedWatchedProvider);
 
     return DefaultTabController(
-      length: 2,
+      length: 3,
       child: Scaffold(
         appBar: AppBar(
           title: Text(text.t('library_title')),
           bottom: TabBar(
+            isScrollable: false,
             tabs: [
               Tab(text: text.t('my_list')),
               Tab(text: text.t('watched_movies')),
+              Tab(
+                text: isTr
+                    ? 'İndirilenler'
+                    : isAr
+                        ? 'التنزيلات'
+                        : isFa
+                            ? 'دانلودها'
+                            : 'Downloads',
+              ),
             ],
-            indicatorColor: Colors.redAccent,
+            indicatorColor: Colors.cyanAccent,
             labelColor: Colors.white,
             unselectedLabelColor: Colors.grey,
           ),
@@ -36,6 +50,7 @@ class LibraryScreen extends ConsumerWidget {
           children: [
             _buildWatchlistTab(context, ref, text, libraryItems, newEpisodes),
             _buildWatchedTab(context, ref, text, watchedItems),
+            const DownloadsTab(),
           ],
         ),
       ),

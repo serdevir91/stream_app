@@ -16,6 +16,7 @@ import '../../../search/presentation/screens/media_details_screen.dart';
 import 'category_media_screen.dart';
 import '../providers/home_provider.dart';
 import '../../../../core/settings/tmdb_instructions_dialog.dart';
+import '../../../discover/presentation/screens/discover_screen.dart';
 
 class HomeContent extends ConsumerStatefulWidget {
   const HomeContent({super.key});
@@ -394,6 +395,19 @@ class _HomeContentState extends ConsumerState<HomeContent> {
         backgroundColor: Colors.transparent,
         elevation: 0,
         scrolledUnderElevation: 0,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.style_rounded, color: Colors.amber),
+            tooltip: text.t('discover'),
+            onPressed: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => const DiscoverScreen(),
+                ),
+              );
+            },
+          ),
+        ],
       ),
       body: SingleChildScrollView(
         child: Column(

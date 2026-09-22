@@ -23,6 +23,8 @@ const Map<String, Map<String, String>> _translations = {
   'en': {
     'app_name': 'Stream App',
     'home': 'Home',
+    'discover': 'Discover',
+    'downloads': 'Downloads',
     'search': 'Search',
     'library': 'Library',
     'sources': 'Sources',
@@ -299,8 +301,10 @@ const Map<String, Map<String, String>> _translations = {
   'tr': {
     'app_name': 'Stream App',
     'home': 'Ana Sayfa',
+    'discover': 'Keşfet',
+    'downloads': 'İndirilenler',
     'search': 'Ara',
-    'library': 'Kutuphane',
+    'library': 'Kütüphane',
     'sources': 'Kaynaklar',
     'addons': 'Addonlar',
     'settings': 'Ayarlar',
@@ -575,6 +579,8 @@ const Map<String, Map<String, String>> _translations = {
   'ar': {
     'app_name': 'Stream App',
     'home': 'الرئيسية',
+    'discover': 'استكشف',
+    'downloads': 'التنزيلات',
     'search': 'بحث',
     'library': 'المكتبة',
     'sources': 'المصادر',
@@ -607,6 +613,8 @@ const Map<String, Map<String, String>> _translations = {
   'fa': {
     'app_name': 'Stream App',
     'home': 'خانه',
+    'discover': 'کشف',
+    'downloads': 'دانلودها',
     'search': 'جستجو',
     'library': 'کتابخانه',
     'sources': 'منابع',

@@ -4,6 +4,7 @@ import 'package:file_picker/file_picker.dart';
 import '../../../../core/settings/tmdb_instructions_dialog.dart';
 
 import '../../../../core/updater/app_updater_service.dart';
+import '../../../../core/tutorial/onboarding_tutorial_dialog.dart';
 
 import '../../../../core/backup/local_backup_service.dart';
 import '../../../../core/i18n/app_text.dart';
@@ -1550,6 +1551,49 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 const Divider(height: 1, thickness: 0.5),
                 const SizedBox(height: 16),
                 _buildUpdateSection(context, text),
+              ],
+            ),
+
+            // 8. Tutorial & Help
+            _buildCardSection(
+              title: text.languageCode == 'tr'
+                  ? 'Uygulama Rehberi ve Tanıtım'
+                  : 'App Walkthrough & Guide',
+              icon: Icons.help_outline_rounded,
+              iconColor: Colors.purpleAccent,
+              children: [
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Colors.purpleAccent.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Icon(
+                      Icons.play_lesson_rounded,
+                      color: Colors.purpleAccent,
+                      size: 22,
+                    ),
+                  ),
+                  title: Text(
+                    text.languageCode == 'tr'
+                        ? 'Uygulama Özelliklerini Tanı'
+                        : 'Explore App Features',
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  subtitle: Text(
+                    text.languageCode == 'tr'
+                        ? 'Sezon geçişi, Keşfet kartları, indirme yöneticisi ve altyazı özelliklerini yeniden gör.'
+                        : 'Review season rollover, discover swipe cards, downloader and auto-subtitle features.',
+                    style: const TextStyle(fontSize: 12),
+                  ),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => OnboardingTutorialDialog.show(context),
+                ),
               ],
             ),
 

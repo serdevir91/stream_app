@@ -6,23 +6,16 @@ watch history, a personal library, and runtime app settings.
 
 ## Highlights
 
-- Flutter client for Windows/Android (plus default Flutter platform folders).
-- Local FastAPI backend for stream resolution.
-- Modern Glassmorphic Movie/Series Details UI with horizontal season selector pills and segmented tabs.
-- Auto-normalization of TV series seasons when continue watching reaches season boundary (S1 E10 -> S2 E1).
-- In-Player Subtitle Delay / Sync controls (-10.0s to +10.0s) for live subtitle alignment.
-- Add-on manager (install, enable/disable, remove custom add-ons).
-- Add-on manager supports install from URL and local `.json` manifest file.
-- Movie/series detail pages with source resolution and playback.
-- Personal library (save/remove titles).
-- Watch history with progress tracking.
-- Settings screen:
-  - App language (`English`, `Turkce`)
-  - Subtitle language
-  - TMDB access token (not hardcoded in repository)
-  - Source auto-selection (avoid asking source every play)
-  - Preferred source selection
-  - Source/Add-on management pages
+- **Flutter Client & Local FastAPI Backend**: Cross-platform support for Windows, Android, and web engines.
+- **Letterboxd / Tinder Style Discover Swipe Cards**: Interactive swipe cards with tilt/rotation animation, dynamic green "İZLEDİM" and amber "LİSTEMDE" stamps, genre filtering (Horror, Action, Sci-Fi, etc.), IMDb minimum rating filter, and quick action buttons (Undo, Skip, Info, Add to List, Watched).
+- **IDM-Style Download Manager with Auto Subtitles**: Select stream quality (1080p, 720p, 480p, direct stream) for movies or TV episodes. Includes "Download Entire Season" button to queue an entire season with one tap, automatic `.srt` subtitle search and local pairing via `OnlineSubtitleRepository`, live download speed & progress tracker, and full offline playback.
+- **Smart Season Rollover**: When a series season finishes, continue watching and in-player playback automatically transition seamlessly to the next season (e.g. S1:E10 -> S2:E1).
+- **Complete Local JSON Backup & Restore**: Fixed data loss issues for Watchlist and Watched items; supports camelCase and snake_case exports, restores keys, and updates repositories reactively in real time.
+- **First Launch Onboarding Tutorial**: Interactive 5-slide visual guide introducing all core features on first launch, with the ability to replay anytime from Settings.
+- **Modern Glassmorphic Movie/Series Details UI**: Horizontal season selector pills, episode rating badges, cast & crew metadata, and quick action buttons.
+- **In-Player Subtitle Delay / Sync Controls**: Fine-tune delay (-15.0s to +15.0s) for live subtitle alignment on ExoPlayer and MediaKit (MPV).
+- **Multiple Video Engines & AMOLED Black**: ExoPlayer (Native), MediaKit (MPV), and WebView embed modes, paired with Dark, Light, and AMOLED pure black themes.
+- **Full Localization**: English, Türkçe, العربية, and فارسی.
 
 ## Screenshots
 
@@ -38,28 +31,28 @@ watch history, a personal library, and runtime app settings.
 ## Tech Stack
 
 - Flutter + Riverpod + Hive + Dio
+- MediaKit (MPV) + ExoPlayer + WebView
 - FastAPI + Uvicorn + httpx
-- VLC/WebView-based playback depending on stream type/platform
 
 ## Download
 
-### Android
+### Android (v1.0.22)
 
 | Architecture | File | Size |
 |-------------|------|------|
-| Universal (All Devices) | [app-release.apk](https://github.com/serdevir91/stream_app/releases/download/v1.0.15/app-release.apk) | ~96.7 MB |
-| ARM64 (most devices) | [app-arm64-v8a-release.apk](https://github.com/serdevir91/stream_app/releases/download/v1.0.15/app-arm64-v8a-release.apk) | ~32.7 MB |
-| ARM 32-bit (older devices) | [app-armeabi-v7a-release.apk](https://github.com/serdevir91/stream_app/releases/download/v1.0.15/app-armeabi-v7a-release.apk) | ~29.9 MB |
-| x86_64 (emulators) | [app-x86_64-release.apk](https://github.com/serdevir91/stream_app/releases/download/v1.0.15/app-x86_64-release.apk) | ~37.4 MB |
+| Universal (All Devices) | [app-release.apk](https://github.com/serdevir91/stream_app/releases/download/v1.0.22/app-release.apk) | ~98 MB |
+| ARM64 (most devices) | [app-arm64-v8a-release.apk](https://github.com/serdevir91/stream_app/releases/download/v1.0.22/app-arm64-v8a-release.apk) | ~34 MB |
+| ARM 32-bit (older devices) | [app-armeabi-v7a-release.apk](https://github.com/serdevir91/stream_app/releases/download/v1.0.22/app-armeabi-v7a-release.apk) | ~31 MB |
+| x86_64 (emulators) | [app-x86_64-release.apk](https://github.com/serdevir91/stream_app/releases/download/v1.0.22/app-x86_64-release.apk) | ~39 MB |
 
 > Most modern phones use ARM64. If unsure, download the Universal or ARM64 version.
 
-### Windows
+### Windows (v1.0.22)
 
 | Type | File | Size |
 |------|------|------|
-| Installer (recommended) | [StreamApp-Setup-v1.0.15.exe](https://github.com/serdevir91/stream_app/releases/download/v1.0.15/StreamApp-Setup-v1.0.15.exe) | ~25.5 MB |
-| Portable | [stream_app-windows-x64.zip](https://github.com/serdevir91/stream_app/releases/download/v1.0.15/stream_app-windows-x64.zip) | ~32.5 MB |
+| Installer (recommended) | [StreamApp-Setup-v1.0.22.exe](https://github.com/serdevir91/stream_app/releases/download/v1.0.22/StreamApp-Setup-v1.0.22.exe) | ~26 MB |
+| Portable | [stream_app-windows-x64.zip](https://github.com/serdevir91/stream_app/releases/download/v1.0.22/stream_app-windows-x64.zip) | ~35 MB |
 
 **Installer**: Run the `.exe` wizard. Creates Start Menu shortcuts and an uninstaller.
 
@@ -235,7 +228,7 @@ flutter build windows --release
 "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer\stream_app.iss
 ```
 
-Output: `output/StreamApp-Setup-v1.0.11.exe`
+Output: `output/StreamApp-Setup-v1.0.22.exe`
 
 ### Android APK
 
@@ -356,6 +349,25 @@ Your backend must expose:
   - `Install from file (.json)` and choose local manifest file.
 
 ## Changelog
+
+### v1.0.22
+
+- **VixSrc Direct HLS Extractor & AES-128 Decryption**: Built direct HLS stream extraction pipeline for movies and TV shows from VixSrc. Decrypts AES-128-CBC media chunks on-the-fly, generating clean MPEG-TS segments with synchronized audio and video.
+- **IDM-Style Download Manager with Auto Subtitles**: Select stream quality (1080p, 720p, 480p) for movies or TV episodes, live download speed & byte progress tracking, full offline playback, automatic `.srt` subtitle search and local pairing via `OnlineSubtitleRepository`, and automatic MP4 remuxing.
+- **Download Entire Season**: Single-tap action on TV show details to queue all episodes across a season with one click.
+- **Letterboxd / Tinder Style Discover Swipe Cards**: Interactive swipe cards with tilt/rotation animation, dynamic green "İZLEDİM" and amber "LİSTEMDE" stamps, genre filtering (Horror, Action, Sci-Fi, etc.), IMDb minimum rating filter, and quick action buttons (Undo, Skip, Info, Add to List, Watched).
+- **Smart Season Rollover**: When a series season finishes, continue watching and in-player playback automatically transition seamlessly to the next season (e.g. S1:E10 -> S2:E1).
+- **Complete Local JSON Backup & Restore**: Fixed data loss issues for Watchlist and Watched items; supports camelCase and snake_case exports, restores keys, and updates repositories reactively in real time.
+- **First Launch Onboarding Tutorial**: Interactive 5-slide visual guide introducing all core features on first launch, with the ability to replay anytime from Settings.
+- **Builds**: Universal APK, split-per-ABI APKs (ARM64, ARMv7, x86_64), Windows Inno Setup Installer, and Windows Portable ZIP for `v1.0.22`.
+
+### v1.0.21
+
+- **Resume Playback (Kaldığın Yerden Devam Et)**: Fixed video player time tracking for embed and native players. Viewing progress is now accurately recorded and restored with time parameters (#t=, &start=, &time=, &progress=) and iframe seek broadcasting.
+- **Accurate Media Details Progress**: Fixed progress bar calculations on series and movie details screens, preventing finished episode history from incorrectly overwriting unwatched or newly started episodes.
+- **Clean Episode Thumbnails**: Removed redundant overlay progress bars from episode thumbnail images, keeping the clean progress indicator in the episode info section.
+- **Continue Watching Polish**: Enhanced duration fallback calculations for TV series and movies in continue watching feeds.
+- **Builds**: Universal APK, split-per-ABI APKs (ARM64, ARMv7, x86_64), Windows Inno Setup Installer, and Windows Portable ZIP for `v1.0.21`.
 
 ### v1.0.11
 

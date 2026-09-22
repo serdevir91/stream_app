@@ -2,10 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/i18n/app_text.dart';
+import '../../../../core/settings/app_settings_provider.dart';
 import '../../../../core/sync/sync_provider.dart';
+import '../../../../core/tutorial/onboarding_tutorial_dialog.dart';
 import '../../../player/presentation/providers/mini_player_provider.dart';
 import '../../../player/presentation/widgets/mini_player.dart';
 import '../../../player/presentation/screens/player_screen.dart';
+import '../../../discover/presentation/screens/discover_screen.dart';
 import '../../../search/presentation/screens/search_screen.dart';
 import '../../../library/presentation/screens/library_screen.dart';
 import '../../../settings/presentation/screens/settings_screen.dart';
@@ -27,11 +30,16 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       // Trigger cloud synchronization on app launch
       ref.read(syncServiceProvider);
+      final settings = ref.read(appSettingsProvider);
+      if (!settings.hasSeenTutorial && mounted) {
+        OnboardingTutorialDialog.show(context);
+      }
     });
   }
 
   final List<Widget> _screens = [
     const HomeContent(),
+    const DiscoverScreen(),
     const SearchScreen(),
     const LibraryScreen(),
     const SettingsScreen(),
@@ -78,6 +86,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               BottomNavigationBarItem(
                 icon: const Icon(Icons.home),
                 label: text.t('home'),
+              ),
+              BottomNavigationBarItem(
+                icon: const Icon(Icons.style_rounded),
+                label: text.t('discover'),
               ),
               BottomNavigationBarItem(
                 icon: const Icon(Icons.search),

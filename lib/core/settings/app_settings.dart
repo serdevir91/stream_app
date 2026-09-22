@@ -27,7 +27,7 @@ const List<String> defaultHomeCategories = [
 ];
 
 class AppSettings {
-  static const int schemaVersion = 11;
+  static const int schemaVersion = 12;
 
   final String appLanguage;
   final String subtitleLanguage;
@@ -46,6 +46,7 @@ class AppSettings {
   final bool newEpisodeNotificationsEnabled;
   final int completionPercentage;
   final List<String> homeCategories;
+  final bool hasSeenTutorial;
 
   const AppSettings({
     required this.appLanguage,
@@ -65,6 +66,7 @@ class AppSettings {
     required this.newEpisodeNotificationsEnabled,
     required this.completionPercentage,
     required this.homeCategories,
+    this.hasSeenTutorial = false,
   });
 
   static const AppSettings defaults = AppSettings(
@@ -85,6 +87,7 @@ class AppSettings {
     newEpisodeNotificationsEnabled: true,
     completionPercentage: 90,
     homeCategories: defaultHomeCategories,
+    hasSeenTutorial: false,
   );
 
   AppSettings copyWith({
@@ -105,6 +108,7 @@ class AppSettings {
     bool? newEpisodeNotificationsEnabled,
     int? completionPercentage,
     List<String>? homeCategories,
+    bool? hasSeenTutorial,
   }) {
     return AppSettings(
       appLanguage: appLanguage ?? this.appLanguage,
@@ -126,6 +130,7 @@ class AppSettings {
           newEpisodeNotificationsEnabled ?? this.newEpisodeNotificationsEnabled,
       completionPercentage: completionPercentage ?? this.completionPercentage,
       homeCategories: homeCategories ?? this.homeCategories,
+      hasSeenTutorial: hasSeenTutorial ?? this.hasSeenTutorial,
     );
   }
 
@@ -149,6 +154,7 @@ class AppSettings {
       'newEpisodeNotificationsEnabled': newEpisodeNotificationsEnabled,
       'completionPercentage': completionPercentage,
       'homeCategories': homeCategories,
+      'hasSeenTutorial': hasSeenTutorial,
     };
   }
 
@@ -179,6 +185,7 @@ class AppSettings {
               ?.map((e) => e.toString())
               .toList() ??
           defaultHomeCategories,
+      hasSeenTutorial: (map['hasSeenTutorial'] ?? false) == true,
     );
   }
 }
@@ -218,8 +225,10 @@ const Map<String, String> supportedVideoPlayers = {
 };
 
 const Map<String, String> supportedAppLanguages = {
-  'tr': 'Turkce',
+  'tr': 'Türkçe',
   'en': 'English',
+  'ar': 'العربية',
+  'fa': 'فارسی',
 };
 
 const Map<String, String> supportedSubtitleLanguages = {

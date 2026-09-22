@@ -48,6 +48,7 @@ class AddonService {
 
   void _registerBuiltins() {
     for (final factory in [
+      () => VixSrcAddon(),
       () => VidBoxAddon(),
       () => VidSrcAddon(),
       () => TwoEmbedAddon(),

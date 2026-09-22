@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
@@ -45,6 +46,8 @@ class PlayerScreen extends ConsumerStatefulWidget {
   final String? nextEpisodeTitle;
   final int? totalEpisodesInSeason;
   final bool preferAnimeSources;
+  final String? localVideoPath;
+  final String? localSubtitlePath;
 
   const PlayerScreen({
     super.key,
@@ -67,6 +70,8 @@ class PlayerScreen extends ConsumerStatefulWidget {
     this.nextEpisodeTitle,
     this.totalEpisodesInSeason,
     this.preferAnimeSources = false,
+    this.localVideoPath,
+    this.localSubtitlePath,
   });
 
   @override
@@ -130,6 +135,13 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   Timer? _overlayControlsTimer;
   bool _showNextEpisodeOverlay = false;
   bool _nextEpisodeDismissed = false;
+  int? _resolvedNextSeasonNumber;
+  int? _resolvedNextEpisodeNumber;
+  String? _resolvedNextEpisodeTitle;
+
+  int? get _effectiveNextSeasonNumber => widget.nextSeasonNumber ?? _resolvedNextSeasonNumber;
+  int? get _effectiveNextEpisodeNumber => widget.nextEpisodeNumber ?? _resolvedNextEpisodeNumber;
+  String? get _effectiveNextEpisodeTitle => widget.nextEpisodeTitle ?? _resolvedNextEpisodeTitle;
 
   bool _isSeriesType(String value) {
     final type = value.trim().toLowerCase();
@@ -154,6 +166,45 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     _armControlsAutoHide();
     _configureAudioSession();
     WakelockPlus.enable();
+    if (_isTvPlayback) {
+      unawaited(_resolveNextTargetIfNeeded());
+    }
+  }
+
+  Future<void> _resolveNextTargetIfNeeded() async {
+    if (!_isTvPlayback) return;
+    if (widget.nextEpisodeNumber != null) {
+      _resolvedNextSeasonNumber = widget.nextSeasonNumber ?? widget.season;
+      _resolvedNextEpisodeNumber = widget.nextEpisodeNumber;
+      _resolvedNextEpisodeTitle = widget.nextEpisodeTitle;
+      return;
+    }
+    try {
+      final seasons = await ref.read(seriesSeasonsProvider(widget.mediaId).future);
+      if (seasons.isEmpty) return;
+      final ordered = [...seasons]..sort((a, b) => a.seasonNumber.compareTo(b.seasonNumber));
+      final currentSeasonIdx = ordered.indexWhere((s) => s.seasonNumber == widget.season);
+      if (currentSeasonIdx == -1) return;
+      final currentSeason = ordered[currentSeasonIdx];
+      if (widget.episode < currentSeason.episodeCount) {
+        if (mounted) {
+          setState(() {
+            _resolvedNextSeasonNumber = widget.season;
+            _resolvedNextEpisodeNumber = widget.episode + 1;
+            _resolvedNextEpisodeTitle = '${currentSeason.name.isNotEmpty ? currentSeason.name : "Sezon ${currentSeason.seasonNumber}"} • ${widget.episode + 1}. Bölüm';
+          });
+        }
+      } else if (currentSeasonIdx + 1 < ordered.length) {
+        final nextSeason = ordered[currentSeasonIdx + 1];
+        if (mounted) {
+          setState(() {
+            _resolvedNextSeasonNumber = nextSeason.seasonNumber;
+            _resolvedNextEpisodeNumber = 1;
+            _resolvedNextEpisodeTitle = '${nextSeason.name.isNotEmpty ? nextSeason.name : "Sezon ${nextSeason.seasonNumber}"} • 1. Bölüm';
+          });
+        }
+      }
+    } catch (_) {}
   }
 
   Future<void> _configureAudioSession() async {
@@ -822,7 +873,13 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     super.didChangeDependencies();
     if (!_initialized) {
       _initialized = true;
-      if (widget.initialStreamUrl != null &&
+      if (widget.localVideoPath != null &&
+          widget.localVideoPath!.isNotEmpty) {
+        _initializeLocalPlayback(
+          widget.localVideoPath!,
+          localSubtitlePath: widget.localSubtitlePath,
+        );
+      } else if (widget.initialStreamUrl != null &&
           widget.initialStreamUrl!.isNotEmpty) {
         _initializePlayer(
           widget.initialStreamUrl!,
@@ -835,6 +892,97 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
       } else {
         _fetchStreamAndInitialize();
       }
+    }
+  }
+
+  Future<void> _initializeLocalPlayback(
+    String filePath, {
+    String? localSubtitlePath,
+  }) async {
+    if (_isDisposed) return;
+    setState(() {
+      _isDirectLink = true;
+      _errorMessageKey = null;
+      _errorMessageParam = null;
+      _loadingStatusKey = 'loading_video';
+      _isLoading = true;
+    });
+
+    final file = File(filePath);
+    if (!await file.exists()) {
+      setState(() {
+        _errorMessageKey = 'source_not_found';
+        _isLoading = false;
+      });
+      return;
+    }
+
+    try {
+      if (_useNativePlayer) {
+        final ctrl = vp.VideoPlayerController.file(file);
+        await ctrl.initialize();
+        if (_isDisposed) {
+          ctrl.dispose();
+          return;
+        }
+        await ctrl.play();
+        setState(() {
+          _nativeController = ctrl;
+          _isLoading = false;
+        });
+        _startProgressAutosave();
+      } else {
+        final player = Player();
+        _player = player;
+        _videoController = VideoController(player);
+        await player.open(Media(filePath), play: true);
+        setState(() {
+          _isLoading = false;
+        });
+        _startProgressAutosave();
+      }
+
+      if (localSubtitlePath != null && localSubtitlePath.isNotEmpty) {
+        final subFile = File(localSubtitlePath);
+        if (await subFile.exists()) {
+          final subtitle = OnlineSubtitleResult(
+            url: localSubtitlePath,
+            label: 'Yerel Altyazı',
+            languageCode: widget.subtitleLanguage,
+            format: 'srt',
+          );
+          if (_player != null) {
+            await _player?.setSubtitleTrack(
+              SubtitleTrack.uri(
+                subFile.uri.toString(),
+                title: 'Yerel Altyazı',
+                language: widget.subtitleLanguage,
+              ),
+            );
+          } else if (_nativeController != null) {
+            try {
+              final content = await subFile.readAsString();
+              final baseFile = vp.SubRipCaptionFile(content);
+              _cachedCaptionFile = baseFile;
+              await _nativeController!.setClosedCaptionFile(
+                Future.value(baseFile),
+              );
+              setState(() {
+                _activeOnlineSubtitle = subtitle;
+                _nativeSubtitlesEnabled = true;
+              });
+            } catch (e) {
+              debugPrint('Local subtitle load error: $e');
+            }
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('Local playback init failed: $e');
+      setState(() {
+        _errorMessageKey = 'video_playback_failed';
+        _isLoading = false;
+      });
     }
   }
 
@@ -2060,7 +2208,10 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     if (!_isTvPlayback || _nextEpisodeDismissed || _showNextEpisodeOverlay) {
       return;
     }
-    if (widget.nextEpisodeNumber == null) return;
+    if (_effectiveNextEpisodeNumber == null) {
+      await _resolveNextTargetIfNeeded();
+    }
+    if (_effectiveNextEpisodeNumber == null) return;
 
     bool isNearEnd = false;
     if (_isDirectLink && _player != null) {
@@ -2857,7 +3008,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      'S${widget.nextSeasonNumber ?? widget.season}:E${widget.nextEpisodeNumber} - ${widget.nextEpisodeTitle ?? ''}',
+                      'S${_effectiveNextSeasonNumber ?? widget.season}:E${_effectiveNextEpisodeNumber ?? 1}${_effectiveNextEpisodeTitle != null ? ' - $_effectiveNextEpisodeTitle' : ''}',
                       style: const TextStyle(
                         color: Colors.white70,
                         fontSize: 16,
@@ -2982,7 +3133,9 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   }
 
   void _playNextEpisode() {
-    if (widget.nextEpisodeNumber == null) return;
+    final nextEp = _effectiveNextEpisodeNumber;
+    final nextSeason = _effectiveNextSeasonNumber ?? widget.season;
+    if (nextEp == null) return;
     _stopAllPlayback();
     Navigator.of(context).pushReplacement(
       MaterialPageRoute(
@@ -2990,8 +3143,8 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
           mediaId: widget.mediaId,
           title: widget.title,
           type: widget.type,
-          season: widget.nextSeasonNumber ?? widget.season,
-          episode: widget.nextEpisodeNumber!,
+          season: nextSeason,
+          episode: nextEp,
           posterUrl: widget.posterUrl,
           backdropUrl: widget.backdropUrl,
           subtitleLanguage: widget.subtitleLanguage,

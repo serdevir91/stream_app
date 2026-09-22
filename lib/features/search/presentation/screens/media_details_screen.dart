@@ -14,6 +14,8 @@ import '../../../player/domain/entities/watch_history.dart';
 import '../../../player/presentation/providers/player_provider.dart';
 import '../../../player/presentation/screens/player_screen.dart';
 import '../../../home/presentation/screens/category_media_screen.dart';
+import '../../../downloads/domain/entities/download_item.dart';
+import '../../../downloads/presentation/providers/download_provider.dart';
 
 typedef EpisodeTarget = ({int season, int episode});
 
@@ -687,6 +689,296 @@ class _MediaDetailsScreenState extends ConsumerState<MediaDetailsScreen> {
     );
   }
 
+  Future<void> _showDownloadQualityPicker({
+    required String title,
+    required String mediaType,
+    int? season,
+    int? episode,
+    String? episodeTitle,
+  }) async {
+    final text = ref.read(appTextProvider);
+    final addonService = ref.read(addonServiceProvider);
+    final downloadService = ref.read(downloadServiceProvider);
+    final isTr = text.languageCode == 'tr';
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => Center(
+        child: Container(
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color: const Color(0xFF1B1B26),
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const CircularProgressIndicator(color: Colors.cyanAccent),
+              const SizedBox(height: 16),
+              Text(
+                isTr ? 'İndirme kaynakları taranıyor...' : 'Scanning download sources...',
+                style: const TextStyle(color: Colors.white, fontSize: 14),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    List<Map<String, dynamic>> streams = [];
+    try {
+      final data = await addonService.resolve(
+        query: widget.mediaItem.title,
+        tmdbId: widget.mediaItem.id,
+        contentType: mediaType == 'tv' ? 'series' : 'movie',
+        season: season ?? 1,
+        episode: episode ?? 1,
+      );
+      streams = (data['streams'] as List<dynamic>? ?? <dynamic>[])
+          .whereType<Map>()
+          .map((e) => Map<String, dynamic>.from(e))
+          .toList();
+    } catch (_) {}
+
+    if (mounted) {
+      Navigator.of(context, rootNavigator: true).pop();
+    }
+
+    if (streams.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(isTr ? 'İndirilebilir kaynak bulunamadı.' : 'No downloadable streams found.'),
+            backgroundColor: Colors.redAccent,
+          ),
+        );
+      }
+      return;
+    }
+
+    if (!mounted) return;
+    final messenger = ScaffoldMessenger.of(context);
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF161622),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Row(
+                      children: [
+                        const Icon(Icons.download_for_offline_rounded, color: Colors.cyanAccent, size: 22),
+                        const SizedBox(width: 8),
+                        Text(
+                          isTr ? 'İndirme Kalitesi Seçin (IDM)' : 'Select Download Quality',
+                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                        ),
+                      ],
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.close, color: Colors.white70),
+                      onPressed: () => Navigator.of(ctx).pop(),
+                    ),
+                  ],
+                ),
+                Text(
+                  title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(color: Colors.white60, fontSize: 13),
+                ),
+                const SizedBox(height: 12),
+                const Divider(height: 1, color: Colors.white12),
+                const SizedBox(height: 8),
+                Expanded(
+                  child: ListView.builder(
+                    itemCount: streams.length,
+                    itemBuilder: (context, idx) {
+                      final s = streams[idx];
+                      final streamUrl = (s['url'] ?? '').toString();
+                      final provider = (s['provider'] ?? s['name'] ?? 'Kaynak ${idx + 1}').toString();
+                      final quality = (s['quality'] ?? s['resolution'] ?? '1080p').toString();
+                      final isDirect = s['is_direct_link'] == true;
+
+                      return Card(
+                        color: Colors.white.withValues(alpha: 0.05),
+                        margin: const EdgeInsets.only(bottom: 8),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        child: ListTile(
+                          leading: Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: Colors.cyanAccent.withValues(alpha: 0.15),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: const Icon(Icons.video_file_outlined, color: Colors.cyanAccent),
+                          ),
+                          title: Text(
+                            provider,
+                            style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+                          ),
+                          subtitle: Text(
+                            'Kalite: $quality • ${isDirect ? "Doğrudan Akış" : "Harici Kaynak"}',
+                            style: const TextStyle(color: Colors.white60, fontSize: 12),
+                          ),
+                          trailing: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                            decoration: BoxDecoration(
+                              color: Colors.cyanAccent,
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Text(
+                              isTr ? 'İndir' : 'Download',
+                              style: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 12),
+                            ),
+                          ),
+                          onTap: () async {
+                            Navigator.of(ctx).pop();
+                            final itemId = mediaType == 'tv'
+                                ? 'tv_${widget.mediaItem.id}_s${season}_e$episode'
+                                : 'movie_${widget.mediaItem.id}';
+                            final downloadItem = DownloadItem(
+                              id: itemId,
+                              mediaId: widget.mediaItem.id,
+                              title: mediaType == 'tv'
+                                  ? '${widget.mediaItem.title} S0$season' 'E0$episode'
+                                  : widget.mediaItem.title,
+                              mediaType: mediaType,
+                              season: season,
+                              episode: episode,
+                              episodeTitle: episodeTitle,
+                              posterUrl: widget.mediaItem.posterUrl,
+                              backdropUrl: widget.mediaItem.backdropUrl,
+                              quality: quality,
+                              streamUrl: streamUrl,
+                              localVideoPath: '',
+                              status: 'queued',
+                              createdAt: DateTime.now(),
+                            );
+                            await downloadService.startDownload(downloadItem);
+                            messenger.showSnackBar(
+                              SnackBar(
+                                content: Text(isTr
+                                    ? '$title indirilmeye başlandı. Kütüphane > İndirilenler bölümünden takip edebilirsiniz.'
+                                    : 'Download started for $title. Check Library > Downloads.'),
+                                backgroundColor: Colors.teal,
+                              ),
+                            );
+                          },
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _downloadEntireSeason({
+    required int season,
+    required List<Episode> episodes,
+  }) async {
+    final text = ref.read(appTextProvider);
+    final isTr = text.languageCode == 'tr';
+    final downloadService = ref.read(downloadServiceProvider);
+    final addonService = ref.read(addonServiceProvider);
+
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(isTr ? 'Tüm Sezonu İndir' : 'Download Entire Season'),
+        content: Text(
+          isTr
+              ? '${widget.mediaItem.title} - Sezon $season içindeki toplam ${episodes.length} bölüm indirme sırasına eklenecek ve altyazıları otomatik indirilecek. Devam edilsin mi?'
+              : 'All ${episodes.length} episodes of Season $season will be queued for download with matching subtitles. Proceed?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: Text(isTr ? 'Vazgeç' : 'Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.cyanAccent,
+              foregroundColor: Colors.black,
+            ),
+            child: Text(isTr ? 'Hepsini İndir' : 'Download All'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true || !mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          isTr
+              ? 'Sezon $season indirme sırasına alındı. Bölümler sırayla indiriliyor.'
+              : 'Season $season added to download queue.',
+        ),
+        backgroundColor: Colors.teal,
+      ),
+    );
+
+    for (final ep in episodes) {
+      if (!mounted) break;
+      try {
+        final data = await addonService.resolve(
+          query: widget.mediaItem.title,
+          tmdbId: widget.mediaItem.id,
+          contentType: 'series',
+          season: season,
+          episode: ep.episodeNumber,
+        );
+        final streams = (data['streams'] as List<dynamic>? ?? <dynamic>[])
+            .whereType<Map>()
+            .map((e) => Map<String, dynamic>.from(e))
+            .toList();
+        if (streams.isNotEmpty) {
+          final s = streams.first;
+          final streamUrl = (s['url'] ?? '').toString();
+          final quality = (s['quality'] ?? '1080p').toString();
+          final itemId = 'tv_${widget.mediaItem.id}_s${season}_e${ep.episodeNumber}';
+          final downloadItem = DownloadItem(
+            id: itemId,
+            mediaId: widget.mediaItem.id,
+            title: '${widget.mediaItem.title} S${season}E${ep.episodeNumber}',
+            mediaType: 'tv',
+            season: season,
+            episode: ep.episodeNumber,
+            episodeTitle: ep.name,
+            posterUrl: ep.stillPath ?? widget.mediaItem.posterUrl,
+            backdropUrl: widget.mediaItem.backdropUrl,
+            quality: quality,
+            streamUrl: streamUrl,
+            localVideoPath: '',
+            status: 'queued',
+            createdAt: DateTime.now(),
+          );
+          await downloadService.startDownload(downloadItem);
+        }
+      } catch (_) {}
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final text = ref.watch(appTextProvider);
@@ -1105,33 +1397,62 @@ class _MediaDetailsScreenState extends ConsumerState<MediaDetailsScreen> {
                       ),
                       const SizedBox(height: 12),
                     ],
-                    SizedBox(
-                      width: double.infinity,
-                      height: 48,
-                      child: ElevatedButton.icon(
-                        onPressed: _isResolving
-                            ? null
-                            : () => _resolveAndPickSource(
-                                runtimeMinutes: mediaDetails?.runtimeMinutes,
+                    Row(
+                      children: [
+                        Expanded(
+                          flex: 3,
+                          child: SizedBox(
+                            height: 48,
+                            child: ElevatedButton.icon(
+                              onPressed: _isResolving
+                                  ? null
+                                  : () => _resolveAndPickSource(
+                                      runtimeMinutes: mediaDetails?.runtimeMinutes,
+                                    ),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.redAccent,
+                                foregroundColor: Colors.white,
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                elevation: 0,
                               ),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.redAccent,
-                          foregroundColor: Colors.white,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                          elevation: 0,
+                              icon: _isResolving
+                                  ? const SizedBox(
+                                      width: 18,
+                                      height: 18,
+                                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                                    )
+                                  : const Icon(Icons.play_arrow_rounded, size: 24),
+                              label: Text(
+                                _isResolving ? text.t('resolving') : text.t('play_now'),
+                                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                              ),
+                            ),
+                          ),
                         ),
-                        icon: _isResolving
-                            ? const SizedBox(
-                                width: 18,
-                                height: 18,
-                                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                              )
-                            : const Icon(Icons.play_arrow_rounded, size: 24),
-                        label: Text(
-                          _isResolving ? text.t('resolving') : text.t('play_now'),
-                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          flex: 2,
+                          child: SizedBox(
+                            height: 48,
+                            child: OutlinedButton.icon(
+                              onPressed: () => _showDownloadQualityPicker(
+                                title: widget.mediaItem.title,
+                                mediaType: 'movie',
+                              ),
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor: Colors.cyanAccent,
+                                side: const BorderSide(color: Colors.cyanAccent, width: 1.5),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                              ),
+                              icon: const Icon(Icons.download_for_offline_rounded, size: 20, color: Colors.cyanAccent),
+                              label: Text(
+                                text.languageCode == 'tr' ? 'İndir' : 'Download',
+                                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                              ),
+                            ),
+                          ),
                         ),
-                      ),
+                      ],
                     ),
                   ],
 
@@ -1873,201 +2194,275 @@ class _MediaDetailsScreenState extends ConsumerState<MediaDetailsScreen> {
           );
         }
 
-        return ListView.builder(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          itemCount: episodes.length,
-          itemBuilder: (itemContext, index) {
-            final episode = episodes[index];
-            final episodeRuntimeMinutes = episode.runtimeMinutes ?? runtimeMinutes;
-            final episodeHistory = tvEpisodeHistory[_episodeHistoryKey(
-              seasonNumber,
-              episode.episodeNumber,
-            )];
-            final isEpisodeWatched = episodeHistory?.isWatched == true;
-            final hasProgress = episodeHistory != null &&
-                (episodeHistory.lastPosition > 0 || isEpisodeWatched);
-            final episodeEffectiveDuration = (episodeHistory != null && episodeHistory.duration > 0)
-                ? episodeHistory.duration
-                : ((episodeRuntimeMinutes != null && episodeRuntimeMinutes > 0)
-                    ? episodeRuntimeMinutes * 60 * 1000
-                    : 45 * 60 * 1000);
-            final episodeProgressRatio = isEpisodeWatched
-                ? 1.0
-                : ((episodeHistory != null && episodeEffectiveDuration > 0)
-                    ? (episodeHistory.lastPosition / episodeEffectiveDuration).clamp(0.0, 1.0)
-                    : 0.0);
-            final bool isAired = episode.isAired;
-            final isHighlighted = episode.episodeNumber == _highlightedEpisodeNumber;
-
-            return Container(
-              key: _episodeKeys.putIfAbsent(episode.episodeNumber, () => GlobalKey()),
-              margin: const EdgeInsets.only(bottom: 8),
-              decoration: BoxDecoration(
-                color: isHighlighted
-                    ? Colors.amber.withValues(alpha: 0.15)
-                    : Colors.white.withValues(alpha: 0.03),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(
-                  color: isHighlighted ? Colors.amber : Colors.white10,
-                ),
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12.0),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    text.languageCode == 'tr'
+                        ? 'Sezon $seasonNumber Bölümleri (${episodes.length})'
+                        : 'Season $seasonNumber Episodes (${episodes.length})',
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 14,
+                      color: Colors.white,
+                    ),
+                  ),
+                  OutlinedButton.icon(
+                    onPressed: () => _downloadEntireSeason(
+                      season: seasonNumber,
+                      episodes: episodes,
+                    ),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: Colors.cyanAccent,
+                      side: const BorderSide(color: Colors.cyanAccent),
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    ),
+                    icon: const Icon(
+                      Icons.download_for_offline_rounded,
+                      size: 16,
+                      color: Colors.cyanAccent,
+                    ),
+                    label: Text(
+                      text.languageCode == 'tr'
+                          ? 'Tüm Sezonu İndir'
+                          : 'Download Season',
+                      style: const TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ],
               ),
-              child: ListTile(
-                contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                leading: ClipRRect(
-                  borderRadius: BorderRadius.circular(8),
-                  child: SizedBox(
-                    width: 100,
-                    height: 60,
-                    child: Stack(
-                      fit: StackFit.expand,
-                      alignment: Alignment.center,
-                      children: [
-                        episode.stillPath != null
-                            ? Image.network(
-                                episode.stillPath!,
-                                fit: BoxFit.cover,
-                                errorBuilder: (buildContext, error, stackTrace) =>
-                                    const ColoredBox(
-                                      color: Colors.white10,
-                                      child: Icon(Icons.movie, color: Colors.grey),
-                                    ),
-                              )
-                            : const ColoredBox(
-                                color: Colors.white10,
-                                child: Icon(Icons.movie, color: Colors.grey),
-                              ),
-                        if (isAired)
-                          Center(
-                            child: Container(
-                              padding: const EdgeInsets.all(6),
-                              decoration: BoxDecoration(
-                                color: Colors.black.withValues(alpha: 0.5),
-                                shape: BoxShape.circle,
-                              ),
-                              child: const Icon(Icons.play_arrow_rounded, color: Colors.white, size: 20),
-                            ),
-                          ),
-                      ],
+            ),
+            ListView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: episodes.length,
+              itemBuilder: (itemContext, index) {
+                final episode = episodes[index];
+                final episodeRuntimeMinutes = episode.runtimeMinutes ?? runtimeMinutes;
+                final episodeHistory = tvEpisodeHistory[_episodeHistoryKey(
+                  seasonNumber,
+                  episode.episodeNumber,
+                )];
+                final isEpisodeWatched = episodeHistory?.isWatched == true;
+                final hasProgress = episodeHistory != null &&
+                    (episodeHistory.lastPosition > 0 || isEpisodeWatched);
+                final episodeEffectiveDuration = (episodeHistory != null && episodeHistory.duration > 0)
+                    ? episodeHistory.duration
+                    : ((episodeRuntimeMinutes != null && episodeRuntimeMinutes > 0)
+                        ? episodeRuntimeMinutes * 60 * 1000
+                        : 45 * 60 * 1000);
+                final episodeProgressRatio = isEpisodeWatched
+                    ? 1.0
+                    : ((episodeHistory != null && episodeEffectiveDuration > 0)
+                        ? (episodeHistory.lastPosition / episodeEffectiveDuration).clamp(0.0, 1.0)
+                        : 0.0);
+                final bool isAired = episode.isAired;
+                final isHighlighted = episode.episodeNumber == _highlightedEpisodeNumber;
+
+                return Container(
+                  key: _episodeKeys.putIfAbsent(episode.episodeNumber, () => GlobalKey()),
+                  margin: const EdgeInsets.only(bottom: 8),
+                  decoration: BoxDecoration(
+                    color: isHighlighted
+                        ? Colors.amber.withValues(alpha: 0.15)
+                        : Colors.white.withValues(alpha: 0.03),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: isHighlighted ? Colors.amber : Colors.white10,
                     ),
                   ),
-                ),
-                title: Text(
-                  '${episode.episodeNumber}. ${episode.name}',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: isAired ? Colors.white : Colors.white38,
-                    fontWeight: FontWeight.w600,
-                    fontSize: 14,
-                  ),
-                ),
-                subtitle: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const SizedBox(height: 2),
-                    Row(
-                      children: [
-                        if (episode.voteAverage != null && episode.voteAverage! > 0) ...[
-                          const Icon(Icons.star_rounded, color: Colors.amber, size: 14),
-                          const SizedBox(width: 2),
-                          Text(
-                            episode.voteAverage!.toStringAsFixed(1),
-                            style: const TextStyle(fontSize: 11, color: Colors.amber, fontWeight: FontWeight.bold),
-                          ),
-                          const SizedBox(width: 8),
-                        ],
-                        if (episodeRuntimeMinutes != null && episodeRuntimeMinutes > 0)
-                          Text(
-                            '$episodeRuntimeMinutes dk',
-                            style: TextStyle(fontSize: 11, color: Colors.grey.shade400),
-                          ),
-                      ],
-                    ),
-                    if (!isAired && episode.airDate != null)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 2),
-                        child: Text(
-                          '${text.t('airs_on')}: ${episode.formattedAirDate}',
-                          style: const TextStyle(fontSize: 11, color: Colors.orangeAccent, fontWeight: FontWeight.w500),
+                  child: ListTile(
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    leading: ClipRRect(
+                      borderRadius: BorderRadius.circular(8),
+                      child: SizedBox(
+                        width: 100,
+                        height: 60,
+                        child: Stack(
+                          fit: StackFit.expand,
+                          alignment: Alignment.center,
+                          children: [
+                            episode.stillPath != null
+                                ? Image.network(
+                                    episode.stillPath!,
+                                    fit: BoxFit.cover,
+                                    errorBuilder: (buildContext, error, stackTrace) =>
+                                        const ColoredBox(
+                                          color: Colors.white10,
+                                          child: Icon(Icons.movie, color: Colors.grey),
+                                        ),
+                                  )
+                                : const ColoredBox(
+                                    color: Colors.white10,
+                                    child: Icon(Icons.movie, color: Colors.grey),
+                                  ),
+                            if (isAired)
+                              Center(
+                                child: Container(
+                                  padding: const EdgeInsets.all(6),
+                                  decoration: BoxDecoration(
+                                    color: Colors.black.withValues(alpha: 0.5),
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: const Icon(Icons.play_arrow_rounded, color: Colors.white, size: 20),
+                                ),
+                              ),
+                          ],
                         ),
                       ),
-                    if (hasProgress && episodeProgressRatio > 0) ...[
-                      const SizedBox(height: 6),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: ClipRRect(
-                              borderRadius: BorderRadius.circular(2),
-                              child: LinearProgressIndicator(
-                                value: episodeProgressRatio,
-                                minHeight: 3,
-                                backgroundColor: Colors.white10,
-                                valueColor: AlwaysStoppedAnimation<Color>(
-                                  isEpisodeWatched
+                    ),
+                    title: Text(
+                      '${episode.episodeNumber}. ${episode.name}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: isAired ? Colors.white : Colors.white38,
+                        fontWeight: FontWeight.w600,
+                        fontSize: 14,
+                      ),
+                    ),
+                    subtitle: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const SizedBox(height: 2),
+                        Row(
+                          children: [
+                            if (episode.voteAverage != null && episode.voteAverage! > 0) ...[
+                              const Icon(Icons.star_rounded, color: Colors.amber, size: 14),
+                              const SizedBox(width: 2),
+                              Text(
+                                episode.voteAverage!.toStringAsFixed(1),
+                                style: const TextStyle(fontSize: 11, color: Colors.amber, fontWeight: FontWeight.bold),
+                              ),
+                              const SizedBox(width: 8),
+                            ],
+                            if (episodeRuntimeMinutes != null && episodeRuntimeMinutes > 0)
+                              Text(
+                                '$episodeRuntimeMinutes dk',
+                                style: TextStyle(fontSize: 11, color: Colors.grey.shade400),
+                              ),
+                          ],
+                        ),
+                        if (!isAired && episode.airDate != null)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 2),
+                            child: Text(
+                              '${text.t('airs_on')}: ${episode.formattedAirDate}',
+                              style: const TextStyle(fontSize: 11, color: Colors.orangeAccent, fontWeight: FontWeight.w500),
+                            ),
+                          ),
+                        if (hasProgress && episodeProgressRatio > 0) ...[
+                          const SizedBox(height: 6),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: ClipRRect(
+                                  borderRadius: BorderRadius.circular(2),
+                                  child: LinearProgressIndicator(
+                                    value: episodeProgressRatio,
+                                    minHeight: 3,
+                                    backgroundColor: Colors.white10,
+                                    valueColor: AlwaysStoppedAnimation<Color>(
+                                      isEpisodeWatched
+                                          ? const Color(0xFF00E054)
+                                          : Colors.redAccent,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Text(
+                                isEpisodeWatched
+                                    ? text.t('completed')
+                                    : '%${(episodeProgressRatio * 100).round()}',
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.bold,
+                                  color: isEpisodeWatched
                                       ? const Color(0xFF00E054)
                                       : Colors.redAccent,
                                 ),
                               ),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Text(
-                            isEpisodeWatched
-                                ? text.t('completed')
-                                : '%${(episodeProgressRatio * 100).round()}',
-                            style: TextStyle(
-                              fontSize: 10,
-                              fontWeight: FontWeight.bold,
-                              color: isEpisodeWatched
-                                  ? const Color(0xFF00E054)
-                                  : Colors.redAccent,
-                            ),
+                            ],
                           ),
                         ],
-                      ),
-                    ],
-                  ],
-                ),
-                trailing: Tooltip(
-                  message: isEpisodeWatched
-                      ? (text.languageCode == 'tr' ? 'İzlemedim olarak işaretle' : 'Mark as unwatched')
-                      : (text.languageCode == 'tr' ? 'İzledim olarak işaretle' : 'Mark as watched'),
-                  child: InkWell(
-                    onTap: () {
-                      _toggleEpisodeWatched(
-                        season: seasonNumber,
-                        episodeNumber: episode.episodeNumber,
-                        isCurrentlyWatched: isEpisodeWatched,
-                        tvEpisodeHistory: tvEpisodeHistory,
-                      );
-                    },
-                    borderRadius: BorderRadius.circular(20),
-                    child: Padding(
-                      padding: const EdgeInsets.all(6.0),
-                      child: Icon(
-                        isEpisodeWatched
-                            ? Icons.check_circle_rounded
-                            : Icons.radio_button_unchecked_rounded,
-                        color: isEpisodeWatched
-                            ? const Color(0xFF00E054)
-                            : Colors.white30,
-                        size: 24,
-                      ),
+                      ],
                     ),
+                    trailing: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (isAired)
+                          IconButton(
+                            icon: const Icon(
+                              Icons.download_for_offline_outlined,
+                              size: 20,
+                              color: Colors.cyanAccent,
+                            ),
+                            tooltip: text.languageCode == 'tr'
+                                ? 'Bölümü İndir (IDM)'
+                                : 'Download Episode',
+                            onPressed: () => _showDownloadQualityPicker(
+                              title: '${widget.mediaItem.title} S${seasonNumber}E${episode.episodeNumber} - ${episode.name}',
+                              mediaType: 'tv',
+                              season: seasonNumber,
+                              episode: episode.episodeNumber,
+                              episodeTitle: episode.name,
+                            ),
+                          ),
+                        Tooltip(
+                          message: isEpisodeWatched
+                              ? (text.languageCode == 'tr' ? 'İzlemedim olarak işaretle' : 'Mark as unwatched')
+                              : (text.languageCode == 'tr' ? 'İzledim olarak işaretle' : 'Mark as watched'),
+                          child: InkWell(
+                            onTap: () {
+                              _toggleEpisodeWatched(
+                                season: seasonNumber,
+                                episodeNumber: episode.episodeNumber,
+                                isCurrentlyWatched: isEpisodeWatched,
+                                tvEpisodeHistory: tvEpisodeHistory,
+                              );
+                            },
+                            borderRadius: BorderRadius.circular(20),
+                            child: Padding(
+                              padding: const EdgeInsets.all(6.0),
+                              child: Icon(
+                                isEpisodeWatched
+                                    ? Icons.check_circle_rounded
+                                    : Icons.radio_button_unchecked_rounded,
+                                color: isEpisodeWatched
+                                    ? const Color(0xFF00E054)
+                                    : Colors.white30,
+                                size: 24,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    onTap: (!isAired || _isResolving)
+                        ? null
+                        : () => _resolveAndPickSource(
+                            season: seasonNumber,
+                            episode: episode.episodeNumber,
+                            runtimeMinutes: episodeRuntimeMinutes,
+                          ),
                   ),
-                ),
-                onTap: (!isAired || _isResolving)
-                    ? null
-                    : () => _resolveAndPickSource(
-                        season: seasonNumber,
-                        episode: episode.episodeNumber,
-                        runtimeMinutes: episodeRuntimeMinutes,
-                      ),
-              ),
-            );
-          },
+                );
+              },
+            ),
+          ],
         );
       },
       loading: () => const Center(child: Padding(padding: EdgeInsets.all(32), child: CircularProgressIndicator())),

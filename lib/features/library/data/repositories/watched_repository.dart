@@ -89,6 +89,8 @@ class WatchedRepository {
     });
   }
 
+  void notifyChanges() => _emitChange();
+
   void _emitChange() {
     if (_changesController.isClosed) {
       return;

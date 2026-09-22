@@ -17,6 +17,8 @@ import 'features/library/data/repositories/library_repository.dart';
 import 'features/library/data/repositories/watched_repository.dart';
 
 import 'features/player/data/repositories/watch_history_repository.dart';
+import 'features/downloads/data/services/download_service.dart';
+import 'features/downloads/presentation/providers/download_provider.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -58,6 +60,10 @@ void main() async {
   );
   await addonService.init();
   initAddonService(addonService);
+
+  final downloadService = DownloadService();
+  await downloadService.init();
+  initDownloadService(downloadService);
 
   runApp(const ProviderScope(child: MyApp()));
 }

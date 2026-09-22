@@ -131,6 +131,7 @@ class HomeCategoriesManagerScreen extends ConsumerWidget {
                         shrinkWrap: true,
                         physics: const NeverScrollableScrollPhysics(),
                         itemCount: activeCategories.length,
+                        // ignore: deprecated_member_use
                         onReorder: onReorder,
                         itemBuilder: (context, index) {
                           final cat = activeCategories[index];

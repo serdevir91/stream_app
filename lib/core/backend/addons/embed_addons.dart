@@ -1,4 +1,5 @@
 import 'base_addon.dart';
+import '../extractors/vixsrc_extractor.dart';
 
 class VidSrcAddon extends BaseAddon {
   @override
@@ -760,6 +761,58 @@ class VidBoxAddon extends BaseAddon {
           isDirectLink: false,
         ),
       ];
+    }
+  }
+}
+
+class VixSrcAddon extends BaseAddon {
+  final VixSrcExtractor _extractor = VixSrcExtractor();
+
+  @override
+  final AddonManifest manifest = AddonManifest(
+    id: 'builtin.vixsrc',
+    name: 'VixSrc (Direct HLS)',
+    description: 'VixSrc direct high-quality HLS streams with multi-audio and subtitles.',
+    version: '1.0.0',
+    types: ['movie', 'series'],
+    isBuiltin: true,
+  );
+
+  @override
+  Future<List<SearchResult>> search(String query, String contentType) async => [];
+
+  @override
+  Future<List<StreamResult>> getStreams(
+    String contentId,
+    String contentType,
+    int season,
+    int episode,
+  ) async {
+    if (contentId.startsWith('tt')) return [];
+    try {
+      final res = await _extractor.extract(
+        tmdbId: contentId,
+        mediaType: contentType == 'series' ? 'tv' : 'movie',
+        season: season,
+        episode: episode,
+      );
+      if (res == null) return [];
+
+      final streams = <StreamResult>[];
+      for (final variant in res.videoVariants) {
+        streams.add(
+          StreamResult(
+            url: res.masterUrl,
+            title: 'VixSrc HLS (${variant.quality})',
+            quality: variant.quality,
+            provider: 'VixSrc Direct',
+            isDirectLink: true,
+          ),
+        );
+      }
+      return streams;
+    } catch (_) {
+      return [];
     }
   }
 }
