@@ -360,6 +360,7 @@ class OnlineSubtitleRepository {
   }
 
   String? _buildWyzieSubtitleUrl(String downloadUrl) {
+    if (_wyzieApiKey.trim().isEmpty) return null;
     final match = RegExp(
       r'/vrf-([a-f0-9]+)/filead/(\d+)',
       caseSensitive: false,
@@ -371,7 +372,7 @@ class OnlineSubtitleRepository {
       {
         'format': 'srt',
         'encoding': 'UTF-8',
-        if (_wyzieApiKey.trim().isNotEmpty) 'key': _wyzieApiKey.trim(),
+        'key': _wyzieApiKey.trim(),
       },
     ).toString();
   }

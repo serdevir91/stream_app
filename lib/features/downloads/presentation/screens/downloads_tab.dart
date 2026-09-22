@@ -311,9 +311,29 @@ class _CompletedDownloadCard extends ConsumerWidget {
 
   const _CompletedDownloadCard({required this.item});
 
+  void _play(BuildContext context, {String? player}) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => PlayerScreen(
+          mediaId: item.mediaId,
+          title: item.title,
+          type: item.mediaType,
+          season: item.season ?? 1,
+          episode: item.episode ?? 1,
+          posterUrl: item.posterUrl,
+          backdropUrl: item.backdropUrl,
+          localVideoPath: item.localVideoPath,
+          localSubtitlePath: item.localSubtitlePath,
+          preferredPlayer: player,
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final text = ref.watch(appTextProvider);
+    final isTr = text.languageCode == 'tr';
     final service = ref.watch(downloadServiceProvider);
     final totalStr = DownloadService.formatBytes(item.totalBytes);
 
@@ -436,30 +456,58 @@ class _CompletedDownloadCard extends ConsumerWidget {
           ),
           Column(
             children: [
-              IconButton.filled(
-                icon: const Icon(Icons.play_arrow_rounded, size: 24),
-                style: IconButton.styleFrom(
-                  backgroundColor: Theme.of(context).colorScheme.primary,
-                  foregroundColor: Colors.white,
-                ),
-                onPressed: () {
-                  Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => PlayerScreen(
-                        mediaId: item.mediaId,
-                        title: item.title,
-                        type: item.mediaType,
-                        season: item.season ?? 1,
-                        episode: item.episode ?? 1,
-                        posterUrl: item.posterUrl,
-                        backdropUrl: item.backdropUrl,
-                        localVideoPath: item.localVideoPath,
-                        localSubtitlePath: item.localSubtitlePath,
-                      ),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  IconButton.filled(
+                    icon: const Icon(Icons.play_arrow_rounded, size: 24),
+                    style: IconButton.styleFrom(
+                      backgroundColor: Theme.of(context).colorScheme.primary,
+                      foregroundColor: Colors.white,
                     ),
-                  );
-                },
-                tooltip: text.t('play_now'),
+                    onPressed: () => _play(context),
+                    tooltip: text.t('play_now'),
+                  ),
+                  PopupMenuButton<String>(
+                    icon: const Icon(Icons.more_vert_rounded, size: 20, color: Colors.white70),
+                    tooltip: isTr ? 'Oynatıcı Seçenekleri' : 'Player Options',
+                    color: const Color(0xFF1E1E1E),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    onSelected: (selectedPlayer) => _play(context, player: selectedPlayer),
+                    itemBuilder: (ctx) => [
+                      PopupMenuItem(
+                        value: 'vlc',
+                        child: Row(
+                          children: [
+                            const Icon(Icons.videocam_rounded, color: Colors.orangeAccent, size: 20),
+                            const SizedBox(width: 10),
+                            Text(isTr ? 'VLC ile Oynat' : 'Play with VLC'),
+                          ],
+                        ),
+                      ),
+                      PopupMenuItem(
+                        value: 'native',
+                        child: Row(
+                          children: [
+                            const Icon(Icons.play_circle_outline, color: Colors.cyanAccent, size: 20),
+                            const SizedBox(width: 10),
+                            Text(isTr ? 'ExoPlayer ile Oynat' : 'Play with ExoPlayer'),
+                          ],
+                        ),
+                      ),
+                      PopupMenuItem(
+                        value: 'mediakit',
+                        child: Row(
+                          children: [
+                            const Icon(Icons.smart_display_outlined, color: Colors.purpleAccent, size: 20),
+                            const SizedBox(width: 10),
+                            Text(isTr ? 'MediaKit ile Oynat' : 'Play with MediaKit'),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
               ),
               IconButton(
                 icon: const Icon(Icons.delete_outline_rounded,

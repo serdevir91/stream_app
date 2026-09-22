@@ -221,6 +221,7 @@ const Map<String, String> supportedThemeModes = {
 const Map<String, String> supportedVideoPlayers = {
   'native': 'Native Player (ExoPlayer)',
   'media_kit': 'Media Kit (MPV)',
+  'vlc': 'VLC Media Player',
   'webview': 'WebView (Embed)',
 };
 

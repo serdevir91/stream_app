@@ -13,6 +13,7 @@ import 'package:media_kit_video/media_kit_video.dart';
 import 'package:audio_session/audio_session.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 import 'package:video_player/video_player.dart' as vp;
+import 'package:flutter_vlc_player/flutter_vlc_player.dart';
 import 'package:webview_flutter_android/webview_flutter_android.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:webview_windows/webview_windows.dart' as windows_webview;
@@ -20,6 +21,7 @@ import 'package:webview_windows/webview_windows.dart' as windows_webview;
 import '../../../../core/backend/addon_service_provider.dart';
 import '../../../../core/subtitles/online_subtitle_repository.dart';
 import '../../../../core/i18n/app_text.dart';
+import '../../../../core/player/local_media_server.dart';
 
 import '../providers/player_provider.dart';
 import '../../../search/presentation/providers/search_provider.dart';
@@ -48,6 +50,7 @@ class PlayerScreen extends ConsumerStatefulWidget {
   final bool preferAnimeSources;
   final String? localVideoPath;
   final String? localSubtitlePath;
+  final String? preferredPlayer;
 
   const PlayerScreen({
     super.key,
@@ -72,6 +75,7 @@ class PlayerScreen extends ConsumerStatefulWidget {
     this.preferAnimeSources = false,
     this.localVideoPath,
     this.localSubtitlePath,
+    this.preferredPlayer,
   });
 
   @override
@@ -107,10 +111,14 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   String? _currentStreamUrl;
   int _savedPositionMs = 0;
   vp.VideoPlayerController? _nativeController;
+  VlcPlayerController? _vlcViewController;
   int _selectedSubtitleTrackIndex = -1;
   OnlineSubtitleResult? _activeOnlineSubtitle;
   bool _nativeSubtitlesEnabled = true;
   bool _embedSubtitlesEnabled = true;
+  List<vp.Caption> _parsedCaptions = const [];
+  String _directCaptionText = '';
+  Timer? _directSubtitleTimer;
   List<vp.Caption> _embedCaptions = const [];
   String _embedCaptionText = '';
   Timer? _embedSubtitleTimer;
@@ -120,6 +128,9 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   String? _currentMirrorName;
 
   String get _selectedVideoPlayer {
+    if (widget.preferredPlayer != null && widget.preferredPlayer!.isNotEmpty) {
+      return widget.preferredPlayer!;
+    }
     try {
       return ref.read(appSettingsProvider).videoPlayer;
     } catch (_) {
@@ -128,6 +139,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   }
 
   bool get _useNativePlayer => _selectedVideoPlayer == 'native';
+  bool get _useVlcPlayer => _selectedVideoPlayer == 'vlc';
   bool get _forceWebView => _selectedVideoPlayer == 'webview';
 
   Set<String> _trustedEmbedHosts = const {};
@@ -240,6 +252,10 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
           try {
             _nativeController?.pause();
           } catch (_) {}
+        } else if (_vlcViewController != null) {
+          try {
+            _vlcViewController?.pause();
+          } catch (_) {}
         } else if (_player != null) {
           try {
             _savedPositionMs = _player!.state.position.inMilliseconds;
@@ -267,6 +283,10 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
         if (_nativeController != null) {
           try {
             _nativeController?.play();
+          } catch (_) {}
+        } else if (_vlcViewController != null) {
+          try {
+            _vlcViewController?.play();
           } catch (_) {}
         } else if (_player == null && _currentStreamUrl != null) {
           _reinitializeDirectPlayer();
@@ -412,6 +432,15 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
       _nativeSubtitlesEnabled = true;
     });
 
+    try {
+      final captionFile = await _loadClosedCaptionFile(subtitle);
+      _cachedCaptionFile = captionFile;
+      _parsedCaptions = captionFile.captions;
+      _startDirectSubtitleListener();
+    } catch (e) {
+      debugPrint('Online subtitle parse error: $e');
+    }
+
     final player = _player;
     if (player != null) {
       try {
@@ -430,6 +459,13 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
       } catch (e) {
         debugPrint('Media Kit subtitle attach failed: $e');
       }
+      return;
+    }
+
+    if (_vlcViewController != null) {
+      try {
+        await _vlcViewController?.addSubtitleFromNetwork(subtitle.url);
+      } catch (_) {}
       return;
     }
 
@@ -582,21 +618,60 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   Future<vp.ClosedCaptionFile> _loadClosedCaptionFile(
     OnlineSubtitleResult subtitle,
   ) async {
-    final response = await Dio().get<List<int>>(
-      subtitle.url,
-      options: Options(
-        responseType: ResponseType.bytes,
-        receiveTimeout: const Duration(seconds: 12),
-        sendTimeout: const Duration(seconds: 8),
-      ),
-    );
-    final bytes = response.data ?? <int>[];
+    List<int> bytes = <int>[];
+    if (subtitle.url.startsWith('http://') || subtitle.url.startsWith('https://')) {
+      final response = await Dio().get<List<int>>(
+        subtitle.url,
+        options: Options(
+          responseType: ResponseType.bytes,
+          receiveTimeout: const Duration(seconds: 12),
+          sendTimeout: const Duration(seconds: 8),
+        ),
+      );
+      bytes = response.data ?? <int>[];
+    } else {
+      final file = File(subtitle.url);
+      if (await file.exists()) {
+        bytes = await file.readAsBytes();
+      }
+    }
+
+    if (bytes.length > 2 && bytes[0] == 0x1f && bytes[1] == 0x8b) {
+      try {
+        bytes = gzip.decode(bytes);
+      } catch (_) {}
+    }
+
     final content = _decodeTurkishSubtitleBytes(bytes);
     if (subtitle.format.toLowerCase() == 'vtt' ||
         content.trimLeft().startsWith('WEBVTT')) {
       return vp.WebVTTCaptionFile(content);
     }
     return vp.SubRipCaptionFile(content);
+  }
+
+  void _startDirectSubtitleListener() {
+    _directSubtitleTimer?.cancel();
+    if (_parsedCaptions.isEmpty) return;
+    _directSubtitleTimer = Timer.periodic(const Duration(milliseconds: 150), (_) {
+      if (_isDisposed) return;
+      Duration currentPos = Duration.zero;
+      if (_player != null) {
+        currentPos = _player!.state.position;
+      } else if (_vlcViewController != null && _vlcViewController!.value.isInitialized) {
+        currentPos = _vlcViewController!.value.position;
+      } else if (_nativeController != null && _nativeController!.value.isInitialized) {
+        currentPos = _nativeController!.value.position;
+      } else {
+        return;
+      }
+      final nextText = _captionTextAt(currentPos);
+      if (mounted && nextText != _directCaptionText) {
+        setState(() {
+          _directCaptionText = nextText;
+        });
+      }
+    });
   }
 
   void _startEmbedSubtitleTimer() {
@@ -644,7 +719,8 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
       milliseconds: (_subtitleDelaySeconds * 1000).toInt(),
     );
     final adjusted = position + delayOffset;
-    for (final caption in _embedCaptions) {
+    final captions = _parsedCaptions.isNotEmpty ? _parsedCaptions : _embedCaptions;
+    for (final caption in captions) {
       if (adjusted >= caption.start && adjusted <= caption.end) {
         return caption.text;
       }
@@ -856,6 +932,11 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
       _nativeController?.pause();
     } catch (_) {}
     try {
+      _vlcViewController?.pause();
+      _vlcViewController?.stop();
+    } catch (_) {}
+    _directSubtitleTimer?.cancel();
+    try {
       _embedWebViewController?.loadRequest(Uri.parse('about:blank'));
     } catch (_) {}
     try {
@@ -906,6 +987,9 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
       _errorMessageParam = null;
       _loadingStatusKey = 'loading_video';
       _isLoading = true;
+      _activeOnlineSubtitle = null;
+      _parsedCaptions = const [];
+      _directCaptionText = '';
     });
 
     final file = File(filePath);
@@ -917,9 +1001,42 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
       return;
     }
 
+    final isHls = filePath.toLowerCase().endsWith('.m3u8');
+    final effectiveUrl = isHls
+        ? await LocalMediaServer.instance.getServedUrl(filePath)
+        : filePath;
+
     try {
-      if (_useNativePlayer) {
-        final ctrl = vp.VideoPlayerController.file(file);
+      if (_useVlcPlayer) {
+        final options = VlcPlayerOptions(
+          advanced: VlcAdvancedOptions([
+            VlcAdvancedOptions.networkCaching(2000),
+          ]),
+          subtitle: VlcSubtitleOptions([
+            VlcSubtitleOptions.color(VlcSubtitleColor.white),
+            VlcSubtitleOptions.fontSize(28),
+          ]),
+        );
+        final vlcCtrl = isHls
+            ? VlcPlayerController.network(
+                effectiveUrl,
+                autoPlay: true,
+                options: options,
+              )
+            : VlcPlayerController.file(
+                file,
+                autoPlay: true,
+                options: options,
+              );
+        setState(() {
+          _vlcViewController = vlcCtrl;
+          _isLoading = false;
+        });
+        _startProgressAutosave();
+      } else if (_useNativePlayer) {
+        final ctrl = isHls
+            ? vp.VideoPlayerController.networkUrl(Uri.parse(effectiveUrl))
+            : vp.VideoPlayerController.file(file);
         await ctrl.initialize();
         if (_isDisposed) {
           ctrl.dispose();
@@ -932,10 +1049,11 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
         });
         _startProgressAutosave();
       } else {
+        // media_kit
         final player = Player();
         _player = player;
         _videoController = VideoController(player);
-        await player.open(Media(filePath), play: true);
+        await player.open(Media(effectiveUrl), play: true);
         setState(() {
           _isLoading = false;
         });
@@ -951,38 +1069,74 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
             languageCode: widget.subtitleLanguage,
             format: 'srt',
           );
-          if (_player != null) {
-            await _player?.setSubtitleTrack(
-              SubtitleTrack.uri(
-                subFile.uri.toString(),
-                title: 'Yerel Altyazı',
-                language: widget.subtitleLanguage,
-              ),
-            );
-          } else if (_nativeController != null) {
-            try {
-              final content = await subFile.readAsString();
-              final baseFile = vp.SubRipCaptionFile(content);
-              _cachedCaptionFile = baseFile;
+          _activeOnlineSubtitle = subtitle;
+          _nativeSubtitlesEnabled = true;
+
+          try {
+            final captionFile = await _loadClosedCaptionFile(subtitle);
+            _cachedCaptionFile = captionFile;
+            _parsedCaptions = captionFile.captions;
+            _startDirectSubtitleListener();
+
+            if (_nativeController != null) {
               await _nativeController!.setClosedCaptionFile(
-                Future.value(baseFile),
+                Future.value(captionFile),
               );
-              setState(() {
-                _activeOnlineSubtitle = subtitle;
-                _nativeSubtitlesEnabled = true;
-              });
-            } catch (e) {
-              debugPrint('Local subtitle load error: $e');
             }
+          } catch (e) {
+            debugPrint('Local subtitle parse error: $e');
+          }
+
+          if (_player != null) {
+            unawaited(_setMediaKitSubtitleSafely(_player!, subFile.uri.toString()));
+          }
+          if (_vlcViewController != null) {
+            try {
+              await _vlcViewController?.addSubtitleFromFile(subFile);
+            } catch (_) {}
           }
         }
       }
     } catch (e) {
       debugPrint('Local playback init failed: $e');
+      if (_useNativePlayer && _player == null) {
+        debugPrint('Falling back to MediaKit for local playback...');
+        try {
+          final player = Player();
+          _player = player;
+          _videoController = VideoController(player);
+          await player.open(Media(effectiveUrl), play: true);
+          setState(() {
+            _isLoading = false;
+          });
+          _startProgressAutosave();
+          return;
+        } catch (_) {}
+      }
       setState(() {
         _errorMessageKey = 'video_playback_failed';
         _isLoading = false;
       });
+    }
+  }
+
+  Future<void> _setMediaKitSubtitleSafely(Player player, String uri) async {
+    for (int i = 0; i < 20; i++) {
+      if (_isDisposed || _player != player) return;
+      if (player.state.duration > Duration.zero) break;
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+    }
+    if (_isDisposed || _player != player) return;
+    try {
+      await player.setSubtitleTrack(
+        SubtitleTrack.uri(
+          uri,
+          title: 'Yerel Altyazı',
+          language: widget.subtitleLanguage,
+        ),
+      );
+    } catch (e) {
+      debugPrint('MediaKit subtitle track attach error: $e');
     }
   }
 
@@ -1205,6 +1359,14 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
         dur.inMilliseconds,
       );
       _nativeController!.seekTo(Duration(milliseconds: targetMs));
+    } else if (_vlcViewController != null && _vlcViewController!.value.isInitialized) {
+      final pos = _vlcViewController!.value.position;
+      final dur = _vlcViewController!.value.duration;
+      final targetMs = (pos.inMilliseconds + (seconds * 1000)).clamp(
+        0,
+        dur.inMilliseconds,
+      );
+      _vlcViewController!.seekTo(Duration(milliseconds: targetMs));
     } else if (_player != null) {
       final pos = _player!.state.position;
       final dur = _player!.state.duration;
@@ -1232,6 +1394,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
 
     final previousPlayer = _player;
     final previousWindowsController = _windowsEmbedController;
+    final previousVlc = _vlcViewController;
 
     _currentStreamUrl = isDirectLink ? streamUrl : null;
     _currentMirrorName = provider;
@@ -1242,6 +1405,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
       _embedUrl = null;
       _player = null;
       _videoController = null;
+      _vlcViewController = null;
       _embedWebViewController = null;
       _windowsEmbedController = null;
       _showOverlayControls = true;
@@ -1251,8 +1415,11 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
       _embedSubtitlesEnabled = true;
       _embedCaptions = const [];
       _embedCaptionText = '';
+      _parsedCaptions = const [];
+      _directCaptionText = '';
     });
     _embedSubtitleTimer?.cancel();
+    _directSubtitleTimer?.cancel();
     _armControlsAutoHide();
     _directFallbackAttempt += 1;
     _progressAutosaveTimer?.cancel();
@@ -1266,6 +1433,12 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     if (previousNative != null) {
       try {
         await previousNative.dispose();
+      } catch (_) {}
+    }
+    if (previousVlc != null) {
+      try {
+        await previousVlc.stop();
+        await previousVlc.dispose();
       } catch (_) {}
     }
     if (previousPlayer != null) {
@@ -1293,7 +1466,28 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
       setState(() {
         _loadingStatusKey = 'loading_video';
       });
-      if (_useNativePlayer) {
+      if (_useVlcPlayer) {
+        final vlcOptions = VlcPlayerOptions(
+          advanced: VlcAdvancedOptions([
+            VlcAdvancedOptions.networkCaching(2000),
+          ]),
+          subtitle: VlcSubtitleOptions([
+            VlcSubtitleOptions.color(VlcSubtitleColor.white),
+            VlcSubtitleOptions.fontSize(28),
+          ]),
+        );
+        final vlc = VlcPlayerController.network(
+          streamUrl,
+          autoPlay: true,
+          options: vlcOptions,
+        );
+        setState(() {
+          _vlcViewController = vlc;
+          _isLoading = false;
+        });
+        _startProgressAutosave();
+        unawaited(_attachOnlineSubtitle(streamUrl));
+      } else if (_useNativePlayer) {
         await _initNativePlayer(streamUrl, seekMs: resumeMs);
         unawaited(_attachOnlineSubtitle(streamUrl));
       } else {
@@ -2592,6 +2786,15 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
       _loadingStatusKey = 'searching_video_source';
     });
 
+    if (widget.localVideoPath != null &&
+        widget.localVideoPath!.isNotEmpty) {
+      _initializeLocalPlayback(
+        widget.localVideoPath!,
+        localSubtitlePath: widget.localSubtitlePath,
+      );
+      return;
+    }
+
     if (widget.initialStreamUrl != null &&
         widget.initialStreamUrl!.isNotEmpty) {
       _initializePlayer(
@@ -2613,6 +2816,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     _overlayControlsTimer?.cancel();
     _progressAutosaveTimer?.cancel();
     _embedSubtitleTimer?.cancel();
+    _directSubtitleTimer?.cancel();
     _isDisposed = true;
 
     // Capture progress BEFORE stopping/nulling controllers.
@@ -2630,6 +2834,13 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
         capturedPositionMs = _nativeController!.value.position.inMilliseconds;
         capturedDurationMs = _nativeController!.value.duration.inMilliseconds;
       } catch (_) {}
+    } else if (_isDirectLink &&
+        _vlcViewController != null &&
+        _vlcViewController!.value.isInitialized) {
+      try {
+        capturedPositionMs = _vlcViewController!.value.position.inMilliseconds;
+        capturedDurationMs = _vlcViewController!.value.duration.inMilliseconds;
+      } catch (_) {}
     } else if (_isDirectLink && player != null) {
       try {
         capturedPositionMs = player.state.position.inMilliseconds;
@@ -2646,6 +2857,8 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     _windowsEmbedController = null;
     final nativeCtrl = _nativeController;
     _nativeController = null;
+    final vlcCtrl = _vlcViewController;
+    _vlcViewController = null;
 
     // Dispose controllers.
     if (player != null) {
@@ -2659,6 +2872,12 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     if (nativeCtrl != null) {
       try {
         nativeCtrl.dispose();
+      } catch (_) {}
+    }
+    if (vlcCtrl != null) {
+      try {
+        vlcCtrl.stopRendererScanning();
+        vlcCtrl.dispose();
       } catch (_) {}
     }
 
@@ -2796,6 +3015,17 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
           )
         : !_isDirectLink && _embedUrl != null
         ? _buildEmbedView()
+        : _vlcViewController != null && _vlcViewController!.value.isInitialized
+        ? AspectRatio(
+            aspectRatio: 16 / 9,
+            child: VlcPlayer(
+              controller: _vlcViewController!,
+              aspectRatio: 16 / 9,
+              placeholder: const Center(
+                child: CircularProgressIndicator(color: Colors.redAccent),
+              ),
+            ),
+          )
         : _nativeController != null && _nativeController!.value.isInitialized
         ? AspectRatio(
             aspectRatio: _nativeController!.value.aspectRatio,
@@ -2840,6 +3070,10 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
         Positioned.fill(child: Center(child: renderedContent)),
         if (_nativeController != null && _nativeSubtitlesEnabled)
           _buildNativeClosedCaption(),
+        if ((_player != null || _vlcViewController != null) &&
+            _nativeSubtitlesEnabled &&
+            _directCaptionText.isNotEmpty)
+          _buildDirectClosedCaption(),
         if (!_isDirectLink &&
             _embedSubtitlesEnabled &&
             _embedCaptionText.isNotEmpty)
@@ -3101,6 +3335,40 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     );
   }
 
+  Widget _buildDirectClosedCaption() {
+    if (_directCaptionText.isEmpty || !_nativeSubtitlesEnabled) {
+      return const SizedBox.shrink();
+    }
+    return Positioned(
+      left: 24,
+      right: 24,
+      bottom: _showOverlayControls ? 112 : 32,
+      child: IgnorePointer(
+        child: Center(
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: Colors.black.withValues(alpha: 0.72),
+              borderRadius: BorderRadius.circular(4),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              child: Text(
+                _directCaptionText,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w600,
+                  height: 1.25,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildEmbedClosedCaption() {
     return Positioned(
       left: 24,
@@ -3167,6 +3435,52 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   double _currentSpeed = 1.0;
 
   Widget _buildSeekBar() {
+    // VLC seekbar
+    if (_vlcViewController != null) {
+      return ValueListenableBuilder<VlcPlayerValue>(
+        valueListenable: _vlcViewController!,
+        builder: (context, value, child) {
+          final position = value.position;
+          final duration = value.duration;
+          final max = duration.inMilliseconds > 0
+              ? duration.inMilliseconds.toDouble()
+              : 1.0;
+          return Row(
+            children: [
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                child: Text(
+                  _formatDuration(position),
+                  style: const TextStyle(color: Colors.white70, fontSize: 12),
+                ),
+              ),
+              Expanded(
+                child: Slider(
+                  value: position.inMilliseconds.toDouble().clamp(0, max),
+                  min: 0,
+                  max: max,
+                  activeColor: Colors.red,
+                  inactiveColor: Colors.white30,
+                  onChanged: (v) {
+                    _vlcViewController!.seekTo(
+                      Duration(milliseconds: v.toInt()),
+                    );
+                  },
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                child: Text(
+                  _formatDuration(duration),
+                  style: const TextStyle(color: Colors.white70, fontSize: 12),
+                ),
+              ),
+            ],
+          );
+        },
+      );
+    }
+
     // Native player seekbar
     if (_nativeController != null && _nativeController!.value.isInitialized) {
       return ValueListenableBuilder<vp.VideoPlayerValue>(
@@ -3261,6 +3575,56 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   }
 
   Widget _buildPlaybackControls() {
+    // VLC player controls
+    if (_vlcViewController != null && _vlcViewController!.value.isInitialized) {
+      return ValueListenableBuilder<VlcPlayerValue>(
+        valueListenable: _vlcViewController!,
+        builder: (context, value, child) {
+          final isPlaying = value.isPlaying;
+          return Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              IconButton(
+                onPressed: () => _skipSeconds(-10),
+                icon: const Icon(
+                  Icons.replay_10,
+                  size: 32,
+                  color: Colors.white,
+                ),
+              ),
+              const SizedBox(width: 8),
+              IconButton(
+                onPressed: () {
+                  if (isPlaying) {
+                    _vlcViewController?.pause();
+                  } else {
+                    _vlcViewController?.play();
+                  }
+                  _armControlsAutoHide();
+                },
+                icon: Icon(
+                  isPlaying
+                      ? Icons.pause_circle_filled
+                      : Icons.play_circle_fill,
+                  size: 48,
+                  color: Colors.white,
+                ),
+              ),
+              const SizedBox(width: 8),
+              IconButton(
+                onPressed: () => _skipSeconds(10),
+                icon: const Icon(
+                  Icons.forward_10,
+                  size: 32,
+                  color: Colors.white,
+                ),
+              ),
+            ],
+          );
+        },
+      );
+    }
+
     // Native player controls
     if (_nativeController != null && _nativeController!.value.isInitialized) {
       return ValueListenableBuilder<vp.VideoPlayerValue>(

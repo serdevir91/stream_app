@@ -1,5 +1,7 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
+import 'dart:isolate';
 
 import 'package:dio/dio.dart';
 import 'package:encrypt/encrypt.dart';
@@ -18,10 +20,17 @@ class DownloadService {
   final VixSrcExtractor _vixSrcExtractor;
   Box? _box;
 
+  final Map<String, DownloadItem> _cachedItems = {};
   final Map<String, CancelToken> _cancelTokens = {};
   final Set<String> _canceledItemIds = {};
+  final List<String> _downloadQueue = [];
+  final Set<String> _activeRunningIds = {};
+  static const int maxConcurrentDownloads = 1;
+
   final StreamController<List<DownloadItem>> _itemsStreamController =
       StreamController<List<DownloadItem>>.broadcast();
+
+  DateTime _lastNotifyTime = DateTime.now();
 
   DownloadService({
     Dio? dio,
@@ -47,48 +56,59 @@ class DownloadService {
     } else {
       _box = Hive.box(boxName);
     }
+    _loadCacheFromBox();
+  }
+
+  void _loadCacheFromBox() {
+    if (_box == null) return;
+    _cachedItems.clear();
+    for (final raw in _box!.values) {
+      if (raw is Map) {
+        try {
+          final item = DownloadItem.fromMap(raw);
+          _cachedItems[item.id] = item;
+          if (item.status == 'queued') {
+            if (!_downloadQueue.contains(item.id)) {
+              _downloadQueue.add(item.id);
+            }
+          }
+        } catch (_) {}
+      }
+    }
   }
 
   Stream<List<DownloadItem>> watchDownloads() {
     return _itemsStreamController.stream;
   }
 
-  void _notify() {
+  void _notify({bool force = false}) {
+    final now = DateTime.now();
+    if (!force && now.difference(_lastNotifyTime).inMilliseconds < 750) {
+      return;
+    }
+    _lastNotifyTime = now;
     if (!_itemsStreamController.isClosed) {
       _itemsStreamController.add(getAllDownloads());
     }
   }
 
   List<DownloadItem> getAllDownloads() {
-    if (_box == null) return [];
-    final items = <DownloadItem>[];
-    for (final raw in _box!.values) {
-      if (raw is Map) {
-        try {
-          items.add(DownloadItem.fromMap(raw));
-        } catch (_) {}
-      }
-    }
-    // Sort recent first
+    final items = _cachedItems.values.toList();
     items.sort((a, b) => b.createdAt.compareTo(a.createdAt));
     return items;
   }
 
   DownloadItem? getItem(String id) {
-    if (_box == null) return null;
-    final raw = _box!.get(id);
-    if (raw is Map) {
-      try {
-        return DownloadItem.fromMap(raw);
-      } catch (_) {}
-    }
-    return null;
+    return _cachedItems[id];
   }
 
-  Future<void> saveItem(DownloadItem item) async {
-    if (_box == null) await init();
-    await _box!.put(item.id, item.toMap());
-    _notify();
+  Future<void> saveItem(DownloadItem item, {bool immediateDbWrite = true}) async {
+    _cachedItems[item.id] = item;
+    if (immediateDbWrite) {
+      if (_box == null) await init();
+      await _box!.put(item.id, item.toMap());
+    }
+    _notify(force: immediateDbWrite);
   }
 
   Future<String> getDownloadsDirectoryPath() async {
@@ -123,6 +143,40 @@ class DownloadService {
   Future<void> startDownload(DownloadItem item) async {
     if (_box == null) await init();
 
+    // Check if this item is already active
+    if (_activeRunningIds.contains(item.id)) return;
+
+    // If concurrency limit reached, add to queue
+    if (_activeRunningIds.length >= maxConcurrentDownloads) {
+      final queuedItem = item.copyWith(
+        status: 'queued',
+        speed: '',
+      );
+      if (!_downloadQueue.contains(item.id)) {
+        _downloadQueue.add(item.id);
+      }
+      await saveItem(queuedItem, immediateDbWrite: true);
+      return;
+    }
+
+    _downloadQueue.remove(item.id);
+    _activeRunningIds.add(item.id);
+
+    unawaited(_executeDownload(item));
+  }
+
+  Future<void> _processQueue() async {
+    while (_activeRunningIds.length < maxConcurrentDownloads && _downloadQueue.isNotEmpty) {
+      final nextId = _downloadQueue.removeAt(0);
+      final nextItem = getItem(nextId);
+      if (nextItem != null && nextItem.status == 'queued') {
+        _activeRunningIds.add(nextId);
+        unawaited(_executeDownload(nextItem));
+      }
+    }
+  }
+
+  Future<void> _executeDownload(DownloadItem item) async {
     final dirPath = await getDownloadsDirectoryPath();
     final safeBase = _sanitizeFileName(item.id);
     final ext = item.streamUrl.contains('.mkv') ? '.mkv' : '.mp4';
@@ -140,12 +194,12 @@ class DownloadService {
       localVideoPath: videoPath,
       errorMessage: null,
     );
-    await saveItem(currentItem);
+    await saveItem(currentItem, immediateDbWrite: true);
 
     // 1. Asynchronously fetch & save subtitle if repository is present
     unawaited(_fetchAndSaveSubtitle(currentItem, dirPath, safeBase));
 
-    // 2. Check download strategy: Direct file download vs HLS segment extractor
+    // 2. Execute download strategy
     try {
       if (_isDirectVideoLink(item.streamUrl)) {
         await _downloadDirectFile(currentItem, videoPath, cancelToken);
@@ -165,10 +219,12 @@ class DownloadService {
           speed: '',
         );
       }
-      await saveItem(currentItem);
+      await saveItem(currentItem, immediateDbWrite: true);
     } finally {
       _cancelTokens.remove(item.id);
       _canceledItemIds.remove(item.id);
+      _activeRunningIds.remove(item.id);
+      unawaited(_processQueue());
     }
   }
 
@@ -193,7 +249,7 @@ class DownloadService {
         final elapsedMs = now.difference(lastTime).inMilliseconds;
         String speedStr = currentItem.speed;
 
-        if (elapsedMs >= 600) {
+        if (elapsedMs >= 800) {
           final deltaBytes = received - lastBytes;
           final bytesPerSec = (deltaBytes / (elapsedMs / 1000.0));
           speedStr = _formatSpeed(bytesPerSec);
@@ -210,7 +266,7 @@ class DownloadService {
           totalBytes: total > 0 ? total : currentItem.totalBytes,
           speed: speedStr,
         );
-        saveItem(currentItem);
+        saveItem(currentItem, immediateDbWrite: false);
       },
     );
 
@@ -233,7 +289,7 @@ class DownloadService {
         speed: '',
       );
     }
-    await saveItem(currentItem);
+    await saveItem(currentItem, immediateDbWrite: true);
   }
 
   Future<void> _downloadHlsStream(
@@ -284,10 +340,9 @@ class DownloadService {
       throw Exception('Akış şifre çözme anahtarı alınamadı.');
     }
 
-    final key = Key(Uint8List.fromList(keyRes.data!));
-    final vIv = _parseIv(videoDetails.ivHex);
-    final aIv = _parseIv(audioDetails?.ivHex);
-    final encrypter = Encrypter(AES(key, mode: AESMode.cbc, padding: null));
+    final keyBytes = Uint8List.fromList(keyRes.data!);
+    final vIvBytes = _parseIvBytes(videoDetails.ivHex);
+    final aIvBytes = _parseIvBytes(audioDetails?.ivHex);
 
     // 3. Prepare local HLS directory
     final itemDir = Directory('$dirPath/${safeBase}_hls');
@@ -306,12 +361,13 @@ class DownloadService {
     String currentSpeed = '0 KB/s';
 
     // 4. Download and decrypt video segments with concurrency limit
-    const int concurrency = 4;
+    // Reduced concurrency from 4 to 2 to minimize network & device resource strain
+    const int concurrency = 2;
 
     Future<void> runBatchWorkers(
       List<String> urls,
       String prefix,
-      IV iv,
+      Uint8List ivBytes,
     ) async {
       int nextIdx = 0;
 
@@ -322,6 +378,7 @@ class DownloadService {
           }
           final idx = nextIdx++;
           final segUrl = urls[idx];
+          final targetSegPath = '${itemDir.path}/${prefix}_$idx.ts';
 
           try {
             final segRes = await _dio.get<List<int>>(
@@ -331,13 +388,14 @@ class DownloadService {
             );
 
             if (segRes.data != null && segRes.data!.isNotEmpty) {
-              final encBytes = Uint8List.fromList(segRes.data!);
-              final decBytes = encrypter.decryptBytes(Encrypted(encBytes), iv: iv);
-
-              final segFile = File('${itemDir.path}/${prefix}_$idx.ts');
-              await segFile.writeAsBytes(decBytes);
-
-              totalBytesAccum += decBytes.length;
+              // Offload AES decryption and file write to background isolate
+              final decLength = await _decryptAndWriteSegmentBackground(
+                encryptedBytes: Uint8List.fromList(segRes.data!),
+                keyBytes: keyBytes,
+                ivBytes: ivBytes,
+                targetFilePath: targetSegPath,
+              );
+              totalBytesAccum += decLength;
             }
           } catch (e) {
             if (cancelToken.isCancelled || _canceledItemIds.contains(item.id)) return;
@@ -349,11 +407,13 @@ class DownloadService {
                 cancelToken: cancelToken,
               );
               if (retryRes.data != null && retryRes.data!.isNotEmpty) {
-                final encBytes = Uint8List.fromList(retryRes.data!);
-                final decBytes = encrypter.decryptBytes(Encrypted(encBytes), iv: iv);
-                final segFile = File('${itemDir.path}/${prefix}_$idx.ts');
-                await segFile.writeAsBytes(decBytes);
-                totalBytesAccum += decBytes.length;
+                final decLength = await _decryptAndWriteSegmentBackground(
+                  encryptedBytes: Uint8List.fromList(retryRes.data!),
+                  keyBytes: keyBytes,
+                  ivBytes: ivBytes,
+                  targetFilePath: targetSegPath,
+                );
+                totalBytesAccum += decLength;
               }
             } catch (_) {}
           }
@@ -361,7 +421,7 @@ class DownloadService {
           completedSegs++;
           final now = DateTime.now();
           final elapsedMs = now.difference(lastTime).inMilliseconds;
-          if (elapsedMs >= 600) {
+          if (elapsedMs >= 800) {
             final deltaBytes = totalBytesAccum - lastBytes;
             final bytesPerSec = (deltaBytes / (elapsedMs / 1000.0));
             currentSpeed = _formatSpeed(bytesPerSec);
@@ -374,7 +434,7 @@ class DownloadService {
               downloadedBytes: totalBytesAccum,
               speed: currentSpeed,
             );
-            saveItem(currentItem);
+            saveItem(currentItem, immediateDbWrite: false);
           }
         }
       }
@@ -387,12 +447,12 @@ class DownloadService {
     }
 
     // Download video segments
-    await runBatchWorkers(videoDetails.segmentUrls, 'v', vIv);
+    await runBatchWorkers(videoDetails.segmentUrls, 'v', vIvBytes);
     if (cancelToken.isCancelled || _canceledItemIds.contains(item.id)) return;
 
     // Download audio segments
     if (audioDetails != null && audioDetails.segmentUrls.isNotEmpty) {
-      await runBatchWorkers(audioDetails.segmentUrls, 'a', aIv);
+      await runBatchWorkers(audioDetails.segmentUrls, 'a', aIvBytes);
     }
     if (cancelToken.isCancelled || _canceledItemIds.contains(item.id)) return;
 
@@ -459,7 +519,6 @@ class DownloadService {
         final mp4File = File(finalMp4Path);
         if (await mp4File.exists() && (await mp4File.length()) > 1000) {
           ffmpegRemuxSuccess = true;
-          // Clean up chunk directory
           try {
             await itemDir.delete(recursive: true);
           } catch (_) {}
@@ -481,17 +540,39 @@ class DownloadService {
       speed: '',
       localVideoPath: finalLocalPath,
     );
-    await saveItem(currentItem);
+    await saveItem(currentItem, immediateDbWrite: true);
   }
 
-  static IV _parseIv(String? hex) {
+  static Uint8List _parseIvBytes(String? hex) {
     final bytes = Uint8List(16);
     if (hex != null && hex.length >= 32) {
       for (int i = 0; i < 16; i++) {
         bytes[i] = int.parse(hex.substring(i * 2, i * 2 + 2), radix: 16);
       }
     }
-    return IV(bytes);
+    return bytes;
+  }
+
+  /// Runs AES-CBC decryption and direct disk write in a background isolate
+  /// so Flutter's main UI thread is completely unaffected.
+  static Future<int> _decryptAndWriteSegmentBackground({
+    required Uint8List encryptedBytes,
+    required Uint8List keyBytes,
+    required Uint8List ivBytes,
+    required String targetFilePath,
+  }) async {
+    return await Isolate.run(() async {
+      final key = Key(keyBytes);
+      final iv = IV(ivBytes);
+      final encrypter = Encrypter(AES(key, mode: AESMode.cbc, padding: null));
+      final decrypted = encrypter.decryptBytes(
+        Encrypted(encryptedBytes),
+        iv: iv,
+      );
+      final file = File(targetFilePath);
+      await file.writeAsBytes(decrypted);
+      return decrypted.length;
+    });
   }
 
   Future<void> _fetchAndSaveSubtitle(
@@ -519,17 +600,18 @@ class DownloadService {
 
       if (subtitleResult != null && subtitleResult.url.isNotEmpty) {
         final subPath = '$dirPath/$safeBase.srt';
-        final subResponse = await _dio.get<String>(
+        final subResponse = await _dio.get<List<int>>(
           subtitleResult.url,
-          options: Options(responseType: ResponseType.plain),
+          options: Options(responseType: ResponseType.bytes),
         );
         if (subResponse.data != null && subResponse.data!.isNotEmpty) {
+          final content = _decodeTurkishSubtitleBytes(subResponse.data!);
           final subFile = File(subPath);
-          await subFile.writeAsString(subResponse.data!);
+          await subFile.writeAsString(content);
 
           final latest = getItem(item.id);
           if (latest != null) {
-            await saveItem(latest.copyWith(localSubtitlePath: subPath));
+            await saveItem(latest.copyWith(localSubtitlePath: subPath), immediateDbWrite: true);
           }
         }
       }
@@ -538,16 +620,59 @@ class DownloadService {
     }
   }
 
+  static String _decodeTurkishSubtitleBytes(List<int> bytes) {
+    if (bytes.isEmpty) return '';
+    List<int> raw = bytes;
+    if (raw.length > 2 && raw[0] == 0x1f && raw[1] == 0x8b) {
+      try {
+        raw = gzip.decode(raw);
+      } catch (_) {}
+    }
+    String text;
+    try {
+      text = utf8.decode(raw);
+    } catch (_) {
+      try {
+        text = latin1.decode(raw);
+      } catch (_) {
+        text = String.fromCharCodes(raw);
+      }
+    }
+
+    const mojibakeMap = <String, String>{
+      'Ã§': 'ç', 'Ã‡': 'Ç',
+      'Ã¶': 'ö', 'Ã–': 'Ö',
+      'Ã¼': 'ü', 'Ãœ': 'Ü',
+      'ÄŸ': 'ğ', 'Äž': 'Ğ',
+      'Ä±': 'ı', 'Ä°': 'İ',
+      'ÅŸ': 'ş', 'Åž': 'Ş',
+      'Ã½': 'ı', 'Ã ': 'à', 'Ã©': 'é',
+      'ð': 'ğ', 'Ð': 'Ğ',
+      'ý': 'ı', 'Ý': 'İ',
+      'þ': 'ş', 'Þ': 'Ş',
+      'Ãž': 'Ş',
+    };
+
+    mojibakeMap.forEach((wrong, correct) {
+      text = text.replaceAll(wrong, correct);
+    });
+
+    return text;
+  }
+
   Future<void> cancelDownload(String id) async {
     _canceledItemIds.add(id);
+    _downloadQueue.remove(id);
     final token = _cancelTokens[id];
     if (token != null && !token.isCancelled) {
       token.cancel('User canceled');
     }
     final item = getItem(id);
     if (item != null) {
-      await saveItem(item.copyWith(status: 'canceled', speed: ''));
+      await saveItem(item.copyWith(status: 'canceled', speed: ''), immediateDbWrite: true);
     }
+    _activeRunningIds.remove(id);
+    unawaited(_processQueue());
   }
 
   Future<void> deleteDownload(String id) async {
@@ -576,10 +701,11 @@ class DownloadService {
         }
       } catch (_) {}
     }
+    _cachedItems.remove(id);
     if (_box != null) {
       await _box!.delete(id);
-      _notify();
     }
+    _notify(force: true);
   }
 
   String _formatSpeed(double bytesPerSec) {

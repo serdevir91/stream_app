@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -371,6 +372,36 @@ class _MediaDetailsScreenState extends ConsumerState<MediaDetailsScreen> {
   }) async {
     final text = ref.read(appTextProvider);
     final settings = ref.read(appSettingsProvider);
+
+    // If this media or episode is already downloaded, play the local file directly!
+    final downloadService = ref.read(downloadServiceProvider);
+    final isTv = widget.mediaItem.type == 'tv';
+    final itemId = isTv
+        ? 'tv_${widget.mediaItem.id}_s${season}_e$episode'
+        : 'movie_${widget.mediaItem.id}';
+    final downloaded = downloadService.getItem(itemId);
+    if (downloaded != null &&
+        downloaded.status == 'completed' &&
+        downloaded.localVideoPath.isNotEmpty &&
+        File(downloaded.localVideoPath).existsSync()) {
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => PlayerScreen(
+            mediaId: widget.mediaItem.id,
+            title: downloaded.title,
+            type: widget.mediaItem.type,
+            season: season,
+            episode: episode,
+            posterUrl: widget.mediaItem.posterUrl,
+            backdropUrl: widget.mediaItem.backdropUrl,
+            localVideoPath: downloaded.localVideoPath,
+            localSubtitlePath: downloaded.localSubtitlePath,
+          ),
+        ),
+      );
+      return;
+    }
+
     final addonService = ref.read(addonServiceProvider);
     final preferAnimeSources = _preferAnimeSources();
 
