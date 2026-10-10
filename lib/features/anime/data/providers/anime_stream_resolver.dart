@@ -130,9 +130,12 @@ class AnimeStreamResolver {
     }
 
     if (tmdbId != null && isExtEnabled('tmdb_bridge')) {
+      final isMovie = anime.isMovie;
       // AutoEmbed Player
       addStream(
-        url: 'https://player.autoembed.cc/embed/tv/$tmdbId/$seasonNumber/$episodeNumber',
+        url: isMovie
+            ? 'https://player.autoembed.cc/embed/movie/$tmdbId'
+            : 'https://player.autoembed.cc/embed/tv/$tmdbId/$seasonNumber/$episodeNumber',
         title: 'AutoEmbed ($cleanTitle)',
         provider: 'AutoEmbed',
         quality: '1080p',
@@ -143,8 +146,10 @@ class AnimeStreamResolver {
 
       // VidSrc.to Player
       addStream(
-        url: 'https://vidsrc.to/embed/tv/$tmdbId/$seasonNumber/$episodeNumber',
-        title: 'VidSrc.to TV ($cleanTitle)',
+        url: isMovie
+            ? 'https://vidsrc.to/embed/movie/$tmdbId'
+            : 'https://vidsrc.to/embed/tv/$tmdbId/$seasonNumber/$episodeNumber',
+        title: isMovie ? 'VidSrc.to Movie ($cleanTitle)' : 'VidSrc.to TV ($cleanTitle)',
         provider: 'VidSrc.to',
         quality: '1080p',
         addonId: 'builtin.anime.vidsrcto',
@@ -154,8 +159,10 @@ class AnimeStreamResolver {
 
       // 2Embed Player
       addStream(
-        url: 'https://www.2embed.cc/embed/tv?id=$tmdbId&s=$seasonNumber&e=$episodeNumber',
-        title: '2Embed TV ($cleanTitle)',
+        url: isMovie
+            ? 'https://www.2embed.cc/embed/movie?id=$tmdbId'
+            : 'https://www.2embed.cc/embed/tv?id=$tmdbId&s=$seasonNumber&e=$episodeNumber',
+        title: isMovie ? '2Embed Movie ($cleanTitle)' : '2Embed TV ($cleanTitle)',
         provider: '2Embed',
         quality: '1080p',
         addonId: 'builtin.anime.twoembed',
@@ -165,8 +172,10 @@ class AnimeStreamResolver {
 
       // MultiEmbed Player
       addStream(
-        url: 'https://multiembed.mov/?video_id=$tmdbId&tmdb=1&s=$seasonNumber&e=$episodeNumber',
-        title: 'MultiEmbed TV ($cleanTitle)',
+        url: isMovie
+            ? 'https://multiembed.mov/?video_id=$tmdbId&tmdb=1'
+            : 'https://multiembed.mov/?video_id=$tmdbId&tmdb=1&s=$seasonNumber&e=$episodeNumber',
+        title: isMovie ? 'MultiEmbed Movie ($cleanTitle)' : 'MultiEmbed TV ($cleanTitle)',
         provider: 'MultiEmbed',
         quality: 'HD',
         addonId: 'builtin.anime.multiembed',
@@ -179,9 +188,9 @@ class AnimeStreamResolver {
         try {
           final tmdbStreams = await addonService!.resolve(
             query: cleanTitle,
-            contentType: 'series',
-            season: seasonNumber,
-            episode: episodeNumber,
+            contentType: isMovie ? 'movie' : 'series',
+            season: isMovie ? 1 : seasonNumber,
+            episode: isMovie ? 1 : episodeNumber,
             tmdbId: tmdbId.toString(),
           );
 
@@ -504,13 +513,18 @@ class AnimeStreamResolver {
       queryCandidates.add(anime.romajiTitle!.trim());
     }
 
+    final endpoint = anime.isMovie
+        ? 'https://api.themoviedb.org/3/search/movie'
+        : 'https://api.themoviedb.org/3/search/tv';
+    final yearParam = anime.isMovie ? 'primary_release_year' : 'first_air_date_year';
+
     for (final q in queryCandidates) {
       try {
         final res = await _dio.get(
-          'https://api.themoviedb.org/3/search/tv',
+          endpoint,
           queryParameters: {
             'query': q,
-            if (anime.year != null && anime.year! > 0) 'first_air_date_year': anime.year,
+            if (anime.year != null && anime.year! > 0) yearParam: anime.year,
           },
           options: Options(
             headers: {

@@ -119,6 +119,10 @@ class AnimeDiscoverNotifier extends Notifier<AnimeDiscoverState> {
     final statusParam = filter.status == 'all' ? null : filter.status;
     final genresParam = filter.genre;
 
+    if (filter.format == 'movie' && filter.genre == null) {
+      return _api.getTopMovies(page: page, limit: 25);
+    }
+
     if (filter.sortBy == 'airing') {
       return _api.getTopAnime(
         filter: 'airing',

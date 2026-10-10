@@ -26,6 +26,7 @@ class AnimeHomeState {
   final List<AnimeItem> trending;
   final List<AnimeItem> popular;
   final List<AnimeItem> seasonNow;
+  final List<AnimeItem> movies;
   final List<AnimeItem> topRated;
   final List<AnimeItem> upcoming;
   final List<AnimeItem> recentlyUpdated;
@@ -41,6 +42,7 @@ class AnimeHomeState {
     this.trending = const [],
     this.popular = const [],
     this.seasonNow = const [],
+    this.movies = const [],
     this.topRated = const [],
     this.upcoming = const [],
     this.recentlyUpdated = const [],
@@ -57,6 +59,7 @@ class AnimeHomeState {
     List<AnimeItem>? trending,
     List<AnimeItem>? popular,
     List<AnimeItem>? seasonNow,
+    List<AnimeItem>? movies,
     List<AnimeItem>? topRated,
     List<AnimeItem>? upcoming,
     List<AnimeItem>? recentlyUpdated,
@@ -72,6 +75,7 @@ class AnimeHomeState {
       trending: trending ?? this.trending,
       popular: popular ?? this.popular,
       seasonNow: seasonNow ?? this.seasonNow,
+      movies: movies ?? this.movies,
       topRated: topRated ?? this.topRated,
       upcoming: upcoming ?? this.upcoming,
       recentlyUpdated: recentlyUpdated ?? this.recentlyUpdated,
@@ -105,6 +109,7 @@ class AnimeHomeNotifier extends Notifier<AnimeHomeState> {
         api.getTopAnime(filter: 'upcoming', limit: 14), // Upcoming
         api.getRecentlyUpdated(limit: 14), // Recently Updated
         api.getGenres(), // Genres
+        api.getTopMovies(limit: 14), // Top Movies
       ]);
 
       final trending = futures[0] as List<AnimeItem>;
@@ -114,6 +119,7 @@ class AnimeHomeNotifier extends Notifier<AnimeHomeState> {
       final upcoming = futures[4] as List<AnimeItem>;
       final recentlyUpdated = futures[5] as List<AnimeItem>;
       final genres = futures[6] as List<String>;
+      final movies = futures[7] as List<AnimeItem>;
 
       // Pick top spotlight from trending & seasonNow
       final spotlight = (seasonNow.isNotEmpty ? seasonNow.take(5).toList() : trending.take(5).toList());
@@ -123,6 +129,7 @@ class AnimeHomeNotifier extends Notifier<AnimeHomeState> {
         trending: trending,
         popular: popular,
         seasonNow: seasonNow,
+        movies: movies,
         topRated: topRated,
         upcoming: upcoming,
         recentlyUpdated: recentlyUpdated,
@@ -200,12 +207,8 @@ final animeDetailsProvider = FutureProvider.family<AnimeDetailsState, int>((ref,
   final api = ref.watch(jikanApiServiceProvider);
 
   try {
-    // 1. Fetch anime details first
-    final anime = await api.getAnimeDetails(malId).timeout(
-          const Duration(seconds: 4),
-          onTimeout: () => null,
-        );
-
+    // 1. Fetch anime details first (Fast AniList path + fallback)
+    final anime = await api.getAnimeDetails(malId);
     final titleToUse = anime?.displayTitle ?? anime?.title;
 
     // 2. Fetch episodes, characters, and recommendations concurrently
@@ -213,18 +216,19 @@ final animeDetailsProvider = FutureProvider.family<AnimeDetailsState, int>((ref,
       malId,
       totalCount: anime?.episodes,
       title: titleToUse,
+      defaultThumbnail: anime?.backdropUrl ?? anime?.posterUrl,
     ).timeout(
-      const Duration(seconds: 5),
+      const Duration(seconds: 4),
       onTimeout: () => <AnimeEpisode>[],
     );
 
     final charactersFuture = api.getAnimeCharacters(malId).timeout(
-      const Duration(seconds: 5),
+      const Duration(seconds: 3),
       onTimeout: () => <Map<String, dynamic>>[],
     );
 
     final recsFuture = api.getAnimeRecommendations(malId).timeout(
-      const Duration(seconds: 5),
+      const Duration(seconds: 3),
       onTimeout: () => <AnimeItem>[],
     );
 
@@ -233,13 +237,18 @@ final animeDetailsProvider = FutureProvider.family<AnimeDetailsState, int>((ref,
     final characters = results[1] as List<Map<String, dynamic>>;
     final recommendations = results[2] as List<AnimeItem>;
 
-    if (episodes.isEmpty && anime?.episodes != null && anime!.episodes! > 0) {
+    // Guarantee episodes are NEVER empty if it's not a movie
+    final isMovie = anime?.isMovie == true;
+    if (!isMovie && episodes.isEmpty) {
+      final epCount = (anime?.episodes != null && anime!.episodes! > 0)
+          ? anime.episodes!
+          : 12;
       episodes = List.generate(
-        anime.episodes!,
+        epCount,
         (index) => AnimeEpisode.synthetic(
           malId,
           index + 1,
-          defaultThumbnail: anime.backdropUrl ?? anime.posterUrl,
+          defaultThumbnail: anime?.backdropUrl ?? anime?.posterUrl,
         ),
       );
     }

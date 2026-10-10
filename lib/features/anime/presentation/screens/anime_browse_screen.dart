@@ -12,6 +12,7 @@ class AnimeBrowseScreen extends ConsumerStatefulWidget {
   final String? genre;
   final bool isSeasonNow;
   final bool isRecentlyUpdated;
+  final bool isMovies;
 
   const AnimeBrowseScreen({
     super.key,
@@ -20,6 +21,7 @@ class AnimeBrowseScreen extends ConsumerStatefulWidget {
     this.genre,
     this.isSeasonNow = false,
     this.isRecentlyUpdated = false,
+    this.isMovies = false,
   });
 
   @override
@@ -70,7 +72,9 @@ class _AnimeBrowseScreenState extends ConsumerState<AnimeBrowseScreen> {
     final api = ref.read(jikanApiServiceProvider);
     try {
       List<AnimeItem> result;
-      if (widget.isSeasonNow) {
+      if (widget.isMovies) {
+        result = await api.getTopMovies(page: 1, limit: 24);
+      } else if (widget.isSeasonNow) {
         result = await api.getSeasonNow(page: 1, limit: 24);
       } else if (widget.isRecentlyUpdated) {
         result = await api.getRecentlyUpdated(page: 1, limit: 24);
@@ -108,7 +112,9 @@ class _AnimeBrowseScreenState extends ConsumerState<AnimeBrowseScreen> {
 
     try {
       List<AnimeItem> result;
-      if (widget.isSeasonNow) {
+      if (widget.isMovies) {
+        result = await api.getTopMovies(page: nextPage, limit: 24);
+      } else if (widget.isSeasonNow) {
         result = await api.getSeasonNow(page: nextPage, limit: 24);
       } else if (widget.isRecentlyUpdated) {
         result = await api.getRecentlyUpdated(page: nextPage, limit: 24);

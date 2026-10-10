@@ -20,7 +20,7 @@ class AnimeScreen extends ConsumerStatefulWidget {
 }
 
 class _AnimeScreenState extends ConsumerState<AnimeScreen> {
-  final PageController _spotlightController = PageController();
+  final PageController _spotlightController = PageController(viewportFraction: 0.92);
   int _currentSpotlightIndex = 0;
   Timer? _spotlightTimer;
 
@@ -315,6 +315,27 @@ class _AnimeScreenState extends ConsumerState<AnimeScreen> {
                           const SizedBox(height: 20),
                         ],
 
+                        // Popular Anime Movies
+                        if (state.movies.isNotEmpty) ...[
+                          _buildAnimeSection(
+                            title: text.languageCode == 'tr' ? 'Popüler Anime Filmleri' : 'Popular Anime Movies',
+                            subtitle: text.languageCode == 'tr' ? 'Ödüllü ve Efsane Filmler' : 'Award-Winning & Fan Favorites',
+                            items: state.movies,
+                            onViewAll: () {
+                              Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (_) => AnimeBrowseScreen(
+                                    title: text.languageCode == 'tr' ? 'Anime Filmleri' : 'Anime Movies',
+                                    isMovies: true,
+                                  ),
+                                ),
+                              );
+                            },
+                            text: text,
+                          ),
+                          const SizedBox(height: 20),
+                        ],
+
                         // Popular Anime (All time by popularity)
                         if (state.popular.isNotEmpty) ...[
                           _buildAnimeSection(
@@ -411,7 +432,7 @@ class _AnimeScreenState extends ConsumerState<AnimeScreen> {
   Widget _buildSpotlightCarousel(List<AnimeItem> items, AppText text) {
     final screenWidth = MediaQuery.of(context).size.width;
     final isWide = screenWidth >= 1000;
-    final cardHeight = (screenWidth * (isWide ? 0.32 : 0.54)).clamp(220.0, 440.0);
+    final cardHeight = isWide ? 260.0 : 220.0;
 
     return Column(
       children: [
@@ -440,111 +461,95 @@ class _AnimeScreenState extends ConsumerState<AnimeScreen> {
                   );
                 },
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  padding: const EdgeInsets.symmetric(horizontal: 6),
                   child: ClipRRect(
-                    borderRadius: BorderRadius.circular(20),
-                    child: Stack(
-                      fit: StackFit.expand,
-                      children: [
-                        // Image Handling: True backdrop or blurred atmosphere + centered crisp poster
-                        if (hasRealBackdrop)
-                          Image.network(
-                            anime.backdropUrl!,
-                            fit: BoxFit.cover,
-                            alignment: Alignment.center,
-                            errorBuilder: (context, error, stackTrace) =>
-                                const ColoredBox(color: Color(0xFF1E1E28)),
-                          )
-                        else if (anime.posterUrl != null && anime.posterUrl!.isNotEmpty)
-                          Stack(
-                            fit: StackFit.expand,
-                            children: [
-                              Image.network(
-                                anime.posterUrl!,
-                                fit: BoxFit.cover,
-                                alignment: Alignment.center,
-                                color: Colors.black.withValues(alpha: 0.65),
-                                colorBlendMode: BlendMode.darken,
-                                errorBuilder: (context, error, stackTrace) =>
-                                    const ColoredBox(color: Color(0xFF1E1E28)),
-                              ),
-                              Center(
-                                child: Padding(
-                                  padding: const EdgeInsets.symmetric(vertical: 8),
-                                  child: Image.network(
-                                    anime.posterUrl!,
-                                    fit: BoxFit.contain,
-                                    errorBuilder: (context, error, stackTrace) =>
-                                        const SizedBox.shrink(),
-                                  ),
-                                ),
-                              ),
-                            ],
-                          )
-                        else
-                          const ColoredBox(color: Color(0xFF1E1E28)),
+                    borderRadius: BorderRadius.circular(16),
+                    child: Container(
+                      color: const Color(0xFF1E1E28),
+                      child: Stack(
+                        fit: StackFit.expand,
+                        children: [
+                          // Background Image
+                          if (hasRealBackdrop)
+                            Image.network(
+                              anime.backdropUrl!,
+                              fit: BoxFit.cover,
+                              alignment: Alignment.center,
+                              errorBuilder: (context, error, stackTrace) =>
+                                  const ColoredBox(color: Color(0xFF1E1E28)),
+                            )
+                          else if (anime.posterUrl != null && anime.posterUrl!.isNotEmpty)
+                            Image.network(
+                              anime.posterUrl!,
+                              fit: BoxFit.cover,
+                              alignment: Alignment.center,
+                              color: Colors.black.withValues(alpha: 0.75),
+                              colorBlendMode: BlendMode.darken,
+                              errorBuilder: (context, error, stackTrace) =>
+                                  const ColoredBox(color: Color(0xFF1E1E28)),
+                            )
+                          else
+                            const ColoredBox(color: Color(0xFF1E1E28)),
 
-                        // Gradient
-                        Container(
-                          decoration: BoxDecoration(
-                            gradient: LinearGradient(
-                              begin: Alignment.topCenter,
-                              end: Alignment.bottomCenter,
-                              colors: [
-                                Colors.transparent,
-                                Colors.black.withValues(alpha: 0.3),
-                                Colors.black.withValues(alpha: 0.85),
-                                Colors.black.withValues(alpha: 0.98),
-                              ],
-                              stops: const [0.3, 0.55, 0.8, 1.0],
+                          // Gradient Overlay
+                          Container(
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                begin: Alignment.topCenter,
+                                end: Alignment.bottomCenter,
+                                colors: [
+                                  Colors.black.withValues(alpha: 0.2),
+                                  Colors.black.withValues(alpha: 0.65),
+                                  Colors.black.withValues(alpha: 0.95),
+                                ],
+                                stops: const [0.0, 0.45, 1.0],
+                              ),
                             ),
                           ),
-                        ),
 
-                        // Score & Status Badges at Top
-                        Positioned(
-                          top: 14,
-                          left: 14,
-                          right: 14,
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              if (anime.score != null && anime.score! > 0)
-                                Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                                  decoration: BoxDecoration(
-                                    color: Colors.black.withValues(alpha: 0.75),
-                                    borderRadius: BorderRadius.circular(10),
-                                    border: Border.all(color: Colors.amber.withValues(alpha: 0.6)),
-                                  ),
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      const Icon(Icons.star_rounded, color: Colors.amber, size: 16),
-                                      const SizedBox(width: 4),
-                                      Text(
-                                        anime.score!.toStringAsFixed(1),
-                                        style: const TextStyle(
-                                          color: Colors.white,
-                                          fontWeight: FontWeight.bold,
-                                          fontSize: 12,
+                          // Top Badges
+                          Positioned(
+                            top: 12,
+                            left: 14,
+                            right: 14,
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                if (anime.score != null && anime.score! > 0)
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                    decoration: BoxDecoration(
+                                      color: Colors.black.withValues(alpha: 0.8),
+                                      borderRadius: BorderRadius.circular(8),
+                                      border: Border.all(color: Colors.amber.withValues(alpha: 0.6)),
+                                    ),
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        const Icon(Icons.star_rounded, color: Colors.amber, size: 14),
+                                        const SizedBox(width: 4),
+                                        Text(
+                                          anime.score!.toStringAsFixed(1),
+                                          style: const TextStyle(
+                                            color: Colors.white,
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 11,
+                                          ),
                                         ),
-                                      ),
-                                    ],
-                                  ),
-                                )
-                              else
-                                const SizedBox.shrink(),
-                              if (anime.isAiring)
+                                      ],
+                                    ),
+                                  )
+                                else
+                                  const SizedBox.shrink(),
                                 Container(
                                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                                   decoration: BoxDecoration(
                                     color: Colors.deepPurpleAccent.withValues(alpha: 0.85),
                                     borderRadius: BorderRadius.circular(8),
                                   ),
-                                  child: const Text(
-                                    'AIRING',
-                                    style: TextStyle(
+                                  child: Text(
+                                    anime.isMovie ? 'MOVIE' : (anime.isAiring ? 'AIRING' : 'ANIME'),
+                                    style: const TextStyle(
                                       color: Colors.white,
                                       fontWeight: FontWeight.w900,
                                       fontSize: 10,
@@ -552,68 +557,97 @@ class _AnimeScreenState extends ConsumerState<AnimeScreen> {
                                     ),
                                   ),
                                 ),
-                            ],
+                              ],
+                            ),
                           ),
-                        ),
 
-                        // Content Details at Bottom
-                        Positioned(
-                          bottom: 16,
-                          left: 16,
-                          right: 16,
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text(
-                                anime.displayTitle,
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.bold,
-                                  height: 1.2,
-                                ),
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                anime.subtitleInfo,
-                                style: const TextStyle(
-                                  color: Colors.white70,
-                                  fontSize: 12,
-                                ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                              if (anime.genres.isNotEmpty) ...[
-                                const SizedBox(height: 6),
-                                Wrap(
-                                  spacing: 6,
-                                  runSpacing: 4,
-                                  children: anime.genres.take(3).map((g) {
-                                    return Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                          // Bottom Card Details
+                          Padding(
+                            padding: const EdgeInsets.all(14),
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.end,
+                              children: [
+                                // If only vertical poster, display clean framed thumbnail
+                                if (!hasRealBackdrop && anime.posterUrl != null && anime.posterUrl!.isNotEmpty) ...[
+                                  ClipRRect(
+                                    borderRadius: BorderRadius.circular(8),
+                                    child: Container(
+                                      width: 68,
+                                      height: 98,
                                       decoration: BoxDecoration(
-                                        color: Colors.white.withValues(alpha: 0.12),
-                                        borderRadius: BorderRadius.circular(6),
-                                        border: Border.all(color: Colors.white12),
+                                        boxShadow: [
+                                          BoxShadow(
+                                            color: Colors.black.withValues(alpha: 0.6),
+                                            blurRadius: 8,
+                                            offset: const Offset(0, 3),
+                                          ),
+                                        ],
                                       ),
-                                      child: Text(
-                                        g,
+                                      child: Image.network(
+                                        anime.posterUrl!,
+                                        fit: BoxFit.cover,
+                                        errorBuilder: (_, _, _) => const ColoredBox(color: Colors.black38),
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                ],
+
+                                // Title and Subtitle Info
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    mainAxisAlignment: MainAxisAlignment.end,
+                                    children: [
+                                      Text(
+                                        anime.displayTitle,
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 16,
+                                          fontWeight: FontWeight.bold,
+                                          height: 1.2,
+                                        ),
+                                        maxLines: 2,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        anime.subtitleInfo,
                                         style: const TextStyle(
                                           color: Colors.white70,
                                           fontSize: 11,
                                         ),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
                                       ),
-                                    );
-                                  }).toList(),
+                                      if (anime.genres.isNotEmpty) ...[
+                                        const SizedBox(height: 6),
+                                        Wrap(
+                                          spacing: 6,
+                                          runSpacing: 4,
+                                          children: anime.genres.take(3).map((g) {
+                                            return Container(
+                                              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                                              decoration: BoxDecoration(
+                                                color: Colors.white.withValues(alpha: 0.12),
+                                                borderRadius: BorderRadius.circular(6),
+                                              ),
+                                              child: Text(
+                                                g,
+                                                style: const TextStyle(color: Colors.white70, fontSize: 10),
+                                              ),
+                                            );
+                                          }).toList(),
+                                        ),
+                                      ],
+                                    ],
+                                  ),
                                 ),
                               ],
-                            ],
+                            ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
                   ),
                 ),

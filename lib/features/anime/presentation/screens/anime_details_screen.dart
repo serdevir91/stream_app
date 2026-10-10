@@ -526,6 +526,9 @@ class _AnimeDetailsScreenState extends ConsumerState<AnimeDetailsScreen> {
     );
 
     final backdrop = currentAnime.backdropUrl ?? currentAnime.posterUrl;
+    final hasWideBackdrop = currentAnime.backdropUrl != null &&
+        currentAnime.backdropUrl!.isNotEmpty &&
+        currentAnime.backdropUrl != currentAnime.posterUrl;
 
     return Scaffold(
       backgroundColor: const Color(0xFF0F0F13),
@@ -556,27 +559,62 @@ class _AnimeDetailsScreenState extends ConsumerState<AnimeDetailsScreen> {
               background: Stack(
                 fit: StackFit.expand,
                 children: [
+                  // Base background
                   if (backdrop != null && backdrop.isNotEmpty)
                     Image.network(
                       backdrop,
                       fit: BoxFit.cover,
                       alignment: Alignment.center,
+                      color: hasWideBackdrop ? null : Colors.black.withValues(alpha: 0.72),
+                      colorBlendMode: hasWideBackdrop ? null : BlendMode.darken,
                       errorBuilder: (_, _, _) => const ColoredBox(color: Color(0xFF1E1E28)),
                     )
                   else
                     const ColoredBox(color: Color(0xFF1E1E28)),
+
+                  // If no wide backdrop, center the crisp poster
+                  if (!hasWideBackdrop && currentAnime.posterUrl != null && currentAnime.posterUrl!.isNotEmpty)
+                    SafeArea(
+                      bottom: false,
+                      child: Center(
+                        child: Padding(
+                          padding: const EdgeInsets.only(top: 24, bottom: 20),
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(14),
+                            child: Container(
+                              decoration: BoxDecoration(
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withValues(alpha: 0.8),
+                                    blurRadius: 20,
+                                    spreadRadius: 2,
+                                    offset: const Offset(0, 6),
+                                  ),
+                                ],
+                              ),
+                              child: Image.network(
+                                currentAnime.posterUrl!,
+                                fit: BoxFit.contain,
+                                errorBuilder: (_, _, _) => const SizedBox.shrink(),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+
                   DecoratedBox(
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
                         begin: Alignment.topCenter,
                         end: Alignment.bottomCenter,
                         colors: [
-                          Colors.black.withValues(alpha: 0.6),
+                          Colors.black.withValues(alpha: 0.65),
                           Colors.transparent,
-                          Colors.black.withValues(alpha: 0.5),
+                          Colors.black.withValues(alpha: 0.45),
                           const Color(0xFF0F0F13),
                         ],
-                        stops: const [0.0, 0.3, 0.7, 1.0],
+                        stops: const [0.0, 0.25, 0.75, 1.0],
                       ),
                     ),
                   ),

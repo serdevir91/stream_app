@@ -179,6 +179,71 @@ class JikanAnimeApiService {
     return fallbackList;
   }
 
+  /// Top Anime Movies
+  Future<List<AnimeItem>> getTopMovies({int page = 1, int limit = 20}) async {
+    final cacheKey = 'top_movies_p${page}_l$limit';
+    final cached = _getFromCache<List<AnimeItem>>(cacheKey);
+    if (cached != null) return cached;
+
+    // Fast-path: AniList Movies (Instant, high-res banners, real movie ratings)
+    final gql = '''
+      query {
+        Page(page: $page, perPage: $limit) {
+          media(type: ANIME, format: MOVIE, sort: [POPULARITY_DESC]) {
+            id
+            idMal
+            title { english romaji native }
+            coverImage { extraLarge large medium }
+            bannerImage
+            description
+            format
+            episodes
+            status
+            averageScore
+            genres
+            seasonYear
+            season
+            duration
+            synonyms
+          }
+        }
+      }
+    ''';
+
+    final aniListMovies = await _postAniListQuery(gql);
+    if (aniListMovies.isNotEmpty) {
+      _putInCache(cacheKey, aniListMovies);
+      return aniListMovies;
+    }
+
+    // Fallback: Jikan anime with type=movie
+    try {
+      await _throttle();
+      final res = await _dio.get(
+        '$jikanBaseUrl/anime',
+        queryParameters: {
+          'type': 'movie',
+          'order_by': 'popularity',
+          'sort': 'asc',
+          'page': page,
+          'limit': limit,
+        },
+      );
+      if (res.statusCode == 200 && res.data is Map && res.data['data'] is List) {
+        final list = (res.data['data'] as List)
+            .whereType<Map<String, dynamic>>()
+            .map((item) => AnimeItem.fromJikan(item))
+            .toList();
+        if (list.isNotEmpty) {
+          _putInCache(cacheKey, list);
+          return list;
+        }
+      }
+    } catch (_) {}
+
+    return [];
+  }
+
   // -------------------------------------------------------------
   // Anime Details & Episodes
   // -------------------------------------------------------------
@@ -188,23 +253,33 @@ class JikanAnimeApiService {
     final cached = _getFromCache<AnimeItem>(cacheKey);
     if (cached != null) return cached;
 
+    // 1. Fast-path: AniList GraphQL (<180ms, full title, horizontal banner, format, episodes)
+    final aniItem = await _fetchAniListDetails(malId);
+    if (aniItem != null) {
+      _putInCache(cacheKey, aniItem);
+      return aniItem;
+    }
+
+    // 2. Fallback: Jikan
     try {
       await _throttle();
-      final res = await _dio.get('$jikanBaseUrl/anime/$malId/full');
+      final res = await _dio.get(
+        '$jikanBaseUrl/anime/$malId/full',
+        options: Options(
+          receiveTimeout: const Duration(seconds: 4),
+          sendTimeout: const Duration(seconds: 4),
+        ),
+      );
       if (res.statusCode == 200 && res.data is Map && res.data['data'] is Map) {
         final item = AnimeItem.fromJikan(res.data['data'] as Map<String, dynamic>);
         _putInCache(cacheKey, item);
         return item;
       }
     } catch (e) {
-      debugPrint('[Jikan] getAnimeDetails($malId) fallback to AniList: $e');
+      debugPrint('[Jikan] getAnimeDetails($malId) error: $e');
     }
 
-    final fallbackItem = await _fetchAniListDetails(malId);
-    if (fallbackItem != null) {
-      _putInCache(cacheKey, fallbackItem);
-    }
-    return fallbackItem;
+    return null;
   }
 
   Future<List<AnimeEpisode>> getAnimeEpisodes(
@@ -212,6 +287,7 @@ class JikanAnimeApiService {
     int page = 1,
     int? totalCount,
     String? title,
+    String? defaultThumbnail,
   }) async {
     final cacheKey = 'episodes_${malId}_p$page';
     final cached = _getFromCache<List<AnimeEpisode>>(cacheKey);
@@ -219,22 +295,23 @@ class JikanAnimeApiService {
 
     // 1. Fast Kitsu lookup if title is given (returns real thumbnails & synopses)
     if (title != null && title.trim().isNotEmpty) {
-      final kitsuList = await _fetchKitsuEpisodes(malId, title.trim());
-      if (kitsuList.isNotEmpty) {
-        _putInCache(cacheKey, kitsuList);
-        return kitsuList;
-      }
+      try {
+        final kitsuList = await _fetchKitsuEpisodes(malId, title.trim());
+        if (kitsuList.isNotEmpty) {
+          _putInCache(cacheKey, kitsuList);
+          return kitsuList;
+        }
+      } catch (_) {}
     }
 
-    // 2. Jikan fallback
+    // 2. Jikan fallback with short timeout
     try {
-      await _throttle();
       final res = await _dio.get(
         '$jikanBaseUrl/anime/$malId/episodes',
         queryParameters: {'page': page},
         options: Options(
-          receiveTimeout: const Duration(seconds: 4),
-          sendTimeout: const Duration(seconds: 4),
+          receiveTimeout: const Duration(seconds: 3),
+          sendTimeout: const Duration(seconds: 3),
         ),
       );
 
@@ -252,11 +329,15 @@ class JikanAnimeApiService {
       debugPrint('[Jikan] getAnimeEpisodes($malId) fallback: $e');
     }
 
-    // 3. Fallback to synthetic
-    final count = totalCount ?? 12;
+    // 3. Fallback to synthetic with known count (or 12)
+    final count = (totalCount != null && totalCount > 0) ? totalCount : 12;
     final syntheticList = List.generate(
       count,
-      (index) => AnimeEpisode.synthetic(malId, index + 1),
+      (index) => AnimeEpisode.synthetic(
+        malId,
+        index + 1,
+        defaultThumbnail: defaultThumbnail,
+      ),
     );
     _putInCache(cacheKey, syntheticList);
     return syntheticList;
@@ -315,6 +396,7 @@ class JikanAnimeApiService {
     final fallbackList = await _fetchAniListSearch(
       query: query,
       genre: genres,
+      format: type,
       page: page,
       perPage: limit,
     );
@@ -574,17 +656,21 @@ class JikanAnimeApiService {
   Future<List<AnimeItem>> _fetchAniListSearch({
     required String query,
     String? genre,
+    String? format,
     int page = 1,
     int perPage = 20,
   }) async {
     final escapedQuery = query.replaceAll('"', '\\"');
     final genreFilter = genre != null && genre.isNotEmpty ? 'genre: "$genre", ' : '';
     final searchFilter = query.isNotEmpty ? 'search: "$escapedQuery", ' : '';
+    final formatFilter = (format != null && format.isNotEmpty)
+        ? 'format: ${format.toUpperCase()}, '
+        : '';
 
     final gql = '''
       query {
         Page(page: $page, perPage: $perPage) {
-          media(type: ANIME, $searchFilter$genreFilter sort: [SEARCH_MATCH, POPULARITY_DESC]) {
+          media(type: ANIME, $searchFilter$genreFilter$formatFilter sort: [SEARCH_MATCH, POPULARITY_DESC]) {
             id
             idMal
             title { english romaji native }
