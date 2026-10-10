@@ -817,3 +817,61 @@ class VixSrcAddon extends BaseAddon {
   }
 }
 
+class AnimeEmbedAddon extends BaseAddon {
+  @override
+  final AddonManifest manifest = AddonManifest(
+    id: 'builtin.anime_embed',
+    name: 'Anime (Multi-Server)',
+    description: 'Anime streaming provider supporting VidSrc Anime, Smashy Anime, 2Embed and MultiEmbed.',
+    version: '1.0.0',
+    types: ['movie', 'series', 'anime'],
+    isBuiltin: true,
+  );
+
+  @override
+  Future<List<SearchResult>> search(String query, String contentType) async => [];
+
+  @override
+  Future<List<StreamResult>> getStreams(
+    String contentId,
+    String contentType,
+    int season,
+    int episode,
+  ) async {
+    final cleanId = contentId.replaceFirst('anime_', '');
+    final malId = int.tryParse(cleanId);
+    if (malId == null || malId <= 0) return [];
+
+    return [
+      StreamResult(
+        url: 'https://vidsrc.cc/v2/embed/anime/$malId/$episode',
+        title: 'VidSrc Anime (Multi-Server)',
+        quality: '1080p',
+        provider: 'VidSrc Anime',
+        isDirectLink: false,
+      ),
+      StreamResult(
+        url: 'https://player.smashystream.com/anime?id=$malId&ep=$episode',
+        title: 'Smashy Anime Player',
+        quality: '1080p',
+        provider: 'SmashyStream',
+        isDirectLink: false,
+      ),
+      StreamResult(
+        url: 'https://www.2embed.cc/embed/anime?id=$malId&ep=$episode',
+        title: '2Embed Anime',
+        quality: 'HD',
+        provider: '2Embed Anime',
+        isDirectLink: false,
+      ),
+      StreamResult(
+        url: 'https://multiembed.mov/?video_id=$malId&anime=1&s=$season&e=$episode',
+        title: 'MultiEmbed Anime',
+        quality: 'HD',
+        provider: 'MultiEmbed',
+        isDirectLink: false,
+      ),
+    ];
+  }
+}
+

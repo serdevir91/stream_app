@@ -1001,7 +1001,7 @@ class SearchRepository {
         'primary_release_date.gte': '$fromYear-01-01',
         'primary_release_date.lte': '$toYear-12-31',
         'vote_average.gte': minVote,
-        'vote_count.gte': 50,
+        'vote_count.gte': 150,
         'sort_by': 'vote_average.desc',
         'include_adult': false,
         'page': 1,
@@ -1208,30 +1208,38 @@ class SearchRepository {
       return vidsrc;
     }
 
-    final queryParams = <String, dynamic>{
+    final baseQueryParams = <String, dynamic>{
       'language': _tmdbLanguage,
       'page': page,
+      'include_adult': false,
     };
     if (genreId != null && genreId > 0) {
-      queryParams['with_genres'] = genreId;
+      baseQueryParams['with_genres'] = genreId;
     }
     if (sortBy == 'rating') {
-      queryParams['sort_by'] = 'vote_average.desc';
-      queryParams['vote_count.gte'] = 50;
+      baseQueryParams['sort_by'] = 'vote_average.desc';
     } else {
-      queryParams['sort_by'] = 'popularity.desc';
+      baseQueryParams['sort_by'] = 'popularity.desc';
     }
     if (minRating != null && minRating > 0) {
-      queryParams['vote_average.gte'] = minRating;
+      baseQueryParams['vote_average.gte'] = minRating;
     }
 
     final results = <MediaItem>[];
 
     if (mediaType == 'all' || mediaType == 'movie') {
       try {
+        final movieQueryParams = Map<String, dynamic>.from(baseQueryParams);
+        // Guard against obscure movies with only a few votes that have fake high ratings
+        if (sortBy == 'rating' || (minRating != null && minRating > 0)) {
+          movieQueryParams['vote_count.gte'] = 300;
+        } else {
+          movieQueryParams['vote_count.gte'] = 50;
+        }
+
         final res = await _dio.get(
           'https://api.themoviedb.org/3/discover/movie',
-          queryParameters: queryParams,
+          queryParameters: movieQueryParams,
           options: _tmdbOptions,
         );
         if (res.statusCode == 200 && res.data is Map) {
@@ -1247,7 +1255,7 @@ class SearchRepository {
 
     if (mediaType == 'all' || mediaType == 'tv') {
       try {
-        final tvQueryParams = Map<String, dynamic>.from(queryParams);
+        final tvQueryParams = Map<String, dynamic>.from(baseQueryParams);
         if (genreId != null) {
           int tvGenreId = genreId;
           if (genreId == 28) {
@@ -1257,6 +1265,13 @@ class SearchRepository {
           }
           tvQueryParams['with_genres'] = tvGenreId;
         }
+        // Guard against obscure TV shows with very few votes
+        if (sortBy == 'rating' || (minRating != null && minRating > 0)) {
+          tvQueryParams['vote_count.gte'] = 150;
+        } else {
+          tvQueryParams['vote_count.gte'] = 30;
+        }
+
         final res = await _dio.get(
           'https://api.themoviedb.org/3/discover/tv',
           queryParameters: tvQueryParams,

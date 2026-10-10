@@ -1,0 +1,163 @@
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:hive/hive.dart';
+import '../../domain/models/anime_extension.dart';
+
+const String _kAnimeExtensionsBox = 'anime_extensions_box';
+
+final List<AnimeExtension> defaultAnimeExtensions = [
+  const AnimeExtension(
+    id: 'vidsrc_anime',
+    name: 'VidSrc Anime',
+    description: 'Multi-server anime embed player supporting both Sub and Dub video sources.',
+    version: '2.1.0',
+    icon: '🎬',
+    isEnabled: true,
+    priority: 1,
+  ),
+  const AnimeExtension(
+    id: 'twoembed_anime',
+    name: '2Embed Anime',
+    description: 'Fast and responsive HTML5 anime embed player with adblock compatibility.',
+    version: '1.4.0',
+    icon: '⚡',
+    isEnabled: true,
+    priority: 2,
+  ),
+  const AnimeExtension(
+    id: 'aniwave_anime',
+    name: 'AniWave Embed',
+    description: 'High definition anime mirror stream with multi-audio and subtitle support.',
+    version: '1.3.0',
+    icon: '🌊',
+    isEnabled: true,
+    priority: 3,
+  ),
+  const AnimeExtension(
+    id: 'smashy_anime',
+    name: 'SmashyStream Anime',
+    description: 'High-speed anime CDN server with instant buffering.',
+    version: '1.2.0',
+    icon: '🚀',
+    isEnabled: true,
+    priority: 4,
+  ),
+  const AnimeExtension(
+    id: 'multiembed_anime',
+    name: 'MultiEmbed Anime',
+    description: 'Secondary anime mirror server with high uptime.',
+    version: '1.1.0',
+    icon: '🌐',
+    isEnabled: true,
+    priority: 5,
+  ),
+  const AnimeExtension(
+    id: 'gogoanime_direct',
+    name: 'GogoAnime Scraper',
+    description: 'Direct anime episode resolver scraping popular mirrors.',
+    version: '1.0.0',
+    icon: '⛩️',
+    isDirectStream: true,
+    isEnabled: true,
+    priority: 6,
+  ),
+  const AnimeExtension(
+    id: 'tmdb_bridge',
+    name: 'TMDB TV Bridge',
+    description: 'Cross-resolves anime titles listed on TMDB across 13+ movie/series streaming servers.',
+    version: '2.0.0',
+    icon: '🌉',
+    isEnabled: true,
+    priority: 7,
+  ),
+];
+
+class AnimeExtensionsNotifier extends Notifier<List<AnimeExtension>> {
+  Box? _box;
+
+  @override
+  List<AnimeExtension> build() {
+    _initBox();
+    return defaultAnimeExtensions;
+  }
+
+  Future<void> _initBox() async {
+    try {
+      _box = await Hive.openBox(_kAnimeExtensionsBox);
+      _loadState();
+    } catch (_) {
+      // Keep default
+    }
+  }
+
+  void _loadState() {
+    if (_box == null) return;
+    final saved = <AnimeExtension>[];
+    for (final def in defaultAnimeExtensions) {
+      final isEnabled = _box!.get('enabled_${def.id}', defaultValue: def.isEnabled) as bool;
+      final priority = _box!.get('priority_${def.id}', defaultValue: def.priority) as int;
+      saved.add(def.copyWith(isEnabled: isEnabled, priority: priority));
+    }
+    saved.sort((a, b) => a.priority.compareTo(b.priority));
+    state = saved;
+  }
+
+  Future<void> toggleExtension(String id, bool enabled) async {
+    state = state.map((ext) {
+      if (ext.id == id) {
+        return ext.copyWith(isEnabled: enabled);
+      }
+      return ext;
+    }).toList();
+
+    if (_box != null) {
+      await _box!.put('enabled_$id', enabled);
+    }
+  }
+
+  Future<void> reorderExtensions(int oldIndex, int newIndex) async {
+    final list = List<AnimeExtension>.from(state);
+    if (newIndex > oldIndex) {
+      newIndex -= 1;
+    }
+    final item = list.removeAt(oldIndex);
+    list.insert(newIndex, item);
+
+    final updated = <AnimeExtension>[];
+    for (int i = 0; i < list.length; i++) {
+      final updatedExt = list[i].copyWith(priority: i + 1);
+      updated.add(updatedExt);
+      if (_box != null) {
+        await _box!.put('priority_${updatedExt.id}', i + 1);
+      }
+    }
+    state = updated;
+  }
+
+  Future<void> reorderExtensionsDirect(int oldIndex, int newIndex) async {
+    final list = List<AnimeExtension>.from(state);
+    final item = list.removeAt(oldIndex);
+    list.insert(newIndex, item);
+
+    final updated = <AnimeExtension>[];
+    for (int i = 0; i < list.length; i++) {
+      final updatedExt = list[i].copyWith(priority: i + 1);
+      updated.add(updatedExt);
+      if (_box != null) {
+        await _box!.put('priority_${updatedExt.id}', i + 1);
+      }
+    }
+    state = updated;
+  }
+
+  Future<void> resetToDefaults() async {
+    state = defaultAnimeExtensions;
+    if (_box != null) {
+      await _box!.clear();
+    }
+  }
+}
+
+final animeExtensionsProvider =
+    NotifierProvider<AnimeExtensionsNotifier, List<AnimeExtension>>(
+  AnimeExtensionsNotifier.new,
+);

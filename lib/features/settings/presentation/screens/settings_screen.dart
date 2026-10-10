@@ -1,23 +1,22 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:file_picker/file_picker.dart';
-import '../../../../core/settings/tmdb_instructions_dialog.dart';
-
-import '../../../../core/updater/app_updater_service.dart';
-import '../../../../core/tutorial/onboarding_tutorial_dialog.dart';
 
 import '../../../../core/backup/local_backup_service.dart';
 import '../../../../core/i18n/app_text.dart';
 import '../../../../core/settings/app_settings.dart';
 import '../../../../core/settings/app_settings_provider.dart';
+import '../../../../core/settings/tmdb_instructions_dialog.dart';
 import '../../../../core/sync/device_identity.dart';
 import '../../../../core/sync/sync_provider.dart';
+import '../../../../core/tutorial/onboarding_tutorial_dialog.dart';
+import '../../../../core/updater/app_updater_service.dart';
 import '../../../library/presentation/providers/library_provider.dart';
 import '../../../library/presentation/providers/watched_provider.dart';
 import '../../../addons/presentation/screens/addon_manager_screen.dart';
+import '../../../anime/data/providers/anime_extensions_provider.dart';
+import '../../../anime/presentation/screens/anime_extensions_screen.dart';
 import '../../../sources/presentation/providers/sources_provider.dart';
-import '../../../sources/presentation/screens/sources_screen.dart';
-import 'home_categories_manager_screen.dart';
 
 class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
@@ -48,7 +47,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
   bool _initialized = false;
   bool _isSaving = false;
-  bool _isApiFieldsVisible = false;
 
   String _syncServerUrl = '';
   bool _isSyncRegistering = false;
@@ -110,15 +108,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     _tmdbTokenController = TextEditingController(text: settings.tmdbAccessToken);
     _wyzieApiKeyController = TextEditingController(text: settings.wyzieApiKey);
     _backendUrlController = TextEditingController(text: settings.backendUrl);
-    _isApiFieldsVisible = settings.tmdbAccessToken.trim().isEmpty;
     _initialized = true;
-  }
-
-  String _maskToken(String token) {
-    final trimmed = token.trim();
-    if (trimmed.isEmpty) return 'Not set';
-    if (trimmed.length <= 8) return 'Configured';
-    return '${trimmed.substring(0, 4)}****${trimmed.substring(trimmed.length - 4)}';
   }
 
   Future<void> _saveSettings() async {
@@ -127,17 +117,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
     final current = ref.read(appSettingsProvider);
     final notifier = ref.read(appSettingsProvider.notifier);
-    final activeAddonIds = ref
-        .read(addonsProvider)
-        .where((addon) => addon.enabled)
-        .map((addon) => addon.id)
-        .toSet();
-    final cleanedPreferredSourceId =
-        _preferredSourceId.isNotEmpty &&
-            activeAddonIds.isNotEmpty &&
-            !activeAddonIds.contains(_preferredSourceId)
-        ? ''
-        : _preferredSourceId;
 
     final next = current.copyWith(
       appLanguage: _appLanguage,
@@ -147,7 +126,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       wyzieApiKey: _wyzieApiKeyController.text.trim(),
       backendUrl: _backendUrlController.text.trim(),
       autoSelectSource: _autoSelectSource,
-      preferredSourceId: cleanedPreferredSourceId,
+      preferredSourceId: _preferredSourceId,
       preferredMirror: _preferredMirror,
       videoPlayer: _videoPlayer,
       autoSelectSubtitle: _autoSelectSubtitle,
@@ -172,7 +151,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         break;
       case TmdbSyncStatus.skipped:
         message = text.t('settings_saved');
-        backgroundColor = Colors.blueGrey;
+        backgroundColor = Colors.deepPurpleAccent;
         break;
       case TmdbSyncStatus.failed:
         message = text.t('settings_saved_backend_fail');
@@ -185,7 +164,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         content: Text(message, style: const TextStyle(fontSize: 13)),
         backgroundColor: backgroundColor,
         behavior: SnackBarBehavior.floating,
-        margin: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+        margin: const EdgeInsets.all(16),
         duration: const Duration(seconds: 2),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
       ),
@@ -193,7 +172,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
     setState(() {
       _isSaving = false;
-      _isApiFieldsVisible = false;
     });
   }
 
@@ -244,14 +222,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       final error = syncService.lastRegisterError;
       final failedMessage = error == null || error.isEmpty
           ? text.t('sync_register_failed')
-          : text
-                .t('sync_register_failed_with')
-                .replaceAll('{param}', text.t(error));
+          : text.t('sync_register_failed_with').replaceAll('{param}', text.t(error));
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(
-            success ? text.t('device_registered_success') : failedMessage,
-          ),
+          content: Text(success ? text.t('device_registered_success') : failedMessage),
           backgroundColor: success ? Colors.green : Colors.red,
         ),
       );
@@ -267,7 +241,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     try {
       final now = DateTime.now();
       final fileName =
-          'stream_app_backup_${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}_${now.hour.toString().padLeft(2, '0')}${now.minute.toString().padLeft(2, '0')}.json';
+          'stream_app_backup_${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}.json';
       final outputPath = await FilePicker.platform.saveFile(
         dialogTitle: text.t('saving_backup_title'),
         fileName: fileName,
@@ -316,7 +290,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       ref.invalidate(libraryProvider);
       ref.invalidate(watchedProvider);
       ref.invalidate(sourcesProvider);
-      ref.invalidate(addonsProvider);
       ref.invalidate(syncRegisteredProvider);
       ref.invalidate(syncStatusProvider);
 
@@ -326,19 +299,16 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            '${text.t('backup_restored')}. ${text.t('sources')}: ${result.sourceCount}, ${text.t('watch_history')}: ${result.watchHistoryCount}, ${text.t('library_title')}: ${result.libraryCount}, ${text.t('watched')}: ${result.watchedCount}',
+            '${text.t('backup_restored')}. ${text.t('library_title')}: ${result.libraryCount}, ${text.t('watched')}: ${result.watchedCount}',
           ),
           backgroundColor: Colors.green,
         ),
       );
     } catch (e) {
       if (!mounted) return;
-      final errorMessage = e is LocalBackupException
-          ? text.t(e.message)
-          : e.toString();
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('${text.t('backup_restore_failed')}: $errorMessage'),
+          content: Text('${text.t('backup_restore_failed')}: $e'),
           backgroundColor: Colors.red,
         ),
       );
@@ -378,29 +348,27 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       setState(() {
         _updateInfo = info;
       });
-      if (mounted) {
-        if (info == null) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(text.t('app_up_to_date')),
-              backgroundColor: Colors.green,
-            ),
-          );
-        } else {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                '${text.t('new_update_found')}: ${info.latestVersion}',
-              ),
-              backgroundColor: Colors.blueAccent,
-            ),
-          );
-        }
+      if (!mounted) return;
+
+      if (info == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(text.t('app_up_to_date')),
+            backgroundColor: Colors.green,
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('${text.t('new_update_found')}: ${info.latestVersion}'),
+            backgroundColor: Colors.deepPurpleAccent,
+          ),
+        );
       }
     } catch (e) {
       setState(() => _updateError = e.toString());
     } finally {
-      setState(() => _isCheckingForUpdates = false);
+      if (mounted) setState(() => _isCheckingForUpdates = false);
     }
   }
 
@@ -433,1311 +401,648 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     );
   }
 
-  Widget _buildSyncSection(BuildContext context, AppText text) {
-    final syncStatus = ref.watch(syncStatusProvider);
+  @override
+  Widget build(BuildContext context) {
+    final settings = ref.watch(appSettingsProvider);
+    final text = ref.watch(appTextProvider);
+    final animeExtensions = ref.watch(animeExtensionsProvider);
+    _ensureInitialized(settings);
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            const Icon(Icons.sync, size: 20),
-            const SizedBox(width: 8),
-            Text(
-              text.t('sync_title'),
-              style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 16),
+    return Scaffold(
+      backgroundColor: const Color(0xFF0F0F13),
+      appBar: AppBar(
+        backgroundColor: const Color(0xFF0F0F13),
+        elevation: 0,
+        title: Text(
+          text.t('settings'),
+          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 20),
+        ),
+        actions: [
+          Padding(
+            padding: const EdgeInsets.only(right: 8.0),
+            child: FilledButton.tonalIcon(
+              style: FilledButton.styleFrom(
+                backgroundColor: Colors.deepPurpleAccent.withValues(alpha: 0.2),
+                foregroundColor: Colors.deepPurpleAccent,
+              ),
+              onPressed: _isSaving ? null : _saveSettings,
+              icon: _isSaving
+                  ? const SizedBox(
+                      width: 14,
+                      height: 14,
+                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.deepPurpleAccent),
+                    )
+                  : const Icon(Icons.check_rounded, size: 18),
+              label: Text(text.t('save')),
             ),
-          ],
-        ),
-        const SizedBox(height: 8),
-        Text(
-          text.t('sync_desc'),
-          style: const TextStyle(color: Colors.grey, fontSize: 13),
-        ),
-        const SizedBox(height: 12),
-        TextField(
-          decoration: InputDecoration(
-            labelText: text.t('server_address'),
-            hintText: text.t('server_address_hint'),
-            border: const OutlineInputBorder(),
-            prefixIcon: const Icon(Icons.dns),
           ),
-          controller: _syncServerUrlController,
-          onChanged: (v) => _syncServerUrl = v.trim(),
+        ],
+      ),
+      body: ListView(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 36),
+        children: [
+          // -----------------------------------------------------------
+          // Section 1: Appearance & Localization
+          // -----------------------------------------------------------
+          _buildSectionHeader(
+            icon: Icons.palette_rounded,
+            title: text.languageCode == 'tr' ? 'Görünüm & Dil' : 'Appearance & Language',
+            color: Colors.deepPurpleAccent,
+          ),
+          _buildCard(
+            children: [
+              // Theme Mode (Light, Dark, AMOLED Pure Black per workspace rules)
+              ListTile(
+                leading: const Icon(Icons.brightness_medium_rounded, color: Colors.white70),
+                title: Text(text.t('theme_mode'), style: const TextStyle(color: Colors.white, fontSize: 14)),
+                subtitle: Text(
+                  _themeMode == 'amoled'
+                      ? 'AMOLED (Pure Black)'
+                      : (_themeMode == 'light' ? text.t('light_theme') : text.t('dark_theme')),
+                  style: const TextStyle(color: Colors.white38, fontSize: 12),
+                ),
+                trailing: DropdownButton<String>(
+                  value: _themeMode,
+                  dropdownColor: const Color(0xFF1E1E28),
+                  underline: const SizedBox.shrink(),
+                  items: [
+                    DropdownMenuItem(value: 'dark', child: Text(text.t('dark_theme'))),
+                    DropdownMenuItem(value: 'light', child: Text(text.t('light_theme'))),
+                    DropdownMenuItem(value: 'amoled', child: const Text('AMOLED Black')),
+                  ],
+                  onChanged: (val) {
+                    if (val != null) {
+                      setState(() => _themeMode = val);
+                      _saveSettings();
+                    }
+                  },
+                ),
+              ),
+              const Divider(color: Colors.white10, height: 1),
+
+              // App Language
+              ListTile(
+                leading: const Icon(Icons.language_rounded, color: Colors.white70),
+                title: Text(text.t('app_language'), style: const TextStyle(color: Colors.white, fontSize: 14)),
+                subtitle: Text(
+                  _appLanguage == 'tr' ? 'Türkçe' : (_appLanguage == 'ar' ? 'العربية' : (_appLanguage == 'fa' ? 'فارسی' : 'English')),
+                  style: const TextStyle(color: Colors.white38, fontSize: 12),
+                ),
+                trailing: DropdownButton<String>(
+                  value: _appLanguage,
+                  dropdownColor: const Color(0xFF1E1E28),
+                  underline: const SizedBox.shrink(),
+                  items: const [
+                    DropdownMenuItem(value: 'en', child: Text('English')),
+                    DropdownMenuItem(value: 'tr', child: Text('Türkçe')),
+                    DropdownMenuItem(value: 'ar', child: Text('العربية')),
+                    DropdownMenuItem(value: 'fa', child: Text('فارسی')),
+                  ],
+                  onChanged: (val) {
+                    if (val != null) {
+                      setState(() => _appLanguage = val);
+                      _saveSettings();
+                    }
+                  },
+                ),
+              ),
+              const Divider(color: Colors.white10, height: 1),
+
+              // Subtitle Language
+              ListTile(
+                leading: const Icon(Icons.subtitles_rounded, color: Colors.white70),
+                title: Text(text.t('subtitle_language'), style: const TextStyle(color: Colors.white, fontSize: 14)),
+                trailing: DropdownButton<String>(
+                  value: _subtitleLanguage,
+                  dropdownColor: const Color(0xFF1E1E28),
+                  underline: const SizedBox.shrink(),
+                  items: const [
+                    DropdownMenuItem(value: 'en', child: Text('English')),
+                    DropdownMenuItem(value: 'tr', child: Text('Türkçe')),
+                    DropdownMenuItem(value: 'ar', child: Text('العربية')),
+                    DropdownMenuItem(value: 'de', child: Text('Deutsch')),
+                    DropdownMenuItem(value: 'fr', child: Text('Français')),
+                    DropdownMenuItem(value: 'es', child: Text('Español')),
+                  ],
+                  onChanged: (val) {
+                    if (val != null) {
+                      setState(() => _subtitleLanguage = val);
+                      _saveSettings();
+                    }
+                  },
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 20),
+
+          // -----------------------------------------------------------
+          // Section 2: Anime Sources & Extensions (Completely Separate!)
+          // -----------------------------------------------------------
+          _buildSectionHeader(
+            icon: Icons.movie_filter_rounded,
+            title: text.languageCode == 'tr' ? 'Anime Kaynakları & Eklentileri' : 'Anime Extensions & Sources',
+            color: Colors.amberAccent,
+          ),
+          _buildCard(
+            children: [
+              ListTile(
+                leading: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.amber.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Icon(Icons.extension_rounded, color: Colors.amberAccent, size: 22),
+                ),
+                title: Text(
+                  text.languageCode == 'tr' ? 'Anime Eklentileri Yöneticisi' : 'Anime Extensions Manager',
+                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
+                ),
+                subtitle: Text(
+                  '${animeExtensions.where((e) => e.isEnabled).length}/${animeExtensions.length} ${text.languageCode == 'tr' ? 'kaynak aktif (VidSrc, 2Embed, AniWave...)' : 'sources active'}',
+                  style: const TextStyle(color: Colors.white38, fontSize: 12),
+                ),
+                trailing: const Icon(Icons.arrow_forward_ios_rounded, color: Colors.white38, size: 14),
+                onTap: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => const AnimeExtensionsScreen()),
+                  );
+                },
+              ),
+            ],
+          ),
+          const SizedBox(height: 20),
+
+          // -----------------------------------------------------------
+          // Section 3: Movies & TV Shows Sources
+          // -----------------------------------------------------------
+          _buildSectionHeader(
+            icon: Icons.movie_rounded,
+            title: text.languageCode == 'tr' ? 'Film & Dizi Kaynakları' : 'Movie & Series Sources',
+            color: Colors.cyanAccent,
+          ),
+          _buildCard(
+            children: [
+              // TMDB Token Status
+              ListTile(
+                leading: const Icon(Icons.vpn_key_rounded, color: Colors.white70),
+                title: const Text('TMDB API Access Token', style: TextStyle(color: Colors.white, fontSize: 14)),
+                subtitle: Text(
+                  _tmdbTokenController.text.trim().isNotEmpty
+                      ? '● Connected'
+                      : (text.languageCode == 'tr' ? 'Ayarlanmadı (Dokunarak girin)' : 'Not configured (Tap to configure)'),
+                  style: TextStyle(
+                    color: _tmdbTokenController.text.trim().isNotEmpty ? const Color(0xFF00E054) : Colors.orange,
+                    fontSize: 12,
+                  ),
+                ),
+                trailing: const Icon(Icons.edit_rounded, color: Colors.white38, size: 16),
+                onTap: () => _openTmdbModal(context, text),
+              ),
+              const Divider(color: Colors.white10, height: 1),
+
+              // Movies Addons Manager
+              ListTile(
+                leading: const Icon(Icons.hub_rounded, color: Colors.white70),
+                title: Text(text.languageCode == 'tr' ? 'Film & Dizi Eklentileri' : 'Movie & TV Addons',
+                    style: const TextStyle(color: Colors.white, fontSize: 14)),
+                subtitle: Text(text.languageCode == 'tr' ? '13+ Dahili ve Harici Sağlayıcı' : '13+ Streaming Addons',
+                    style: const TextStyle(color: Colors.white38, fontSize: 12)),
+                trailing: const Icon(Icons.arrow_forward_ios_rounded, color: Colors.white38, size: 14),
+                onTap: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => const AddonManagerScreen()),
+                  );
+                },
+              ),
+              const Divider(color: Colors.white10, height: 1),
+
+              // Preferred Mirror
+              ListTile(
+                leading: const Icon(Icons.dns_rounded, color: Colors.white70),
+                title: Text(text.languageCode == 'tr' ? 'Tercih Edilen Ayna (Mirror)' : 'Preferred Mirror',
+                    style: const TextStyle(color: Colors.white, fontSize: 14)),
+                trailing: DropdownButton<String>(
+                  value: _preferredMirror,
+                  dropdownColor: const Color(0xFF1E1E28),
+                  underline: const SizedBox.shrink(),
+                  items: const [
+                    DropdownMenuItem(value: 'auto', child: Text('Auto')),
+                    DropdownMenuItem(value: 'vidx', child: Text('Vidx')),
+                    DropdownMenuItem(value: 'cargo', child: Text('Cargo')),
+                    DropdownMenuItem(value: 'cabin', child: Text('Cabin')),
+                    DropdownMenuItem(value: 'gale', child: Text('Gale')),
+                  ],
+                  onChanged: (val) {
+                    if (val != null) {
+                      setState(() => _preferredMirror = val);
+                      _saveSettings();
+                    }
+                  },
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 20),
+
+          // -----------------------------------------------------------
+          // Section 4: Playback & Player Engine
+          // -----------------------------------------------------------
+          _buildSectionHeader(
+            icon: Icons.play_circle_rounded,
+            title: text.languageCode == 'tr' ? 'Oynatıcı & Akış' : 'Player & Playback',
+            color: const Color(0xFF00E054),
+          ),
+          _buildCard(
+            children: [
+              // Video Player Engine
+              ListTile(
+                leading: const Icon(Icons.smart_display_rounded, color: Colors.white70),
+                title: Text(text.t('video_player'), style: const TextStyle(color: Colors.white, fontSize: 14)),
+                trailing: DropdownButton<String>(
+                  value: _videoPlayer,
+                  dropdownColor: const Color(0xFF1E1E28),
+                  underline: const SizedBox.shrink(),
+                  items: const [
+                    DropdownMenuItem(value: 'native', child: Text('Native (VideoPlayer)')),
+                    DropdownMenuItem(value: 'media_kit', child: Text('MediaKit (MPV)')),
+                    DropdownMenuItem(value: 'webview', child: Text('WebView Sandboxed')),
+                  ],
+                  onChanged: (val) {
+                    if (val != null) {
+                      setState(() => _videoPlayer = val);
+                      _saveSettings();
+                    }
+                  },
+                ),
+              ),
+              const Divider(color: Colors.white10, height: 1),
+
+              // Auto Select Source
+              SwitchListTile(
+                secondary: const Icon(Icons.flash_auto_rounded, color: Colors.white70),
+                title: Text(text.t('auto_select_source'), style: const TextStyle(color: Colors.white, fontSize: 14)),
+                subtitle: Text(
+                  text.languageCode == 'tr'
+                      ? 'En hızlı kaynağı otomatik seçerek başlatır'
+                      : 'Automatically play the best available source',
+                  style: const TextStyle(color: Colors.white38, fontSize: 12),
+                ),
+                value: _autoSelectSource,
+                activeTrackColor: Colors.deepPurpleAccent,
+                onChanged: (val) {
+                  setState(() => _autoSelectSource = val);
+                  _saveSettings();
+                },
+              ),
+              const Divider(color: Colors.white10, height: 1),
+
+              // Auto Select Subtitles
+              SwitchListTile(
+                secondary: const Icon(Icons.closed_caption_rounded, color: Colors.white70),
+                title: Text(text.t('auto_select_subtitle'), style: const TextStyle(color: Colors.white, fontSize: 14)),
+                value: _autoSelectSubtitle,
+                activeTrackColor: Colors.deepPurpleAccent,
+                onChanged: (val) {
+                  setState(() => _autoSelectSubtitle = val);
+                  _saveSettings();
+                },
+              ),
+            ],
+          ),
+          const SizedBox(height: 20),
+
+          // -----------------------------------------------------------
+          // Section 5: Data & Backup
+          // -----------------------------------------------------------
+          _buildSectionHeader(
+            icon: Icons.sync_rounded,
+            title: text.languageCode == 'tr' ? 'Veri & Yedekleme' : 'Data & Backup',
+            color: Colors.blueAccent,
+          ),
+          _buildCard(
+            children: [
+              // Watch History Toggle
+              SwitchListTile(
+                secondary: const Icon(Icons.history_rounded, color: Colors.white70),
+                title: Text(text.t('save_watch_history'), style: const TextStyle(color: Colors.white, fontSize: 14)),
+                value: _watchHistoryEnabled,
+                activeTrackColor: Colors.deepPurpleAccent,
+                onChanged: (val) {
+                  setState(() => _watchHistoryEnabled = val);
+                  _saveSettings();
+                },
+              ),
+              const Divider(color: Colors.white10, height: 1),
+
+              // Export Backup
+              ListTile(
+                leading: const Icon(Icons.file_upload_outlined, color: Colors.white70),
+                title: Text(text.t('export_backup'), style: const TextStyle(color: Colors.white, fontSize: 14)),
+                trailing: _isExportingBackup
+                    ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                    : const Icon(Icons.chevron_right_rounded, color: Colors.white38),
+                onTap: _isExportingBackup ? null : _exportLocalBackup,
+              ),
+              const Divider(color: Colors.white10, height: 1),
+
+              // Import Backup
+              ListTile(
+                leading: const Icon(Icons.file_download_outlined, color: Colors.white70),
+                title: Text(text.t('import_backup'), style: const TextStyle(color: Colors.white, fontSize: 14)),
+                trailing: _isImportingBackup
+                    ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                    : const Icon(Icons.chevron_right_rounded, color: Colors.white38),
+                onTap: _isImportingBackup ? null : _importLocalBackup,
+              ),
+              const Divider(color: Colors.white10, height: 1),
+
+              // Cloud Sync Server Settings
+              ListTile(
+                leading: const Icon(Icons.cloud_queue_rounded, color: Colors.white70),
+                title: Text(text.languageCode == 'tr' ? 'Bulut Senkronizasyon Sunucusu' : 'Cloud Sync Server', style: const TextStyle(color: Colors.white, fontSize: 14)),
+                subtitle: Text(
+                  _syncServerUrl.isNotEmpty ? _syncServerUrl : (text.languageCode == 'tr' ? 'Yapılandırılmadı' : 'Not configured'),
+                  style: const TextStyle(color: Colors.white38, fontSize: 12),
+                ),
+                trailing: const Icon(Icons.chevron_right_rounded, color: Colors.white38),
+                onTap: () => _openSyncServerModal(context, text),
+              ),
+              const Divider(color: Colors.white10, height: 1),
+
+              // Manual Cloud Sync
+              ListTile(
+                leading: const Icon(Icons.cloud_sync_rounded, color: Colors.white70),
+                title: Text(text.t('sync_now'), style: const TextStyle(color: Colors.white, fontSize: 14)),
+                trailing: _isSyncing
+                    ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                    : const Icon(Icons.sync_rounded, color: Colors.white38),
+                onTap: _isSyncing ? null : _manualSync,
+              ),
+            ],
+          ),
+          const SizedBox(height: 20),
+
+          // -----------------------------------------------------------
+          // Section 6: About & Updates
+          // -----------------------------------------------------------
+          _buildSectionHeader(
+            icon: Icons.info_outline_rounded,
+            title: text.languageCode == 'tr' ? 'Hakkında & Güncellemeler' : 'About & Updates',
+            color: Colors.orangeAccent,
+          ),
+          _buildCard(
+            children: [
+              ListTile(
+                leading: const Icon(Icons.app_shortcut_rounded, color: Colors.white70),
+                title: const Text('StreamApp', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14)),
+                subtitle: Text('Version $_currentVersion', style: const TextStyle(color: Colors.white38, fontSize: 12)),
+                trailing: FilledButton.tonal(
+                  style: FilledButton.styleFrom(
+                    backgroundColor: Colors.white.withValues(alpha: 0.08),
+                  ),
+                  onPressed: _isCheckingForUpdates ? null : _checkUpdates,
+                  child: _isCheckingForUpdates
+                      ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
+                      : Text(text.t('check_for_updates')),
+                ),
+              ),
+              if (_updateInfo != null) ...[
+                const Divider(color: Colors.white10, height: 1),
+                ListTile(
+                  leading: const Icon(Icons.system_update_rounded, color: Colors.deepPurpleAccent),
+                  title: Text(
+                    '${text.t('new_update_found')}: ${_updateInfo!.latestVersion}',
+                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
+                  ),
+                  subtitle: _isDownloadingUpdate
+                      ? LinearProgressIndicator(value: _downloadProgress, color: Colors.deepPurpleAccent)
+                      : null,
+                  trailing: FilledButton(
+                    style: FilledButton.styleFrom(backgroundColor: Colors.deepPurpleAccent),
+                    onPressed: _isDownloadingUpdate ? null : _installUpdate,
+                    child: Text(text.t('install_update')),
+                  ),
+                ),
+              ],
+              if (_updateError.isNotEmpty) ...[
+                const Divider(color: Colors.white10, height: 1),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  child: Text(_updateError, style: const TextStyle(color: Colors.redAccent, fontSize: 12)),
+                ),
+              ],
+              const Divider(color: Colors.white10, height: 1),
+              ListTile(
+                leading: const Icon(Icons.help_outline_rounded, color: Colors.white70),
+                title: Text(text.t('tutorial_title'), style: const TextStyle(color: Colors.white, fontSize: 14)),
+                trailing: const Icon(Icons.chevron_right_rounded, color: Colors.white38),
+                onTap: () => OnboardingTutorialDialog.show(context),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSectionHeader({
+    required IconData icon,
+    required String title,
+    required Color color,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.only(left: 4, bottom: 8),
+      child: Row(
+        children: [
+          Icon(icon, size: 18, color: color),
+          const SizedBox(width: 8),
+          Text(
+            title,
+            style: TextStyle(
+              color: color,
+              fontWeight: FontWeight.bold,
+              fontSize: 13,
+              letterSpacing: 0.5,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCard({required List<Widget> children}) {
+    return Container(
+      decoration: BoxDecoration(
+        color: const Color(0xFF171720),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(16),
+        child: Column(
+          children: children,
         ),
-        const SizedBox(height: 12),
-        syncStatus.when(
-          data: (status) {
-            if (!status.isEnabled) {
-              return Column(
+      ),
+    );
+  }
+
+  void _openTmdbModal(BuildContext context, AppText text) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF1B1B26),
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) {
+        return Padding(
+          padding: EdgeInsets.fromLTRB(20, 16, 20, MediaQuery.of(ctx).viewInsets.bottom + 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: Colors.white24,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                'TMDB Access Token',
+                style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                text.languageCode == 'tr'
+                    ? 'Film ve dizi afişleri ve metaverileri için TMDB Read Access Token (v4) gereklidir.'
+                    : 'Required for movies and TV series posters, metadata and discovery.',
+                style: const TextStyle(color: Colors.white54, fontSize: 12),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: _tmdbTokenController,
+                maxLines: 2,
+                style: const TextStyle(color: Colors.white, fontSize: 13),
+                decoration: InputDecoration(
+                  hintText: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
+                  hintStyle: const TextStyle(color: Colors.white24),
+                  filled: true,
+                  fillColor: Colors.black26,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: const BorderSide(color: Colors.white12),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
+                  TextButton.icon(
+                    icon: const Icon(Icons.help_outline, size: 16),
+                    label: Text(text.t('how_to_get_token')),
+                    onPressed: () => showTmdbTokenInstructions(context, text),
+                  ),
+                  FilledButton(
+                    style: FilledButton.styleFrom(backgroundColor: Colors.deepPurpleAccent),
+                    onPressed: () {
+                      Navigator.pop(ctx);
+                      _saveSettings();
+                    },
+                    child: Text(text.t('save')),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  void _openSyncServerModal(BuildContext context, AppText text) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF1B1B26),
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (ctx2, setModalState) {
+            return Padding(
+              padding: EdgeInsets.fromLTRB(20, 16, 20, MediaQuery.of(ctx2).viewInsets.bottom + 24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 40,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: Colors.white24,
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    text.t('sync_title'),
+                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    text.t('sync_desc'),
+                    style: const TextStyle(color: Colors.white54, fontSize: 12),
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: _syncServerUrlController,
+                    style: const TextStyle(color: Colors.white, fontSize: 13),
+                    decoration: InputDecoration(
+                      hintText: 'https://sync.example.com',
+                      hintStyle: const TextStyle(color: Colors.white24),
+                      filled: true,
+                      fillColor: Colors.black26,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: const BorderSide(color: Colors.white12),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
                   SizedBox(
                     width: double.infinity,
-                    child: ElevatedButton.icon(
+                    child: FilledButton.icon(
+                      style: FilledButton.styleFrom(backgroundColor: Colors.deepPurpleAccent),
                       onPressed: _isSyncRegistering
                           ? null
-                          : _registerSyncDevice,
+                          : () async {
+                              setModalState(() => _isSyncRegistering = true);
+                              await _registerSyncDevice();
+                              if (ctx.mounted) Navigator.pop(ctx);
+                            },
                       icon: _isSyncRegistering
-                          ? const SizedBox(
-                              height: 16,
-                              width: 16,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : const Icon(Icons.app_registration),
+                          ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                          : const Icon(Icons.app_registration_rounded),
                       label: Text(text.t('register_device')),
                     ),
                   ),
                 ],
-              );
-            }
-            return Column(
-              children: [
-                ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  leading: const Icon(Icons.check_circle, color: Colors.green),
-                  title: Text(text.t('sync_active')),
-                  subtitle: Text(
-                    '${text.t('last_sync')}: ${status.lastSyncMs == 0 ? text.t('never_synced') : status.lastSyncFormatted}',
-                  ),
-                ),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton.icon(
-                    onPressed: _isSyncing ? null : _manualSync,
-                    icon: _isSyncing
-                        ? const SizedBox(
-                            height: 16,
-                            width: 16,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Icon(Icons.sync),
-                    label: Text(text.t('sync_now')),
-                  ),
-                ),
-              ],
+              ),
             );
           },
-          loading: () => const Center(child: CircularProgressIndicator()),
-          error: (e, _) => Text(
-            '${text.t('error_prefix')}: $e',
-            style: const TextStyle(color: Colors.red),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildLocalBackupSection() {
-    final text = ref.watch(appTextProvider);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            const Icon(Icons.folder_zip_outlined, size: 20),
-            const SizedBox(width: 8),
-            Text(
-              text.t('local_backup'),
-              style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 16),
-            ),
-          ],
-        ),
-        const SizedBox(height: 8),
-        Text(
-          text.t('local_backup_desc'),
-          style: const TextStyle(color: Colors.grey, fontSize: 13),
-        ),
-        const SizedBox(height: 12),
-        SizedBox(
-          width: double.infinity,
-          child: OutlinedButton.icon(
-            onPressed: _isExportingBackup ? null : _exportLocalBackup,
-            icon: _isExportingBackup
-                ? const SizedBox(
-                    height: 16,
-                    width: 16,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Icon(Icons.upload_file),
-            label: Text(text.t('export_data')),
-          ),
-        ),
-        const SizedBox(height: 8),
-        SizedBox(
-          width: double.infinity,
-          child: OutlinedButton.icon(
-            onPressed: _isImportingBackup ? null : _importLocalBackup,
-            icon: _isImportingBackup
-                ? const SizedBox(
-                    height: 16,
-                    width: 16,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Icon(Icons.download_for_offline_outlined),
-            label: Text(text.t('import_data')),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildUpdateSection(BuildContext context, AppText text) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            const Icon(Icons.system_update_outlined, size: 20),
-            const SizedBox(width: 8),
-            Text(
-              text.t('app_update'),
-              style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 16),
-            ),
-          ],
-        ),
-        const SizedBox(height: 8),
-        Text(
-          '${text.t('current_version')}: $_currentVersion',
-          style: const TextStyle(color: Colors.grey, fontSize: 13),
-        ),
-        const SizedBox(height: 12),
-        if (_isCheckingForUpdates)
-          const Center(
-            child: Padding(
-              padding: EdgeInsets.all(8.0),
-              child: CircularProgressIndicator(),
-            ),
-          )
-        else if (_isDownloadingUpdate)
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                '${text.t('downloading_update')}: %${(_downloadProgress * 100).toStringAsFixed(1)}',
-              ),
-              const SizedBox(height: 8),
-              LinearProgressIndicator(value: _downloadProgress),
-            ],
-          )
-        else if (_updateInfo != null)
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.04),
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: Colors.white12),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  '${text.t('new_version')}: ${_updateInfo!.latestVersion}',
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                    color: Colors.greenAccent,
-                  ),
-                ),
-                if (_updateInfo!.releaseNotes.isNotEmpty) ...[
-                  const SizedBox(height: 6),
-                  Text(
-                    _updateInfo!.releaseNotes,
-                    maxLines: 4,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontSize: 12, color: Colors.white70),
-                  ),
-                ],
-                const SizedBox(height: 12),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton.icon(
-                    onPressed: _installUpdate,
-                    icon: const Icon(Icons.download),
-                    label: Text(text.t('update_now')),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.green,
-                      foregroundColor: Colors.white,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          )
-        else
-          SizedBox(
-            width: double.infinity,
-            child: OutlinedButton.icon(
-              onPressed: _checkUpdates,
-              icon: const Icon(Icons.refresh),
-              label: Text(text.t('check_for_updates')),
-            ),
-          ),
-        if (_updateError.isNotEmpty) ...[
-          const SizedBox(height: 8),
-          Text(
-            '${text.t('error_prefix')}: $_updateError',
-            style: const TextStyle(color: Colors.redAccent, fontSize: 12),
-          ),
-        ],
-      ],
-    );
-  }
-
-  Widget _buildCardSection({
-    required String title,
-    required IconData icon,
-    required List<Widget> children,
-    Widget? trailing,
-    Color? iconColor,
-  }) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-
-    return Container(
-      margin: const EdgeInsets.only(bottom: 16),
-      decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF171720) : Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: isDark
-              ? Colors.white.withValues(alpha: 0.08)
-              : Colors.black.withValues(alpha: 0.08),
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.04),
-            blurRadius: 8,
-            offset: const Offset(0, 3),
-          ),
-        ],
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: (iconColor ?? theme.colorScheme.primary)
-                        .withValues(alpha: 0.14),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: Icon(
-                    icon,
-                    size: 20,
-                    color: iconColor ?? theme.colorScheme.primary,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    title,
-                    style: const TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-                ?trailing,
-              ],
-            ),
-            const SizedBox(height: 12),
-            const Divider(height: 1, thickness: 0.6),
-            const SizedBox(height: 14),
-            ...children,
-          ],
-        ),
-      ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final settings = ref.watch(appSettingsProvider);
-    _ensureInitialized(settings);
-
-    final text = ref.watch(appTextProvider);
-    final addons = ref
-        .watch(addonsProvider)
-        .where((addon) => addon.enabled)
-        .toList();
-    final sourceIds = <String>{'', ...addons.map((addon) => addon.id)};
-    final selectedSourceId = sourceIds.contains(_preferredSourceId)
-        ? _preferredSourceId
-        : '';
-
-    final tmdbTokenPreview = _maskToken(_tmdbTokenController.text);
-    final wyzieKeyPreview = _maskToken(_wyzieApiKeyController.text);
-    final backendPreview = _backendUrlController.text.trim().isEmpty
-        ? 'Not set'
-        : _backendUrlController.text.trim();
-
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(text.t('settings')),
-        elevation: 0,
-        actions: [
-          IconButton(
-            tooltip: text.t('save_settings'),
-            icon: _isSaving
-                ? const SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Icon(Icons.check_circle_outline),
-            onPressed: _isSaving ? null : _saveSettings,
-          ),
-        ],
-      ),
-      body: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
-          children: [
-            // 1. Appearance & Language
-            _buildCardSection(
-              title: text.t('appearance_and_theme'),
-              icon: Icons.palette_outlined,
-              iconColor: Colors.purpleAccent,
-              children: [
-                Text(
-                  text.t('theme_mode'),
-                  style: const TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Row(
-                  children: [
-                    _buildThemeOptionCard(
-                      mode: 'dark',
-                      label: text.t('theme_dark'),
-                      icon: Icons.dark_mode_outlined,
-                      color: Colors.blueAccent,
-                      isSelected: _themeMode == 'dark',
-                    ),
-                    const SizedBox(width: 8),
-                    _buildThemeOptionCard(
-                      mode: 'amoled',
-                      label: text.t('theme_amoled'),
-                      icon: Icons.brightness_2,
-                      color: Colors.purpleAccent,
-                      isSelected: _themeMode == 'amoled',
-                    ),
-                    const SizedBox(width: 8),
-                    _buildThemeOptionCard(
-                      mode: 'light',
-                      label: text.t('theme_light'),
-                      icon: Icons.light_mode_outlined,
-                      color: Colors.amberAccent,
-                      isSelected: _themeMode == 'light',
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                Text(
-                  text.t('app_language'),
-                  style: const TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                DropdownButtonFormField<String>(
-                  initialValue: _appLanguage,
-                  items: supportedAppLanguages.entries
-                      .map(
-                        (entry) => DropdownMenuItem<String>(
-                          value: entry.key,
-                          child: Text(entry.value),
-                        ),
-                      )
-                      .toList(),
-                  onChanged: (value) {
-                    if (value == null) return;
-                    setState(() => _appLanguage = value);
-                    final currentSettings = ref.read(appSettingsProvider);
-                    ref.read(appSettingsProvider.notifier).saveSettings(
-                          currentSettings.copyWith(appLanguage: value),
-                        );
-                  },
-                  decoration: InputDecoration(
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 10,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-
-            // 2. Sources & VidBox Mirror Management
-            _buildCardSection(
-              title: text.t('source_and_mirror_settings'),
-              icon: Icons.alt_route_rounded,
-              iconColor: Colors.blueAccent,
-              children: [
-                SwitchListTile.adaptive(
-                  contentPadding: EdgeInsets.zero,
-                  value: _autoSelectSource,
-                  onChanged: (value) {
-                    setState(() => _autoSelectSource = value);
-                    final currentSettings = ref.read(appSettingsProvider);
-                    ref.read(appSettingsProvider.notifier).saveSettings(
-                          currentSettings.copyWith(autoSelectSource: value),
-                        );
-                  },
-                  title: Text(
-                    text.t('source_auto_play'),
-                    style: const TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  subtitle: Text(
-                    _autoSelectSource
-                        ? text.t('source_auto_play_desc')
-                        : text.t('source_manual_pick_desc'),
-                    style: const TextStyle(fontSize: 12),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                DropdownButtonFormField<String>(
-                  key: ValueKey('source_${selectedSourceId}_${addons.length}'),
-                  initialValue: selectedSourceId,
-                  items: [
-                    DropdownMenuItem<String>(
-                      value: '',
-                      child: Text(text.t('source_preferred_auto')),
-                    ),
-                    ...addons.map(
-                      (addon) => DropdownMenuItem<String>(
-                        value: addon.id,
-                        child: Text(addon.name),
-                      ),
-                    ),
-                  ],
-                  onChanged: _autoSelectSource
-                      ? (value) {
-                          final nextSource = value ?? '';
-                          setState(() => _preferredSourceId = nextSource);
-                          final currentSettings = ref.read(appSettingsProvider);
-                          ref.read(appSettingsProvider.notifier).saveSettings(
-                                currentSettings.copyWith(preferredSourceId: nextSource),
-                              );
-                        }
-                      : null,
-                  decoration: InputDecoration(
-                    labelText: text.t('source_preferred'),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 10,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Row(
-                      children: [
-                        const Icon(
-                          Icons.dns_rounded,
-                          size: 16,
-                          color: Colors.amberAccent,
-                        ),
-                        const SizedBox(width: 6),
-                        Text(
-                          text.t('vidbox_preferred_mirror'),
-                          style: const TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ],
-                    ),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 2,
-                      ),
-                      decoration: BoxDecoration(
-                        color: Colors.amberAccent.withValues(alpha: 0.15),
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                      child: Text(
-                        _preferredMirror.toUpperCase(),
-                        style: const TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.amberAccent,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  text.t('vidbox_preferred_mirror_desc'),
-                  style: const TextStyle(fontSize: 12, color: Colors.grey),
-                ),
-                const SizedBox(height: 10),
-                DropdownButtonFormField<String>(
-                  key: ValueKey('mirror_$_preferredMirror'),
-                  initialValue:
-                      supportedVidBoxMirrors.containsKey(_preferredMirror)
-                      ? _preferredMirror
-                      : 'auto',
-                  items: supportedVidBoxMirrors.entries
-                      .map(
-                        (entry) => DropdownMenuItem<String>(
-                          value: entry.key,
-                          child: Text(entry.value),
-                        ),
-                      )
-                      .toList(),
-                  onChanged: (val) {
-                    if (val == null) return;
-                    setState(() => _preferredMirror = val);
-                    final currentSettings = ref.read(appSettingsProvider);
-                    ref.read(appSettingsProvider.notifier).saveSettings(
-                          currentSettings.copyWith(preferredMirror: val),
-                        );
-                  },
-                  decoration: InputDecoration(
-                    labelText: text.t('vidbox_preferred_mirror'),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 10,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                Wrap(
-                  spacing: 6,
-                  runSpacing: 6,
-                  children: [
-                    _mirrorChip('auto', 'Auto (Fastest)'),
-                    _mirrorChip('vidx', 'Vidx 1080p'),
-                    _mirrorChip('cargo', 'Cargo 1080p'),
-                    _mirrorChip('cabin', 'Cabin HD'),
-                    _mirrorChip('boxr', 'Boxr 1080p'),
-                    _mirrorChip('tile', 'Tile 1080p'),
-                    _mirrorChip('cube', 'Cube HD'),
-                    _mirrorChip('hatch', 'Hatch 1080p'),
-                    _mirrorChip('gale', 'Gale HD'),
-                  ],
-                ),
-                const SizedBox(height: 14),
-                Row(
-                  children: [
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        icon: const Icon(Icons.extension_outlined, size: 16),
-                        label: Text(
-                          text.t('addons'),
-                          style: const TextStyle(fontSize: 12),
-                        ),
-                        onPressed: () => Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (_) => const AddonManagerScreen(),
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        icon: const Icon(Icons.cloud_outlined, size: 16),
-                        label: Text(
-                          text.t('sources'),
-                          style: const TextStyle(fontSize: 12),
-                        ),
-                        onPressed: () => Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (_) => const SourcesScreen(),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-
-            // 3. Subtitles & Drift Synchronization
-            _buildCardSection(
-              title: text.t('subtitles_and_sync'),
-              icon: Icons.subtitles_rounded,
-              iconColor: Colors.amberAccent,
-              children: [
-                Text(
-                  text.t('subtitle_language'),
-                  style: const TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                DropdownButtonFormField<String>(
-                  key: ValueKey('sub_$_subtitleLanguage'),
-                  initialValue: _subtitleLanguage,
-                  items: supportedSubtitleLanguages.entries
-                      .map(
-                        (entry) => DropdownMenuItem<String>(
-                          value: entry.key,
-                          child: Text(entry.value),
-                        ),
-                      )
-                      .toList(),
-                  onChanged: (value) {
-                    if (value == null) return;
-                    setState(() => _subtitleLanguage = value);
-                    final currentSettings = ref.read(appSettingsProvider);
-                    ref.read(appSettingsProvider.notifier).saveSettings(
-                          currentSettings.copyWith(subtitleLanguage: value),
-                        );
-                  },
-                  decoration: InputDecoration(
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 10,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                SwitchListTile.adaptive(
-                  contentPadding: EdgeInsets.zero,
-                  value: _autoSelectSubtitle,
-                  onChanged: (value) {
-                    setState(() => _autoSelectSubtitle = value);
-                    final currentSettings = ref.read(appSettingsProvider);
-                    ref.read(appSettingsProvider.notifier).saveSettings(
-                          currentSettings.copyWith(autoSelectSubtitle: value),
-                        );
-                  },
-                  title: Text(
-                    text.t('auto_select_subtitle'),
-                    style: const TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  subtitle: Text(
-                    _autoSelectSubtitle
-                        ? text.t('auto_select_subtitle_desc_enabled')
-                        : text.t('auto_select_subtitle_desc_disabled'),
-                    style: const TextStyle(fontSize: 12),
-                  ),
-                ),
-                const SizedBox(height: 14),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      text.t('subtitle_sync_offset'),
-                      style: const TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 3,
-                      ),
-                      decoration: BoxDecoration(
-                        color: _defaultSubtitleOffset == 0.0
-                            ? Colors.white10
-                            : Colors.amberAccent.withValues(alpha: 0.2),
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                      child: Text(
-                        _defaultSubtitleOffset == 0.0
-                            ? '0.00s (${text.t('reset')})'
-                        : '${_defaultSubtitleOffset > 0 ? "+" : ""}${_defaultSubtitleOffset.toStringAsFixed(2)}s',
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.bold,
-                          color: _defaultSubtitleOffset == 0.0
-                              ? Colors.white70
-                              : Colors.amberAccent,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  text.t('subtitle_sync_desc'),
-                  style: const TextStyle(fontSize: 12, color: Colors.grey),
-                ),
-                const SizedBox(height: 6),
-                Slider(
-                  value: _defaultSubtitleOffset.clamp(-5.0, 5.0),
-                  min: -5.0,
-                  max: 5.0,
-                  divisions: 100,
-                  label: '${_defaultSubtitleOffset.toStringAsFixed(2)}s',
-                  activeColor: Colors.amberAccent,
-                  onChanged: (val) {
-                    final nextOffset = double.parse(val.toStringAsFixed(2));
-                    setState(() {
-                      _defaultSubtitleOffset = nextOffset;
-                    });
-                    final currentSettings = ref.read(appSettingsProvider);
-                    ref.read(appSettingsProvider.notifier).saveSettings(
-                          currentSettings.copyWith(defaultSubtitleOffset: nextOffset),
-                        );
-                  },
-                ),
-                Wrap(
-                  spacing: 6,
-                  runSpacing: 6,
-                  alignment: WrapAlignment.center,
-                  children: [
-                    _offsetButton('-1.0s', -1.0),
-                    _offsetButton('-0.5s', -0.5),
-                    _offsetButton('-0.1s', -0.1),
-                    ActionChip(
-                      avatar: const Icon(
-                        Icons.restart_alt,
-                        size: 14,
-                        color: Colors.white70,
-                      ),
-                      label: Text(
-                        text.t('reset'),
-                        style: const TextStyle(
-                          fontSize: 11,
-                          color: Colors.white70,
-                        ),
-                      ),
-                      backgroundColor: Colors.white10,
-                      side: BorderSide.none,
-                      padding: const EdgeInsets.symmetric(horizontal: 4),
-                      onPressed: () {
-                        setState(() => _defaultSubtitleOffset = 0.0);
-                        final currentSettings = ref.read(appSettingsProvider);
-                        ref.read(appSettingsProvider.notifier).saveSettings(
-                              currentSettings.copyWith(defaultSubtitleOffset: 0.0),
-                            );
-                      },
-                    ),
-                    _offsetButton('+0.1s', 0.1),
-                    _offsetButton('+0.5s', 0.5),
-                    _offsetButton('+1.0s', 1.0),
-                  ],
-                ),
-              ],
-            ),
-
-            // 4. Player & Playback Engine
-            _buildCardSection(
-              title: text.t('player_and_playback'),
-              icon: Icons.play_circle_filled_rounded,
-              iconColor: Colors.redAccent,
-              children: [
-                Text(
-                  text.t('video_player'),
-                  style: const TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                DropdownButtonFormField<String>(
-                  key: ValueKey('player_$_videoPlayer'),
-                  initialValue: _videoPlayer,
-                  items: supportedVideoPlayers.entries
-                      .map(
-                        (entry) => DropdownMenuItem<String>(
-                          value: entry.key,
-                          child: Text(entry.value),
-                        ),
-                      )
-                      .toList(),
-                  onChanged: (value) {
-                    if (value == null) return;
-                    setState(() => _videoPlayer = value);
-                    final currentSettings = ref.read(appSettingsProvider);
-                    ref.read(appSettingsProvider.notifier).saveSettings(
-                          currentSettings.copyWith(videoPlayer: value),
-                        );
-                  },
-                  decoration: InputDecoration(
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 10,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                SwitchListTile.adaptive(
-                  contentPadding: EdgeInsets.zero,
-                  value: _watchHistoryEnabled,
-                  onChanged: (value) =>
-                      setState(() => _watchHistoryEnabled = value),
-                  title: Text(
-                    text.t('watch_history_setting'),
-                    style: const TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  subtitle: Text(
-                    _watchHistoryEnabled
-                        ? text.t('watch_history_desc_enabled')
-                        : text.t('watch_history_desc_disabled'),
-                    style: const TextStyle(fontSize: 12),
-                  ),
-                ),
-                if (_watchHistoryEnabled) ...[
-                  const SizedBox(height: 8),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        text.t('completion_percentage'),
-                        style: const TextStyle(fontSize: 13),
-                      ),
-                      Text(
-                        '%$_completionPercentage',
-                        style: const TextStyle(
-                          fontWeight: FontWeight.bold,
-                          color: Colors.redAccent,
-                        ),
-                      ),
-                    ],
-                  ),
-                  Slider(
-                    value: _completionPercentage.toDouble(),
-                    min: 50,
-                    max: 95,
-                    divisions: 9,
-                    label: '%$_completionPercentage',
-                    activeColor: Colors.redAccent,
-                    onChanged: (value) =>
-                        setState(() => _completionPercentage = value.round()),
-                  ),
-                  Text(
-                    text.t('completion_percentage_desc'),
-                    style: const TextStyle(color: Colors.grey, fontSize: 11),
-                  ),
-                ],
-                const SizedBox(height: 12),
-                ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  leading: const Icon(Icons.dashboard_customize_outlined),
-                  title: Text(
-                    text.t('homepage_categories'),
-                    style: const TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  subtitle: Text(
-                    text.t('homepage_categories_desc'),
-                    style: const TextStyle(fontSize: 12),
-                  ),
-                  trailing: const Icon(Icons.chevron_right),
-                  onTap: () => Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => const HomeCategoriesManagerScreen(),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-
-            // 5. Library & Notifications
-            _buildCardSection(
-              title: text.t('library_and_history'),
-              icon: Icons.video_library_rounded,
-              iconColor: Colors.tealAccent,
-              children: [
-                Text(
-                  text.t('watchlist_sort_order'),
-                  style: const TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                DropdownButtonFormField<String>(
-                  initialValue:
-                      supportedLibrarySortOptions.containsKey(_librarySort)
-                      ? _librarySort
-                      : 'recent',
-                  items: supportedLibrarySortOptions.entries
-                      .map(
-                        (entry) => DropdownMenuItem<String>(
-                          value: entry.key,
-                          child: Text(entry.value),
-                        ),
-                      )
-                      .toList(),
-                  onChanged: (value) {
-                    if (value == null) return;
-                    setState(() => _librarySort = value);
-                  },
-                  decoration: InputDecoration(
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 10,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                SwitchListTile.adaptive(
-                  contentPadding: EdgeInsets.zero,
-                  value: _newEpisodeNotificationsEnabled,
-                  onChanged: (value) => setState(
-                    () => _newEpisodeNotificationsEnabled = value,
-                  ),
-                  title: Text(
-                    text.t('new_episode_alerts'),
-                    style: const TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  subtitle: Text(
-                    text.t('new_episode_alerts_desc'),
-                    style: const TextStyle(fontSize: 12),
-                  ),
-                ),
-              ],
-            ),
-
-            // 6. API & Backend Credentials
-            _buildCardSection(
-              title: text.t('api_backend_settings'),
-              icon: Icons.vpn_key_rounded,
-              iconColor: Colors.orangeAccent,
-              trailing: TextButton.icon(
-                icon: Icon(
-                  _isApiFieldsVisible ? Icons.visibility_off : Icons.edit,
-                  size: 16,
-                ),
-                label: Text(
-                  _isApiFieldsVisible ? text.t('hide') : text.t('edit'),
-                ),
-                onPressed: () =>
-                    setState(() => _isApiFieldsVisible = !_isApiFieldsVisible),
-              ),
-              children: [
-                if (!_isApiFieldsVisible) ...[
-                  Text(
-                    'TMDB: $tmdbTokenPreview\nWyzie: $wyzieKeyPreview\nBackend: $backendPreview',
-                    style: const TextStyle(
-                      fontSize: 12,
-                      color: Colors.grey,
-                      height: 1.4,
-                    ),
-                  ),
-                ] else ...[
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        text.t('tmdb_token'),
-                        style: const TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      TextButton.icon(
-                        onPressed: () =>
-                            showTmdbTokenInstructions(context, text),
-                        icon: const Icon(Icons.help_outline, size: 14),
-                        label: Text(
-                          text.t('get_tmdb_token'),
-                          style: const TextStyle(fontSize: 12),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 6),
-                  TextField(
-                    controller: _tmdbTokenController,
-                    decoration: InputDecoration(
-                      hintText: text.t('tmdb_token_hint'),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                    ),
-                    minLines: 2,
-                    maxLines: 4,
-                  ),
-                  const SizedBox(height: 14),
-                  Text(
-                    text.t('wyzie_api_key'),
-                    style: const TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  TextField(
-                    controller: _wyzieApiKeyController,
-                    decoration: InputDecoration(
-                      hintText: 'wyzie-...',
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                    ),
-                    obscureText: true,
-                  ),
-                  const SizedBox(height: 14),
-                  Text(
-                    text.t('backend_url'),
-                    style: const TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  TextField(
-                    controller: _backendUrlController,
-                    decoration: InputDecoration(
-                      hintText: 'http://127.0.0.1:8000',
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                    ),
-                  ),
-                ],
-                const SizedBox(height: 10),
-                Text(
-                  text.t('api_required'),
-                  style: TextStyle(color: Colors.orange.shade300, fontSize: 11),
-                ),
-              ],
-            ),
-
-            // 7. Backup, Sync & Updates
-            _buildCardSection(
-              title: text.t('sync_title'),
-              icon: Icons.cloud_sync_rounded,
-              iconColor: Colors.lightGreenAccent,
-              children: [
-                _buildSyncSection(context, text),
-                const SizedBox(height: 16),
-                const Divider(height: 1, thickness: 0.5),
-                const SizedBox(height: 16),
-                _buildLocalBackupSection(),
-                const SizedBox(height: 16),
-                const Divider(height: 1, thickness: 0.5),
-                const SizedBox(height: 16),
-                _buildUpdateSection(context, text),
-              ],
-            ),
-
-            // 8. Tutorial & Help
-            _buildCardSection(
-              title: text.languageCode == 'tr'
-                  ? 'Uygulama Rehberi ve Tanıtım'
-                  : 'App Walkthrough & Guide',
-              icon: Icons.help_outline_rounded,
-              iconColor: Colors.purpleAccent,
-              children: [
-                ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  leading: Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: Colors.purpleAccent.withValues(alpha: 0.15),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: const Icon(
-                      Icons.play_lesson_rounded,
-                      color: Colors.purpleAccent,
-                      size: 22,
-                    ),
-                  ),
-                  title: Text(
-                    text.languageCode == 'tr'
-                        ? 'Uygulama Özelliklerini Tanı'
-                        : 'Explore App Features',
-                    style: const TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  subtitle: Text(
-                    text.languageCode == 'tr'
-                        ? 'Sezon geçişi, Keşfet kartları, indirme yöneticisi ve altyazı özelliklerini yeniden gör.'
-                        : 'Review season rollover, discover swipe cards, downloader and auto-subtitle features.',
-                    style: const TextStyle(fontSize: 12),
-                  ),
-                  trailing: const Icon(Icons.chevron_right),
-                  onTap: () => OnboardingTutorialDialog.show(context),
-                ),
-              ],
-            ),
-
-            const SizedBox(height: 8),
-
-            // Main Save Button
-            SizedBox(
-              height: 52,
-              child: ElevatedButton.icon(
-                onPressed: _isSaving ? null : _saveSettings,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Theme.of(context).colorScheme.primary,
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                ),
-                icon: _isSaving
-                    ? const SizedBox(
-                        height: 18,
-                        width: 18,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: Colors.white,
-                        ),
-                      )
-                    : const Icon(Icons.save_rounded),
-                label: Text(
-                  text.t('save_settings'),
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildThemeOptionCard({
-    required String mode,
-    required String label,
-    required IconData icon,
-    required Color color,
-    required bool isSelected,
-  }) {
-    return Expanded(
-      child: InkWell(
-        onTap: () {
-          setState(() {
-            _themeMode = mode;
-          });
-          final currentSettings = ref.read(appSettingsProvider);
-          ref.read(appSettingsProvider.notifier).saveSettings(
-                currentSettings.copyWith(themeMode: mode),
-              );
-        },
-        borderRadius: BorderRadius.circular(12),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 200),
-          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
-          decoration: BoxDecoration(
-            color: isSelected
-                ? color.withValues(alpha: 0.15)
-                : Colors.white.withValues(alpha: 0.04),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color: isSelected ? color : Colors.white12,
-              width: isSelected ? 1.8 : 1.0,
-            ),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                icon,
-                color: isSelected ? color : Colors.grey,
-                size: 24,
-              ),
-              const SizedBox(height: 6),
-              Text(
-                label,
-                textAlign: TextAlign.center,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
-                  color: isSelected ? Colors.white : Colors.grey,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _mirrorChip(String key, String label) {
-    final isSelected = _preferredMirror == key;
-    return ChoiceChip(
-      label: Text(label, style: const TextStyle(fontSize: 11)),
-      selected: isSelected,
-      onSelected: (selected) {
-        if (selected) {
-          setState(() => _preferredMirror = key);
-          final currentSettings = ref.read(appSettingsProvider);
-          ref.read(appSettingsProvider.notifier).saveSettings(
-                currentSettings.copyWith(preferredMirror: key),
-              );
-        }
+        );
       },
-    );
-  }
-
-  Widget _offsetButton(String label, double delta) {
-    return InkWell(
-      onTap: () {
-        setState(() {
-          _defaultSubtitleOffset = double.parse(
-            (_defaultSubtitleOffset + delta).toStringAsFixed(2),
-          ).clamp(-10.0, 10.0);
-        });
-      },
-      borderRadius: BorderRadius.circular(6),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
-        decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.1),
-          borderRadius: BorderRadius.circular(6),
-        ),
-        child: Text(
-          label,
-          style: const TextStyle(
-            color: Colors.white,
-            fontSize: 11,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-      ),
     );
   }
 }
-

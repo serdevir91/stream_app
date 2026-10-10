@@ -61,6 +61,7 @@ class AddonService {
       () => VidSrcCcAddon(),
       () => StreamImdbAddon(),
       () => DemoDirectAddon(),
+      () => AnimeEmbedAddon(),
     ]) {
       final addon = factory();
       final id = addon.manifest.id;
@@ -501,17 +502,18 @@ class AddonService {
 
   int _addonPriority(String addonId, bool preferAnimeSources) {
     final animeOrder = <String, int>{
-      'builtin.vidbox': 0,
-      'builtin.streamimdb': 1,
-      'builtin.vidsrccc': 2,
-      'builtin.vidsrc': 3,
-      'builtin.videasy': 4,
-      'builtin.embedsu': 5,
-      'builtin.pstream': 6,
-      'builtin.smashystream': 7,
-      'builtin.vidlink': 8,
-      'builtin.twoembed': 9,
-      'builtin.superembed': 10,
+      'builtin.anime_embed': 0,
+      'builtin.vidbox': 1,
+      'builtin.streamimdb': 2,
+      'builtin.vidsrccc': 3,
+      'builtin.vidsrc': 4,
+      'builtin.videasy': 5,
+      'builtin.embedsu': 6,
+      'builtin.pstream': 7,
+      'builtin.smashystream': 8,
+      'builtin.vidlink': 9,
+      'builtin.twoembed': 10,
+      'builtin.superembed': 11,
     };
     final defaultOrder = <String, int>{
       'builtin.vidbox': 0,
@@ -599,6 +601,9 @@ class AddonService {
 
   bool _addonSupportsType(BaseAddon addon, String contentType) {
     final allowed = addon.manifest.types.map((t) => t.toLowerCase()).toSet();
+    if (contentType == 'anime') {
+      return allowed.contains('anime') || allowed.contains('series') || allowed.contains('tv');
+    }
     if (contentType == 'series') {
       return allowed.contains('series') || allowed.contains('tv');
     }
