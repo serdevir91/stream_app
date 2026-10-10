@@ -409,8 +409,9 @@ class _AnimeScreenState extends ConsumerState<AnimeScreen> {
   // -------------------------------------------------------------
 
   Widget _buildSpotlightCarousel(List<AnimeItem> items, AppText text) {
-    final size = MediaQuery.of(context).size;
-    final cardHeight = size.height * 0.36;
+    final screenWidth = MediaQuery.of(context).size.width;
+    final isWide = screenWidth >= 1000;
+    final cardHeight = (screenWidth * (isWide ? 0.32 : 0.54)).clamp(220.0, 440.0);
 
     return Column(
       children: [
@@ -426,6 +427,10 @@ class _AnimeScreenState extends ConsumerState<AnimeScreen> {
             },
             itemBuilder: (context, index) {
               final anime = items[index];
+              final hasRealBackdrop = anime.backdropUrl != null &&
+                  anime.backdropUrl!.isNotEmpty &&
+                  anime.backdropUrl != anime.posterUrl;
+
               return GestureDetector(
                 onTap: () {
                   Navigator.of(context).push(
@@ -441,13 +446,40 @@ class _AnimeScreenState extends ConsumerState<AnimeScreen> {
                     child: Stack(
                       fit: StackFit.expand,
                       children: [
-                        // Image
-                        if (anime.backdropUrl != null || anime.posterUrl != null)
+                        // Image Handling: True backdrop or blurred atmosphere + centered crisp poster
+                        if (hasRealBackdrop)
                           Image.network(
-                            anime.backdropUrl ?? anime.posterUrl!,
+                            anime.backdropUrl!,
                             fit: BoxFit.cover,
+                            alignment: Alignment.center,
                             errorBuilder: (context, error, stackTrace) =>
                                 const ColoredBox(color: Color(0xFF1E1E28)),
+                          )
+                        else if (anime.posterUrl != null && anime.posterUrl!.isNotEmpty)
+                          Stack(
+                            fit: StackFit.expand,
+                            children: [
+                              Image.network(
+                                anime.posterUrl!,
+                                fit: BoxFit.cover,
+                                alignment: Alignment.center,
+                                color: Colors.black.withValues(alpha: 0.65),
+                                colorBlendMode: BlendMode.darken,
+                                errorBuilder: (context, error, stackTrace) =>
+                                    const ColoredBox(color: Color(0xFF1E1E28)),
+                              ),
+                              Center(
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(vertical: 8),
+                                  child: Image.network(
+                                    anime.posterUrl!,
+                                    fit: BoxFit.contain,
+                                    errorBuilder: (context, error, stackTrace) =>
+                                        const SizedBox.shrink(),
+                                  ),
+                                ),
+                              ),
+                            ],
                           )
                         else
                           const ColoredBox(color: Color(0xFF1E1E28)),

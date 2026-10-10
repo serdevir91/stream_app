@@ -165,16 +165,19 @@ class _AnimeSearchScreenState extends ConsumerState<AnimeSearchScreen> {
                               ],
                             ),
                           )
-                        : GridView.builder(
-                            padding: const EdgeInsets.all(16),
-                            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                              crossAxisCount: 3,
-                              childAspectRatio: 0.58,
-                              crossAxisSpacing: 10,
-                              mainAxisSpacing: 12,
-                            ),
-                            itemCount: _results.length,
-                            itemBuilder: (context, index) {
+                        : LayoutBuilder(
+                            builder: (context, constraints) {
+                              final crossAxisCount = (constraints.maxWidth / 115).floor().clamp(3, 8);
+                              return GridView.builder(
+                                padding: const EdgeInsets.all(12),
+                                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                                  crossAxisCount: crossAxisCount,
+                                  childAspectRatio: 0.62,
+                                  crossAxisSpacing: 10,
+                                  mainAxisSpacing: 12,
+                                ),
+                                itemCount: _results.length,
+                                itemBuilder: (context, index) {
                               final item = _results[index];
                               return GestureDetector(
                                 onTap: () {
@@ -250,7 +253,9 @@ class _AnimeSearchScreenState extends ConsumerState<AnimeSearchScreen> {
                                 ),
                               );
                             },
-                          ),
+                          );
+                        },
+                      ),
           ),
         ],
       ),

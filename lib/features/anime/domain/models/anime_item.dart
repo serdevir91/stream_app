@@ -222,11 +222,80 @@ class AnimeItem {
     );
   }
 
+  bool get isMovie {
+    final t = type.trim().toLowerCase();
+    if (t == 'movie' || t == 'film') return true;
+    if (episodes == 1 && !isAiring) {
+      if (duration != null && duration!.contains('hr')) return true;
+      final durMin = int.tryParse(duration?.replaceAll(RegExp(r'[^0-9]'), '') ?? '') ?? 0;
+      if (durMin >= 40) return true;
+    }
+    return false;
+  }
+
+  AnimeItem copyWith({
+    int? malId,
+    int? anilistId,
+    String? title,
+    String? englishTitle,
+    String? romajiTitle,
+    String? japaneseTitle,
+    List<String>? synonyms,
+    String? posterUrl,
+    String? backdropUrl,
+    String? synopsis,
+    String? type,
+    int? episodes,
+    String? status,
+    bool? isAiring,
+    double? score,
+    int? scoredBy,
+    int? rank,
+    int? popularity,
+    List<String>? genres,
+    List<String>? studios,
+    int? year,
+    String? season,
+    String? airedString,
+    String? duration,
+    String? rating,
+    String? trailerUrl,
+  }) {
+    return AnimeItem(
+      malId: malId ?? this.malId,
+      anilistId: anilistId ?? this.anilistId,
+      title: title ?? this.title,
+      englishTitle: englishTitle ?? this.englishTitle,
+      romajiTitle: romajiTitle ?? this.romajiTitle,
+      japaneseTitle: japaneseTitle ?? this.japaneseTitle,
+      synonyms: synonyms ?? this.synonyms,
+      posterUrl: posterUrl ?? this.posterUrl,
+      backdropUrl: backdropUrl ?? this.backdropUrl,
+      synopsis: synopsis ?? this.synopsis,
+      type: type ?? this.type,
+      episodes: episodes ?? this.episodes,
+      status: status ?? this.status,
+      isAiring: isAiring ?? this.isAiring,
+      score: score ?? this.score,
+      scoredBy: scoredBy ?? this.scoredBy,
+      rank: rank ?? this.rank,
+      popularity: popularity ?? this.popularity,
+      genres: genres ?? this.genres,
+      studios: studios ?? this.studios,
+      year: year ?? this.year,
+      season: season ?? this.season,
+      airedString: airedString ?? this.airedString,
+      duration: duration ?? this.duration,
+      rating: rating ?? this.rating,
+      trailerUrl: trailerUrl ?? this.trailerUrl,
+    );
+  }
+
   MediaItem toMediaItem() {
     return MediaItem(
       id: 'anime_$malId',
       title: displayTitle,
-      type: 'tv',
+      type: isMovie ? 'movie' : 'tv',
       posterUrl: posterUrl,
       backdropUrl: backdropUrl,
       description: synopsis,

@@ -207,19 +207,34 @@ class JikanAnimeApiService {
     return fallbackItem;
   }
 
-  Future<List<AnimeEpisode>> getAnimeEpisodes(int malId, {int page = 1, int? totalCount}) async {
+  Future<List<AnimeEpisode>> getAnimeEpisodes(
+    int malId, {
+    int page = 1,
+    int? totalCount,
+    String? title,
+  }) async {
     final cacheKey = 'episodes_${malId}_p$page';
     final cached = _getFromCache<List<AnimeEpisode>>(cacheKey);
     if (cached != null) return cached;
 
+    // 1. Fast Kitsu lookup if title is given (returns real thumbnails & synopses)
+    if (title != null && title.trim().isNotEmpty) {
+      final kitsuList = await _fetchKitsuEpisodes(malId, title.trim());
+      if (kitsuList.isNotEmpty) {
+        _putInCache(cacheKey, kitsuList);
+        return kitsuList;
+      }
+    }
+
+    // 2. Jikan fallback
     try {
       await _throttle();
       final res = await _dio.get(
         '$jikanBaseUrl/anime/$malId/episodes',
         queryParameters: {'page': page},
         options: Options(
-          receiveTimeout: const Duration(seconds: 3),
-          sendTimeout: const Duration(seconds: 3),
+          receiveTimeout: const Duration(seconds: 4),
+          sendTimeout: const Duration(seconds: 4),
         ),
       );
 
@@ -237,7 +252,7 @@ class JikanAnimeApiService {
       debugPrint('[Jikan] getAnimeEpisodes($malId) fallback: $e');
     }
 
-    // If Jikan has no episode names or fails, generate numbered episodes if count is known
+    // 3. Fallback to synthetic
     final count = totalCount ?? 12;
     final syntheticList = List.generate(
       count,
@@ -359,6 +374,14 @@ class JikanAnimeApiService {
     final cached = _getFromCache<List<AnimeItem>>(cacheKey);
     if (cached != null) return cached;
 
+    // 1. Fast AniList GraphQL
+    final aniListRecs = await _fetchAniListRecommendations(malId);
+    if (aniListRecs.isNotEmpty) {
+      _putInCache(cacheKey, aniListRecs);
+      return aniListRecs;
+    }
+
+    // 2. Jikan fallback
     try {
       await _throttle();
       final res = await _dio.get('$jikanBaseUrl/anime/$malId/recommendations');
@@ -384,6 +407,14 @@ class JikanAnimeApiService {
     final cached = _getFromCache<List<Map<String, dynamic>>>(cacheKey);
     if (cached != null) return cached;
 
+    // 1. Fast AniList GraphQL
+    final aniListChars = await _fetchAniListCharacters(malId);
+    if (aniListChars.isNotEmpty) {
+      _putInCache(cacheKey, aniListChars);
+      return aniListChars;
+    }
+
+    // 2. Jikan fallback
     try {
       await _throttle();
       final res = await _dio.get('$jikanBaseUrl/anime/$malId/characters');
@@ -395,7 +426,6 @@ class JikanAnimeApiService {
           final voiceActors = entry['voice_actors'] as List?;
           Map<String, dynamic>? actorObj;
           if (voiceActors != null && voiceActors.isNotEmpty) {
-            // Prefer Japanese
             for (final va in voiceActors) {
               if (va is Map && va['language'] == 'Japanese') {
                 actorObj = va['person'] as Map<String, dynamic>?;
@@ -640,6 +670,173 @@ class JikanAnimeApiService {
       }
     } catch (e) {
       debugPrint('[AniList] Query error: $e');
+    }
+    return [];
+  }
+
+  Future<List<AnimeEpisode>> _fetchKitsuEpisodes(int malId, String title) async {
+    try {
+      final searchRes = await _dio.get(
+        'https://kitsu.io/api/edge/anime',
+        queryParameters: {
+          'filter[text]': title,
+          'page[limit]': 1,
+        },
+        options: Options(
+          receiveTimeout: const Duration(seconds: 4),
+          sendTimeout: const Duration(seconds: 4),
+        ),
+      );
+      if (searchRes.statusCode == 200 &&
+          searchRes.data is Map &&
+          searchRes.data['data'] is List &&
+          (searchRes.data['data'] as List).isNotEmpty) {
+        final kitsuItem = (searchRes.data['data'] as List).first as Map<String, dynamic>;
+        final kitsuId = kitsuItem['id'];
+        if (kitsuId != null) {
+          final epRes = await _dio.get(
+            'https://kitsu.io/api/edge/anime/$kitsuId/episodes',
+            queryParameters: {
+              'page[limit]': 100,
+            },
+            options: Options(
+              receiveTimeout: const Duration(seconds: 5),
+              sendTimeout: const Duration(seconds: 5),
+            ),
+          );
+          if (epRes.statusCode == 200 &&
+              epRes.data is Map &&
+              epRes.data['data'] is List) {
+            final list = (epRes.data['data'] as List)
+                .whereType<Map<String, dynamic>>()
+                .map((e) => AnimeEpisode.fromKitsu(malId, e))
+                .toList();
+            if (list.isNotEmpty) {
+              return list;
+            }
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('[Kitsu] _fetchKitsuEpisodes error: $e');
+    }
+    return [];
+  }
+
+  Future<List<Map<String, dynamic>>> _fetchAniListCharacters(int malId) async {
+    final query = '''
+      query {
+        Media(idMal: $malId, type: ANIME) {
+          characters(sort: [ROLE, RELEVANCE], perPage: 25) {
+            edges {
+              role
+              node {
+                name { full }
+                image { large medium }
+              }
+              voiceActors(language: JAPANESE) {
+                name { full }
+                image { large medium }
+              }
+            }
+          }
+        }
+      }
+    ''';
+    try {
+      final res = await _dio.post(
+        anilistUrl,
+        data: {'query': query},
+      );
+      if (res.statusCode == 200 &&
+          res.data is Map &&
+          res.data['data'] is Map &&
+          res.data['data']['Media'] is Map) {
+        final media = res.data['data']['Media'] as Map<String, dynamic>;
+        final chars = media['characters'] as Map<String, dynamic>?;
+        final edges = chars?['edges'] as List?;
+        if (edges != null && edges.isNotEmpty) {
+          final list = <Map<String, dynamic>>[];
+          for (final edge in edges) {
+            if (edge is! Map) continue;
+            final node = edge['node'] as Map<String, dynamic>?;
+            final nameObj = node?['name'] as Map<String, dynamic>?;
+            final imgObj = node?['image'] as Map<String, dynamic>?;
+            final vaList = edge['voiceActors'] as List?;
+            Map<String, dynamic>? vaNode;
+            if (vaList != null && vaList.isNotEmpty && vaList.first is Map) {
+              vaNode = vaList.first as Map<String, dynamic>;
+            }
+            final vaNameObj = vaNode?['name'] as Map<String, dynamic>?;
+            final vaImgObj = vaNode?['image'] as Map<String, dynamic>?;
+
+            list.add({
+              'name': nameObj?['full']?.toString() ?? 'Character',
+              'role': edge['role']?.toString() ?? '',
+              'image': imgObj?['large']?.toString() ?? imgObj?['medium']?.toString(),
+              'actor_name': vaNameObj?['full']?.toString(),
+              'actor_image': vaImgObj?['large']?.toString() ?? vaImgObj?['medium']?.toString(),
+            });
+          }
+          return list;
+        }
+      }
+    } catch (e) {
+      debugPrint('[AniList] characters error: $e');
+    }
+    return [];
+  }
+
+  Future<List<AnimeItem>> _fetchAniListRecommendations(int malId) async {
+    final query = '''
+      query {
+        Media(idMal: $malId, type: ANIME) {
+          recommendations(sort: [RATING_DESC], perPage: 15) {
+            nodes {
+              mediaRecommendation {
+                id
+                idMal
+                title { english romaji native }
+                coverImage { extraLarge large medium }
+                bannerImage
+                description
+                format
+                episodes
+                averageScore
+                genres
+                duration
+              }
+            }
+          }
+        }
+      }
+    ''';
+    try {
+      final res = await _dio.post(
+        anilistUrl,
+        data: {'query': query},
+      );
+      if (res.statusCode == 200 &&
+          res.data is Map &&
+          res.data['data'] is Map &&
+          res.data['data']['Media'] is Map) {
+        final media = res.data['data']['Media'] as Map<String, dynamic>;
+        final recs = media['recommendations'] as Map<String, dynamic>?;
+        final nodes = recs?['nodes'] as List?;
+        if (nodes != null && nodes.isNotEmpty) {
+          final list = <AnimeItem>[];
+          for (final node in nodes) {
+            if (node is! Map) continue;
+            final mr = node['mediaRecommendation'] as Map<String, dynamic>?;
+            if (mr != null) {
+              list.add(AnimeItem.fromAniList(mr));
+            }
+          }
+          return list;
+        }
+      }
+    } catch (e) {
+      debugPrint('[AniList] recommendations error: $e');
     }
     return [];
   }
