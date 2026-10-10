@@ -200,10 +200,40 @@ final animeDetailsProvider = FutureProvider.family<AnimeDetailsState, int>((ref,
   final api = ref.watch(jikanApiServiceProvider);
 
   try {
-    final anime = await api.getAnimeDetails(malId);
-    final episodes = await api.getAnimeEpisodes(malId, totalCount: anime?.episodes);
-    final characters = await api.getAnimeCharacters(malId);
-    final recommendations = await api.getAnimeRecommendations(malId);
+    // 1. Fetch anime details and episodes concurrently with bounded timeout
+    final detailsFuture = api.getAnimeDetails(malId).timeout(
+          const Duration(seconds: 4),
+          onTimeout: () => null,
+        );
+    final episodesFuture = api.getAnimeEpisodes(malId).timeout(
+          const Duration(seconds: 4),
+          onTimeout: () => <AnimeEpisode>[],
+        );
+
+    final results = await Future.wait([detailsFuture, episodesFuture]);
+    final anime = results[0] as AnimeItem?;
+    var episodes = results[1] as List<AnimeEpisode>;
+
+    if (episodes.isEmpty && anime?.episodes != null && anime!.episodes! > 0) {
+      episodes = List.generate(
+        anime.episodes!,
+        (index) => AnimeEpisode.synthetic(malId, index + 1),
+      );
+    }
+
+    // 2. Fetch characters and recommendations with short non-blocking timeouts
+    final charactersFuture = api.getAnimeCharacters(malId).timeout(
+          const Duration(milliseconds: 2000),
+          onTimeout: () => <Map<String, dynamic>>[],
+        );
+    final recsFuture = api.getAnimeRecommendations(malId).timeout(
+          const Duration(milliseconds: 2000),
+          onTimeout: () => <AnimeItem>[],
+        );
+
+    final extra = await Future.wait([charactersFuture, recsFuture]);
+    final characters = extra[0] as List<Map<String, dynamic>>;
+    final recommendations = extra[1] as List<AnimeItem>;
 
     return AnimeDetailsState(
       anime: anime,

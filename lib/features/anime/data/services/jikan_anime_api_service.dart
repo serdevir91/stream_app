@@ -217,6 +217,10 @@ class JikanAnimeApiService {
       final res = await _dio.get(
         '$jikanBaseUrl/anime/$malId/episodes',
         queryParameters: {'page': page},
+        options: Options(
+          receiveTimeout: const Duration(seconds: 3),
+          sendTimeout: const Duration(seconds: 3),
+        ),
       );
 
       if (res.statusCode == 200 && res.data is Map && res.data['data'] is List) {

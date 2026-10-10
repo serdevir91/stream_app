@@ -723,28 +723,37 @@ class _AnimeDetailsScreenState extends ConsumerState<AnimeDetailsScreen>
         ? (List.of(animeHistoryList)..sort((a, b) => b.updatedAtMs.compareTo(a.updatedAtMs))).first
         : null;
 
-    return animeAsync.when(
-      loading: () => const Center(child: CircularProgressIndicator(color: Colors.deepPurpleAccent)),
-      error: (e, _) => Center(child: Text(e.toString(), style: const TextStyle(color: Colors.white54))),
-      data: (data) {
-        final episodes = data.episodes;
-        if (episodes.isEmpty) {
-          return Center(
-            child: Text(
-              text.t('no_episodes'),
-              style: const TextStyle(color: Colors.white54),
-            ),
+    final loadedEpisodes = animeAsync.asData?.value.episodes ?? const <AnimeEpisode>[];
+    final episodes = loadedEpisodes.isNotEmpty
+        ? loadedEpisodes
+        : List.generate(
+            widget.anime.episodes ?? 12,
+            (i) => AnimeEpisode.synthetic(widget.anime.malId, i + 1),
           );
-        }
 
-        // Batch splitting for long anime (e.g. One Piece, Naruto)
-        final totalBatches = (episodes.length / _batchSize).ceil();
-        final currentEpisodes = totalBatches > 1
-            ? episodes.skip(_selectedEpisodeBatch * _batchSize).take(_batchSize).toList()
-            : episodes;
+    if (episodes.isEmpty) {
+      return Center(
+        child: Text(
+          text.t('no_episodes'),
+          style: const TextStyle(color: Colors.white54),
+        ),
+      );
+    }
 
-        return Column(
-          children: [
+    // Batch splitting for long anime (e.g. One Piece, Naruto)
+    final totalBatches = (episodes.length / _batchSize).ceil();
+    final currentEpisodes = totalBatches > 1
+        ? episodes.skip(_selectedEpisodeBatch * _batchSize).take(_batchSize).toList()
+        : episodes;
+
+    return Column(
+      children: [
+        if (animeAsync.isLoading)
+          const LinearProgressIndicator(
+            backgroundColor: Colors.transparent,
+            valueColor: AlwaysStoppedAnimation<Color>(Colors.deepPurpleAccent),
+            minHeight: 2,
+          ),
             // Continue Watching / Last Watched Banner
             if (lastWatchedEntry != null)
               Container(
@@ -988,8 +997,6 @@ class _AnimeDetailsScreenState extends ConsumerState<AnimeDetailsScreen>
             ),
           ],
         );
-      },
-    );
   }
 
   // -------------------------------------------------------------

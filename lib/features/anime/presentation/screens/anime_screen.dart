@@ -64,9 +64,10 @@ class _AnimeScreenState extends ConsumerState<AnimeScreen> {
         backgroundColor: Colors.transparent,
         elevation: 0,
         title: Row(
+          mainAxisSize: MainAxisSize.min,
           children: [
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
               decoration: BoxDecoration(
                 gradient: const LinearGradient(
                   colors: [Colors.deepPurple, Colors.indigoAccent],
@@ -74,22 +75,23 @@ class _AnimeScreenState extends ConsumerState<AnimeScreen> {
                 borderRadius: BorderRadius.circular(8),
               ),
               child: const Text(
-                'ANIME',
+                'STREAM',
                 style: TextStyle(
                   color: Colors.white,
                   fontWeight: FontWeight.w900,
-                  fontSize: 14,
-                  letterSpacing: 1.2,
+                  fontSize: 13,
+                  letterSpacing: 1.1,
                 ),
               ),
             ),
             const SizedBox(width: 8),
-            Text(
-              text.t('anime'),
-              style: const TextStyle(
+            const Text(
+              'Anime',
+              style: TextStyle(
                 color: Colors.white,
                 fontWeight: FontWeight.bold,
-                fontSize: 18,
+                fontSize: 19,
+                letterSpacing: 0.5,
               ),
             ),
           ],
@@ -749,7 +751,7 @@ class _AnimeScreenState extends ConsumerState<AnimeScreen> {
 
         // Horizontal List of Cards
         SizedBox(
-          height: 216,
+          height: 252,
           child: ListView.builder(
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -880,15 +882,18 @@ class _AnimeScreenState extends ConsumerState<AnimeScreen> {
             const SizedBox(height: 6),
 
             // Title
-            Text(
-              item.displayTitle,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-                height: 1.2,
+            SizedBox(
+              height: 38,
+              child: Text(
+                item.displayTitle,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  height: 1.25,
+                ),
               ),
             ),
           ],

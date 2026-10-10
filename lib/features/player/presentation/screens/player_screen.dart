@@ -403,6 +403,63 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
 
   Future<void> _attachOnlineSubtitle(String streamUrl) async {
     if (_isDisposed || !_isDirectLink) return;
+
+    // Check if current stream has attached subtitle tracks (e.g. from anime provider)
+    final matchedStream = _availableStreams.firstWhere(
+      (s) => s['url'] == streamUrl,
+      orElse: () => const {},
+    );
+    final streamSubs = matchedStream['subtitles'] as List<dynamic>?;
+    if (streamSubs != null && streamSubs.isNotEmpty) {
+      final preferred = widget.subtitleLanguage.toLowerCase();
+      Map<String, dynamic>? chosenSub;
+      for (final s in streamSubs) {
+        if (s is Map) {
+          final lang = (s['language'] ?? '').toString().toLowerCase();
+          if (lang == preferred ||
+              (preferred == 'tr' && (lang == 'tr' || lang == 'tur')) ||
+              (preferred == 'en' && (lang == 'en' || lang == 'eng'))) {
+            chosenSub = Map<String, dynamic>.from(s);
+            break;
+          }
+        }
+      }
+      chosenSub ??= streamSubs.first is Map ? Map<String, dynamic>.from(streamSubs.first as Map) : null;
+      if (chosenSub != null && chosenSub['url'] != null) {
+        final subResult = OnlineSubtitleResult(
+          url: chosenSub['url'].toString(),
+          label: chosenSub['label']?.toString() ?? chosenSub['language']?.toString() ?? 'Subtitle',
+          languageCode: chosenSub['language']?.toString() ?? 'tr',
+          format: chosenSub['format']?.toString() ?? 'vtt',
+        );
+        setState(() {
+          _activeOnlineSubtitle = subResult;
+          _nativeSubtitlesEnabled = true;
+        });
+        try {
+          final captionFile = await _loadClosedCaptionFile(subResult);
+          _cachedCaptionFile = captionFile;
+          _parsedCaptions = captionFile.captions;
+          _startDirectSubtitleListener();
+        } catch (e) {
+          debugPrint('Stream attached subtitle parse error: $e');
+        }
+        final player = _player;
+        if (player != null) {
+          try {
+            await player.setSubtitleTrack(
+              SubtitleTrack.uri(
+                subResult.url,
+                title: subResult.label,
+                language: subResult.languageCode,
+              ),
+            );
+          } catch (_) {}
+        }
+        return;
+      }
+    }
+
     final settings = ref.read(appSettingsProvider);
     if (!settings.autoSelectSubtitle) return;
 
