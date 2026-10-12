@@ -2405,27 +2405,18 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
       }
     }
 
-    // On mobile prefer direct links to avoid embed ad redirects.
-    if (defaultTargetPlatform != TargetPlatform.windows) {
-      final sorted = List<Map<String, dynamic>>.from(streams)
-        ..sort((a, b) {
-          final directCompare = (b['is_direct_link'] == true ? 1 : 0).compareTo(
-            a['is_direct_link'] == true ? 1 : 0,
-          );
-          if (directCompare != 0) return directCompare;
-          return _streamProviderScore(a).compareTo(_streamProviderScore(b));
-        });
-      for (final stream in sorted) {
-        if (stream['is_direct_link'] == true &&
-            (stream['url']?.toString().isNotEmpty ?? false)) {
-          return stream;
-        }
-      }
-    }
+    final sorted = List<Map<String, dynamic>>.from(streams)
+      ..sort((a, b) {
+        final directCompare = (b['is_direct_link'] == true ? 1 : 0).compareTo(
+          a['is_direct_link'] == true ? 1 : 0,
+        );
+        if (directCompare != 0) return directCompare;
+        return _streamProviderScore(a).compareTo(_streamProviderScore(b));
+      });
 
-    return streams.firstWhere(
+    return sorted.firstWhere(
       (stream) => stream['url']?.toString().isNotEmpty ?? false,
-      orElse: () => streams.first,
+      orElse: () => sorted.first,
     );
   }
 
@@ -2435,15 +2426,30 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     }
     final addonId = stream['addon_id']?.toString().toLowerCase() ?? '';
     final provider = stream['provider']?.toString().toLowerCase() ?? '';
-    if (addonId.contains('streamimdb') || provider.contains('streamimdb')) {
+    if (addonId.contains('openani') || provider.contains('openanime')) {
       return 0;
     }
-    if (addonId.contains('vidsrccc') || provider.contains('vidsrc.cc')) {
+    if (provider.contains('vidsrc anime') ||
+        provider.contains('2embed anime') ||
+        provider.contains('multiembed anime') ||
+        provider.contains('smashystream anime')) {
       return 1;
     }
-    if (addonId.contains('vidsrc') || provider.contains('vidsrc')) return 2;
-    if (addonId.contains('videasy') || provider.contains('videasy')) return 3;
-    if (addonId.contains('embedsu') || provider.contains('embedsu')) return 4;
+    if (addonId.contains('anime') || provider.contains('anime')) {
+      return 2;
+    }
+    if (addonId.contains('autoembed') || provider.contains('autoembed')) {
+      return 3;
+    }
+    if (addonId.contains('streamimdb') || provider.contains('streamimdb')) {
+      return 4;
+    }
+    if (addonId.contains('vidsrccc') || provider.contains('vidsrc.cc')) {
+      return 5;
+    }
+    if (addonId.contains('vidsrc') || provider.contains('vidsrc')) return 6;
+    if (addonId.contains('videasy') || provider.contains('videasy')) return 7;
+    if (addonId.contains('embedsu') || provider.contains('embedsu')) return 8;
     return 10;
   }
 

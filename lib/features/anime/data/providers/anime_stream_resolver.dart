@@ -35,6 +35,7 @@ class AnimeStreamResolver {
     required AnimeItem anime,
     required int episodeNumber,
     int seasonNumber = 1,
+    int? tmdbId,
     List<AnimeExtension>? extensions,
   }) async {
     final streams = <Map<String, dynamic>>[];
@@ -120,22 +121,23 @@ class AnimeStreamResolver {
     // -------------------------------------------------------------
     // 2. TMDB TV Bridge (Cross-Resolves to Multi-Servers)
     // -------------------------------------------------------------
-    int? tmdbId;
-    if (isExtEnabled('tmdb_bridge') || isExtEnabled('vidsrc_anime') || isExtEnabled('twoembed_anime')) {
+    int? resolvedTmdbId = tmdbId;
+    if (resolvedTmdbId == null &&
+        (isExtEnabled('tmdb_bridge') || isExtEnabled('vidsrc_anime') || isExtEnabled('twoembed_anime'))) {
       try {
-        tmdbId = await _resolveTmdbId(anime);
+        resolvedTmdbId = await _resolveTmdbId(anime);
       } catch (e) {
         debugPrint('[AnimeStreamResolver] TMDB lookup error: $e');
       }
     }
 
-    if (tmdbId != null && isExtEnabled('tmdb_bridge')) {
+    if (resolvedTmdbId != null && isExtEnabled('tmdb_bridge')) {
       final isMovie = anime.isMovie;
       // AutoEmbed Player
       addStream(
         url: isMovie
-            ? 'https://player.autoembed.cc/embed/movie/$tmdbId'
-            : 'https://player.autoembed.cc/embed/tv/$tmdbId/$seasonNumber/$episodeNumber',
+            ? 'https://player.autoembed.cc/embed/movie/$resolvedTmdbId'
+            : 'https://player.autoembed.cc/embed/tv/$resolvedTmdbId/$seasonNumber/$episodeNumber',
         title: 'AutoEmbed ($cleanTitle)',
         provider: 'AutoEmbed',
         quality: '1080p',
@@ -147,8 +149,8 @@ class AnimeStreamResolver {
       // VidSrc.to Player
       addStream(
         url: isMovie
-            ? 'https://vidsrc.to/embed/movie/$tmdbId'
-            : 'https://vidsrc.to/embed/tv/$tmdbId/$seasonNumber/$episodeNumber',
+            ? 'https://vidsrc.to/embed/movie/$resolvedTmdbId'
+            : 'https://vidsrc.to/embed/tv/$resolvedTmdbId/$seasonNumber/$episodeNumber',
         title: isMovie ? 'VidSrc.to Movie ($cleanTitle)' : 'VidSrc.to TV ($cleanTitle)',
         provider: 'VidSrc.to',
         quality: '1080p',
@@ -160,8 +162,8 @@ class AnimeStreamResolver {
       // 2Embed Player
       addStream(
         url: isMovie
-            ? 'https://www.2embed.cc/embed/movie?id=$tmdbId'
-            : 'https://www.2embed.cc/embed/tv?id=$tmdbId&s=$seasonNumber&e=$episodeNumber',
+            ? 'https://www.2embed.cc/embed/movie?id=$resolvedTmdbId'
+            : 'https://www.2embed.cc/embed/tv?id=$resolvedTmdbId&s=$seasonNumber&e=$episodeNumber',
         title: isMovie ? '2Embed Movie ($cleanTitle)' : '2Embed TV ($cleanTitle)',
         provider: '2Embed',
         quality: '1080p',
@@ -173,8 +175,8 @@ class AnimeStreamResolver {
       // MultiEmbed Player
       addStream(
         url: isMovie
-            ? 'https://multiembed.mov/?video_id=$tmdbId&tmdb=1'
-            : 'https://multiembed.mov/?video_id=$tmdbId&tmdb=1&s=$seasonNumber&e=$episodeNumber',
+            ? 'https://multiembed.mov/?video_id=$resolvedTmdbId&tmdb=1'
+            : 'https://multiembed.mov/?video_id=$resolvedTmdbId&tmdb=1&s=$seasonNumber&e=$episodeNumber',
         title: isMovie ? 'MultiEmbed Movie ($cleanTitle)' : 'MultiEmbed TV ($cleanTitle)',
         provider: 'MultiEmbed',
         quality: 'HD',
@@ -191,7 +193,7 @@ class AnimeStreamResolver {
             contentType: isMovie ? 'movie' : 'series',
             season: isMovie ? 1 : seasonNumber,
             episode: isMovie ? 1 : episodeNumber,
-            tmdbId: tmdbId.toString(),
+            tmdbId: resolvedTmdbId.toString(),
           );
 
           final addonList = (tmdbStreams['streams'] as List<dynamic>? ?? [])
@@ -218,12 +220,15 @@ class AnimeStreamResolver {
     }
 
     // -------------------------------------------------------------
-    // 3. Fallback Mirrors
+    // 3. Fallback Mirrors / Dedicated Anime Servers
     // -------------------------------------------------------------
     if (malId > 0) {
-      if (isExtEnabled('vidsrc_anime') && (tmdbId == null || streams.isEmpty)) {
+      final isMovie = anime.isMovie;
+      if (isExtEnabled('vidsrc_anime')) {
         addStream(
-          url: 'https://vidsrc.cc/v2/embed/anime/$malId/$episodeNumber',
+          url: isMovie
+              ? 'https://vidsrc.cc/v2/embed/anime/$malId/1'
+              : 'https://vidsrc.cc/v2/embed/anime/$malId/$episodeNumber',
           title: 'VidSrc Anime (Multi-Server)',
           provider: 'VidSrc Anime',
           quality: '1080p',
@@ -233,9 +238,11 @@ class AnimeStreamResolver {
         );
       }
 
-      if (isExtEnabled('twoembed_anime') && (tmdbId == null || streams.isEmpty)) {
+      if (isExtEnabled('twoembed_anime')) {
         addStream(
-          url: 'https://www.2embed.cc/embed/tv?id=$malId&s=$seasonNumber&e=$episodeNumber',
+          url: isMovie
+              ? 'https://www.2embed.cc/embed/anime?id=$malId&ep=1'
+              : 'https://www.2embed.cc/embed/tv?id=$malId&s=$seasonNumber&e=$episodeNumber',
           title: '2Embed Anime (Fast)',
           provider: '2Embed Anime',
           quality: '1080p',
@@ -245,9 +252,11 @@ class AnimeStreamResolver {
         );
       }
 
-      if (isExtEnabled('multiembed_anime') && (tmdbId == null || streams.isEmpty)) {
+      if (isExtEnabled('multiembed_anime')) {
         addStream(
-          url: 'https://multiembed.mov/?video_id=$malId&anime=1&s=$seasonNumber&e=$episodeNumber',
+          url: isMovie
+              ? 'https://multiembed.mov/?video_id=$malId&anime=1'
+              : 'https://multiembed.mov/?video_id=$malId&anime=1&s=$seasonNumber&e=$episodeNumber',
           title: 'MultiEmbed Anime',
           provider: 'MultiEmbed',
           quality: 'HD',

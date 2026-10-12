@@ -350,6 +350,10 @@ class _HomeContentState extends ConsumerState<HomeContent> {
         return ref.watch(animationMoviesProvider);
       case 'anime_series':
         return ref.watch(animeSeriesProvider);
+      case 'anime_movies':
+        return ref.watch(animeMoviesProvider);
+      case 'top_rated_anime':
+        return ref.watch(topRatedAnimeProvider);
       case 'horror_movies':
         return ref.watch(horrorMoviesProvider);
       case 'drama_movies':

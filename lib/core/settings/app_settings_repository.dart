@@ -51,7 +51,7 @@ class AppSettingsRepository {
       }
 
       var parsed = AppSettings.fromMap(raw);
-      if (schemaVersion < 10) {
+      if (schemaVersion < 13) {
         final current = List<String>.from(parsed.homeCategories);
         for (final cat in defaultHomeCategories) {
           if (!current.contains(cat)) {

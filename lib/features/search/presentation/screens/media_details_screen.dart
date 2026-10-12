@@ -17,6 +17,9 @@ import '../../../player/presentation/screens/player_screen.dart';
 import '../../../home/presentation/screens/category_media_screen.dart';
 import '../../../downloads/domain/entities/download_item.dart';
 import '../../../downloads/presentation/providers/download_provider.dart';
+import '../../../anime/data/providers/anime_extensions_provider.dart';
+import '../../../anime/domain/models/anime_item.dart';
+import '../../../anime/presentation/providers/anime_providers.dart';
 
 typedef EpisodeTarget = ({int season, int episode});
 
@@ -335,22 +338,36 @@ class _MediaDetailsScreenState extends ConsumerState<MediaDetailsScreen> {
     }
     final addonId = stream['addon_id']?.toString().toLowerCase() ?? '';
     final provider = stream['provider']?.toString().toLowerCase() ?? '';
-    if (addonId.contains('streamimdb') || provider.contains('streamimdb')) {
+    if (addonId.contains('openani') || provider.contains('openanime')) {
       return 0;
     }
-    if (addonId.contains('vidsrccc') || provider.contains('vidsrc.cc')) {
+    if (provider.contains('vidsrc anime') ||
+        provider.contains('2embed anime') ||
+        provider.contains('multiembed anime') ||
+        provider.contains('smashystream anime')) {
       return 1;
     }
-    if (addonId.contains('vidsrc') || provider.contains('vidsrc')) return 2;
-    if (addonId.contains('videasy') || provider.contains('videasy')) return 3;
-    if (addonId.contains('embedsu') || provider.contains('embedsu')) return 4;
+    if (addonId.contains('anime') || provider.contains('anime')) {
+      return 2;
+    }
+    if (addonId.contains('autoembed') || provider.contains('autoembed')) {
+      return 3;
+    }
+    if (addonId.contains('streamimdb') || provider.contains('streamimdb')) {
+      return 4;
+    }
+    if (addonId.contains('vidsrccc') || provider.contains('vidsrc.cc')) {
+      return 5;
+    }
+    if (addonId.contains('vidsrc') || provider.contains('vidsrc')) return 6;
+    if (addonId.contains('videasy') || provider.contains('videasy')) return 7;
+    if (addonId.contains('embedsu') || provider.contains('embedsu')) return 8;
     return 10;
   }
 
   bool _preferAnimeSources() {
-    if (widget.mediaItem.type != 'tv') {
-      return false;
-    }
+    final isAnimeItem = widget.mediaItem.id.startsWith('anime_');
+    if (isAnimeItem) return true;
     final details = ref
         .read(
           mediaDetailsProvider(
@@ -358,10 +375,41 @@ class _MediaDetailsScreenState extends ConsumerState<MediaDetailsScreen> {
           ),
         )
         .maybeWhen(data: (value) => value, orElse: () => null);
-    return details?.genres.any(
-          (genre) => genre.toLowerCase().contains('animation'),
+    final hasAnimeGenre = details?.genres.any(
+          (genre) {
+            final g = genre.toLowerCase();
+            return g.contains('anim') || g.contains('anime') || g.contains('çizgi');
+          },
         ) ??
         false;
+    return hasAnimeGenre;
+  }
+
+  Future<bool> _resolvePreferAnimeSources() async {
+    if (widget.mediaItem.id.startsWith('anime_')) return true;
+    try {
+      final detailsAsync = ref.read(
+        mediaDetailsProvider(
+          '${widget.mediaItem.type}:${widget.mediaItem.id}',
+        ),
+      );
+      final details = detailsAsync.value ??
+          await ref
+              .read(
+                mediaDetailsProvider(
+                  '${widget.mediaItem.type}:${widget.mediaItem.id}',
+                ).future,
+              )
+              .timeout(const Duration(seconds: 2), onTimeout: () => null);
+      if (details != null &&
+          details.genres.any((genre) {
+            final g = genre.toLowerCase();
+            return g.contains('anim') || g.contains('anime') || g.contains('çizgi');
+          })) {
+        return true;
+      }
+    } catch (_) {}
+    return _preferAnimeSources();
   }
 
   Future<void> _resolveAndPickSource({
@@ -403,10 +451,11 @@ class _MediaDetailsScreenState extends ConsumerState<MediaDetailsScreen> {
     }
 
     final addonService = ref.read(addonServiceProvider);
-    final preferAnimeSources = _preferAnimeSources();
+    final preferAnimeSources = await _resolvePreferAnimeSources();
+    if (!mounted) return;
 
     var addons = addonService.enabledAddons;
-    if (addons.isEmpty) {
+    if (addons.isEmpty && !preferAnimeSources) {
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text(text.t('no_active_addon'))));
@@ -418,18 +467,83 @@ class _MediaDetailsScreenState extends ConsumerState<MediaDetailsScreen> {
     });
 
     try {
-      final data = await addonService.resolve(
-        query: widget.mediaItem.title,
-        tmdbId: widget.mediaItem.id,
-        contentType: widget.mediaItem.type == 'tv' ? 'series' : 'movie',
-        season: season,
-        episode: episode,
-      );
+      final streams = <Map<String, dynamic>>[];
+      if (addons.isNotEmpty) {
+        try {
+          final data = await addonService.resolve(
+            query: widget.mediaItem.title,
+            tmdbId: widget.mediaItem.id,
+            contentType: widget.mediaItem.type == 'tv' ? 'series' : 'movie',
+            season: season,
+            episode: episode,
+          );
+          final addonStreams = (data['streams'] as List<dynamic>? ?? <dynamic>[])
+              .whereType<Map>()
+              .map((entry) => Map<String, dynamic>.from(entry))
+              .toList();
+          streams.addAll(addonStreams);
+        } catch (e) {
+          debugPrint('AddonService resolve error: $e');
+        }
+      }
 
-      final streams = (data['streams'] as List<dynamic>? ?? <dynamic>[])
-          .whereType<Map>()
-          .map((entry) => Map<String, dynamic>.from(entry))
-          .toList();
+      if (preferAnimeSources) {
+        try {
+          final animeResolver = ref.read(animeStreamResolverProvider);
+          final animeExts = ref.read(animeExtensionsProvider);
+          final jikanService = ref.read(jikanApiServiceProvider);
+
+          AnimeItem? animeItem;
+          int? parsedMalId;
+
+          if (widget.mediaItem.id.startsWith('anime_')) {
+            parsedMalId = int.tryParse(widget.mediaItem.id.replaceFirst('anime_', ''));
+            if (parsedMalId != null && parsedMalId > 0) {
+              animeItem = await jikanService.getAnimeDetails(parsedMalId);
+            }
+          }
+
+          if (animeItem == null) {
+            try {
+              final searchResults = await jikanService.searchAnime(
+                query: widget.mediaItem.title,
+                limit: 5,
+              );
+              if (searchResults.isNotEmpty) {
+                animeItem = searchResults.first;
+              }
+            } catch (_) {}
+          }
+
+          final rawTmdbId = widget.mediaItem.id.startsWith('anime_')
+              ? null
+              : int.tryParse(widget.mediaItem.id);
+
+          animeItem ??= AnimeItem(
+            malId: parsedMalId ?? 0,
+            title: widget.mediaItem.title,
+            englishTitle: widget.mediaItem.title,
+            type: widget.mediaItem.type == 'movie' ? 'Movie' : 'TV',
+          );
+
+          final animeStreams = await animeResolver.resolveEpisodeStreams(
+            anime: animeItem,
+            episodeNumber: episode,
+            seasonNumber: season,
+            tmdbId: rawTmdbId,
+            extensions: animeExts,
+          );
+          for (final s in animeStreams.reversed) {
+            final url = s['url']?.toString() ?? '';
+            if (url.isNotEmpty && !streams.any((existing) => existing['url'] == url)) {
+              streams.insert(0, s);
+            }
+          }
+        } catch (e) {
+          debugPrint('Anime resolver in MediaDetailsScreen error: $e');
+        }
+      }
+
       final prioritizedStreams = _prioritizeDirectStreams(
         streams,
         preferAnimeSources,

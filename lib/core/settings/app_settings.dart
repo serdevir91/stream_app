@@ -13,8 +13,11 @@ const List<String> defaultHomeCategories = [
   'studio_pixar',
   'studio_warnerbros',
   'studio_universal',
+  'studio_ghibli',
   'animation_movies',
   'anime_series',
+  'anime_movies',
+  'top_rated_anime',
   'horror_movies',
   'drama_movies',
   'thriller_movies',
@@ -27,7 +30,7 @@ const List<String> defaultHomeCategories = [
 ];
 
 class AppSettings {
-  static const int schemaVersion = 12;
+  static const int schemaVersion = 13;
 
   final String appLanguage;
   final String subtitleLanguage;

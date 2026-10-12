@@ -8,7 +8,6 @@ import '../../../../core/tutorial/onboarding_tutorial_dialog.dart';
 import '../../../player/presentation/providers/mini_player_provider.dart';
 import '../../../player/presentation/widgets/mini_player.dart';
 import '../../../player/presentation/screens/player_screen.dart';
-import '../../../anime/presentation/screens/anime_screen.dart';
 import '../../../search/presentation/screens/search_screen.dart';
 import '../../../library/presentation/screens/library_screen.dart';
 import '../../../settings/presentation/screens/settings_screen.dart';
@@ -39,7 +38,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   final List<Widget> _screens = [
     const HomeContent(),
-    const AnimeScreen(),
     const SearchScreen(),
     const LibraryScreen(),
     const SettingsScreen(),
@@ -86,10 +84,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               BottomNavigationBarItem(
                 icon: const Icon(Icons.home),
                 label: text.t('home'),
-              ),
-              BottomNavigationBarItem(
-                icon: const Icon(Icons.movie_filter_rounded),
-                label: text.t('anime'),
               ),
               BottomNavigationBarItem(
                 icon: const Icon(Icons.search),

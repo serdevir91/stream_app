@@ -32,7 +32,15 @@ final thrillerMoviesProvider = FutureProvider<List<MediaItem>>((ref) async {
 });
 
 final animeSeriesProvider = FutureProvider<List<MediaItem>>((ref) async {
-  return ref.watch(searchRepositoryProvider).getSeriesByGenre(16);
+  return ref.watch(searchRepositoryProvider).getAnimeSeries();
+});
+
+final animeMoviesProvider = FutureProvider<List<MediaItem>>((ref) async {
+  return ref.watch(searchRepositoryProvider).getAnimeMovies();
+});
+
+final topRatedAnimeProvider = FutureProvider<List<MediaItem>>((ref) async {
+  return ref.watch(searchRepositoryProvider).getTopRatedAnime();
 });
 
 final featuredWeeklyProvider = FutureProvider<List<MediaItem>>((ref) async {
@@ -170,6 +178,10 @@ final categoryMediaProvider = FutureProvider.family<List<MediaItem>, String>((re
       return ref.watch(animationMoviesProvider.future);
     case 'anime_series':
       return ref.watch(animeSeriesProvider.future);
+    case 'anime_movies':
+      return ref.watch(animeMoviesProvider.future);
+    case 'top_rated_anime':
+      return ref.watch(topRatedAnimeProvider.future);
     case 'horror_movies':
       return ref.watch(horrorMoviesProvider.future);
     case 'drama_movies':

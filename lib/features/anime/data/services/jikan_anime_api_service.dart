@@ -361,6 +361,19 @@ class JikanAnimeApiService {
     final cached = _getFromCache<List<AnimeItem>>(cacheKey);
     if (cached != null) return cached;
 
+    // Fast-path: AniList GraphQL responds in <250ms, has no rate limit, and returns real MAL IDs + Romaji/English/Synonyms
+    final aniListResults = await _fetchAniListSearch(
+      query: query,
+      genre: genres,
+      format: type,
+      page: page,
+      perPage: limit,
+    );
+    if (aniListResults.isNotEmpty) {
+      _putInCache(cacheKey, aniListResults);
+      return aniListResults;
+    }
+
     try {
       await _throttle();
       final queryParams = <String, dynamic>{
@@ -386,24 +399,16 @@ class JikanAnimeApiService {
             .whereType<Map<String, dynamic>>()
             .map((item) => AnimeItem.fromJikan(item))
             .toList();
-        _putInCache(cacheKey, list);
-        return list;
+        if (list.isNotEmpty) {
+          _putInCache(cacheKey, list);
+          return list;
+        }
       }
     } catch (e) {
-      debugPrint('[Jikan] searchAnime ($query) fallback to AniList: $e');
+      debugPrint('[Jikan] searchAnime ($query) fallback error: $e');
     }
 
-    final fallbackList = await _fetchAniListSearch(
-      query: query,
-      genre: genres,
-      format: type,
-      page: page,
-      perPage: limit,
-    );
-    if (fallbackList.isNotEmpty) {
-      _putInCache(cacheKey, fallbackList);
-    }
-    return fallbackList;
+    return const [];
   }
 
   Future<List<String>> getGenres() async {

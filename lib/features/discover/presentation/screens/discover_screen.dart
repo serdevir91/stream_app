@@ -6,7 +6,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/i18n/app_text.dart';
 import '../../../search/domain/entities/media_item.dart';
 import '../../../search/presentation/screens/media_details_screen.dart';
-import '../../../anime/presentation/screens/anime_discover_screen.dart';
 import '../providers/discover_provider.dart';
 
 class DiscoverScreen extends ConsumerStatefulWidget {
@@ -290,15 +289,6 @@ class _DiscoverScreenState extends ConsumerState<DiscoverScreen>
           ],
         ),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.movie_filter_rounded, color: Colors.deepPurpleAccent),
-            tooltip: text.languageCode == 'tr' ? 'Anime Keşfet' : 'Anime Discover',
-            onPressed: () {
-              Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const AnimeDiscoverScreen()),
-              );
-            },
-          ),
           IconButton(
             icon: const Icon(Icons.tune_rounded, color: Colors.white),
             tooltip: text.languageCode == 'tr' ? 'Filtreler' : 'Filters',

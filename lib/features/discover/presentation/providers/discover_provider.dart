@@ -21,6 +21,7 @@ class DiscoverGenre {
 
 const List<DiscoverGenre> discoverGenres = [
   DiscoverGenre(id: null, key: 'all', labelTr: 'Hepsi', labelEn: 'All'),
+  DiscoverGenre(id: 16, key: 'anime', labelTr: 'Anime', labelEn: 'Anime'),
   DiscoverGenre(id: 27, key: 'horror', labelTr: 'Korku', labelEn: 'Horror'),
   DiscoverGenre(id: 28, key: 'action', labelTr: 'Aksiyon', labelEn: 'Action'),
   DiscoverGenre(id: 878, key: 'scifi', labelTr: 'Bilim Kurgu', labelEn: 'Sci-Fi'),
@@ -128,6 +129,7 @@ class DiscoverNotifier extends Notifier<DiscoverState> {
     try {
       final items = await _searchRepo.discoverCards(
         genreId: state.filter.genreId,
+        genreKey: state.filter.genreKey,
         mediaType: state.filter.mediaType,
         minRating: state.filter.minRating > 0 ? state.filter.minRating : null,
         sortBy: state.filter.sortBy,
@@ -152,6 +154,7 @@ class DiscoverNotifier extends Notifier<DiscoverState> {
     try {
       final newItems = await _searchRepo.discoverCards(
         genreId: state.filter.genreId,
+        genreKey: state.filter.genreKey,
         mediaType: state.filter.mediaType,
         minRating: state.filter.minRating > 0 ? state.filter.minRating : null,
         sortBy: state.filter.sortBy,

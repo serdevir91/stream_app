@@ -91,6 +91,13 @@ const List<StudioConfig> studios = [
     movieCompanyIds: [33],
     tvNetworkIds: [],
   ),
+  StudioConfig(
+    name: 'Studio Ghibli',
+    key: 'ghibli',
+    movieCompanyIds: [10342],
+    tvNetworkIds: [],
+    tvCompanyIds: [10342],
+  ),
 ];
 
 class SearchRepository {
@@ -852,6 +859,98 @@ class SearchRepository {
     return [];
   }
 
+  Future<List<MediaItem>> getAnimeSeries({int page = 1}) async {
+    if (!_hasToken) return [];
+    try {
+      final response = await _dio.get(
+        'https://api.themoviedb.org/3/discover/tv',
+        queryParameters: {
+          'language': _tmdbLanguage,
+          'with_genres': 16,
+          'with_original_language': 'ja',
+          'sort_by': 'popularity.desc',
+          'page': page,
+        },
+        options: _tmdbOptions,
+      );
+      if (response.statusCode == 200) {
+        return (response.data['results'] as List)
+            .map(
+              (json) => MediaItem.fromTmdbJson({...json, 'media_type': 'tv'}),
+            )
+            .toList();
+      }
+    } catch (e) {
+      developer.log(
+        'Anime series fetch failed: $e',
+        name: 'SearchRepository',
+      );
+    }
+    return [];
+  }
+
+  Future<List<MediaItem>> getAnimeMovies({int page = 1}) async {
+    if (!_hasToken) return [];
+    try {
+      final response = await _dio.get(
+        'https://api.themoviedb.org/3/discover/movie',
+        queryParameters: {
+          'language': _tmdbLanguage,
+          'with_genres': 16,
+          'with_original_language': 'ja',
+          'sort_by': 'popularity.desc',
+          'page': page,
+        },
+        options: _tmdbOptions,
+      );
+      if (response.statusCode == 200) {
+        return (response.data['results'] as List)
+            .map(
+              (json) =>
+                  MediaItem.fromTmdbJson({...json, 'media_type': 'movie'}),
+            )
+            .toList();
+      }
+    } catch (e) {
+      developer.log(
+        'Anime movies fetch failed: $e',
+        name: 'SearchRepository',
+      );
+    }
+    return [];
+  }
+
+  Future<List<MediaItem>> getTopRatedAnime({int page = 1}) async {
+    if (!_hasToken) return [];
+    try {
+      final response = await _dio.get(
+        'https://api.themoviedb.org/3/discover/tv',
+        queryParameters: {
+          'language': _tmdbLanguage,
+          'with_genres': 16,
+          'with_original_language': 'ja',
+          'sort_by': 'vote_average.desc',
+          'vote_count.gte': 200,
+          'page': page,
+        },
+        options: _tmdbOptions,
+      );
+      if (response.statusCode == 200) {
+        return (response.data['results'] as List)
+            .map(
+              (json) => MediaItem.fromTmdbJson({...json, 'media_type': 'tv'}),
+            )
+            .toList();
+      }
+    } catch (e) {
+      developer.log(
+        'Top rated anime fetch failed: $e',
+        name: 'SearchRepository',
+      );
+    }
+    return [];
+  }
+
   Future<List<MediaItem>> getFeaturedWeeklyHighRated() async {
     if (!_hasToken) return [];
     try {
@@ -1196,6 +1295,7 @@ class SearchRepository {
 
   Future<List<MediaItem>> discoverCards({
     int? genreId,
+    String? genreKey,
     String mediaType = 'all', // 'all', 'movie', 'tv'
     double? minRating,
     String sortBy = 'rating', // 'rating', 'popularity'
@@ -1213,7 +1313,10 @@ class SearchRepository {
       'page': page,
       'include_adult': false,
     };
-    if (genreId != null && genreId > 0) {
+    if (genreKey == 'anime') {
+      baseQueryParams['with_genres'] = 16;
+      baseQueryParams['with_original_language'] = 'ja';
+    } else if (genreId != null && genreId > 0) {
       baseQueryParams['with_genres'] = genreId;
     }
     if (sortBy == 'rating') {
