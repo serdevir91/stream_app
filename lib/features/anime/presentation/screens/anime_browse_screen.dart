@@ -5,6 +5,7 @@ import '../../../../core/i18n/app_text.dart';
 import '../../domain/models/anime_item.dart';
 import '../providers/anime_providers.dart';
 import 'anime_details_screen.dart';
+import '../../../../core/widgets/app_network_image.dart';
 
 class AnimeBrowseScreen extends ConsumerStatefulWidget {
   final String title;
@@ -217,7 +218,7 @@ class _AnimeBrowseScreenState extends ConsumerState<AnimeBrowseScreen> {
                                   fit: StackFit.expand,
                                   children: [
                                     if (item.posterUrl != null)
-                                      Image.network(
+                                      AppNetworkImage(
                                         item.posterUrl!,
                                         fit: BoxFit.cover,
                                         errorBuilder: (_, _, _) =>

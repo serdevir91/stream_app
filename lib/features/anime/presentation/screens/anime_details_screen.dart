@@ -17,6 +17,7 @@ import '../../data/providers/anime_extensions_provider.dart';
 import '../providers/anime_providers.dart';
 import 'anime_extensions_screen.dart';
 import '../../../downloads/domain/stream_download_extras.dart';
+import '../../../../core/widgets/app_network_image.dart';
 
 class AnimeDetailsScreen extends ConsumerStatefulWidget {
   final AnimeItem anime;
@@ -565,7 +566,7 @@ class _AnimeDetailsScreenState extends ConsumerState<AnimeDetailsScreen> {
                 children: [
                   // Base background
                   if (backdrop != null && backdrop.isNotEmpty)
-                    Image.network(
+                    AppNetworkImage(
                       backdrop,
                       fit: BoxFit.cover,
                       alignment: Alignment.center,
@@ -596,7 +597,7 @@ class _AnimeDetailsScreenState extends ConsumerState<AnimeDetailsScreen> {
                                   ),
                                 ],
                               ),
-                              child: Image.network(
+                              child: AppNetworkImage(
                                 currentAnime.posterUrl!,
                                 fit: BoxFit.contain,
                                 errorBuilder: (_, _, _) => const SizedBox.shrink(),
@@ -1524,7 +1525,7 @@ class _AnimeDetailsScreenState extends ConsumerState<AnimeDetailsScreen> {
                       alignment: Alignment.center,
                       children: [
                         if (epThumbnail != null && epThumbnail.isNotEmpty)
-                          Image.network(
+                          AppNetworkImage(
                             epThumbnail,
                             fit: BoxFit.cover,
                             errorBuilder: (_, _, _) => const ColoredBox(
@@ -1795,7 +1796,7 @@ class _AnimeDetailsScreenState extends ConsumerState<AnimeDetailsScreen> {
                     children: [
                       Expanded(
                         child: image != null && image.isNotEmpty
-                            ? Image.network(
+                            ? AppNetworkImage(
                                 image,
                                 width: double.infinity,
                                 fit: BoxFit.cover,
@@ -1921,7 +1922,7 @@ class _AnimeDetailsScreenState extends ConsumerState<AnimeDetailsScreen> {
                         fit: StackFit.expand,
                         children: [
                           if (rec.posterUrl != null)
-                            Image.network(
+                            AppNetworkImage(
                               rec.posterUrl!,
                               fit: BoxFit.cover,
                               errorBuilder: (_, _, _) => const ColoredBox(color: Color(0xFF1E1E28)),

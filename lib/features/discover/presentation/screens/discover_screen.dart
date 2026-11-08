@@ -7,6 +7,7 @@ import '../../../../core/i18n/app_text.dart';
 import '../../../search/domain/entities/media_item.dart';
 import '../../../search/presentation/screens/media_details_screen.dart';
 import '../providers/discover_provider.dart';
+import '../../../../core/widgets/app_network_image.dart';
 
 class DiscoverScreen extends ConsumerStatefulWidget {
   const DiscoverScreen({super.key});
@@ -417,7 +418,7 @@ class _DiscoverScreenState extends ConsumerState<DiscoverScreen>
             child: ClipRRect(
               borderRadius: BorderRadius.circular(24),
               child: item.posterUrl != null
-                  ? Image.network(
+                  ? AppNetworkImage(
                       item.posterUrl!,
                       fit: BoxFit.cover,
                       errorBuilder: (context, error, stackTrace) =>
@@ -481,7 +482,7 @@ class _DiscoverScreenState extends ConsumerState<DiscoverScreen>
                 children: [
                   // Poster
                   if (item.posterUrl != null)
-                    Image.network(
+                    AppNetworkImage(
                       item.posterUrl!,
                       fit: BoxFit.cover,
                       errorBuilder: (context, error, stackTrace) =>

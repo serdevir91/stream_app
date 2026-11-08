@@ -8,6 +8,7 @@ import '../../../player/presentation/screens/player_screen.dart';
 import '../../data/services/download_service.dart';
 import '../../domain/entities/download_item.dart';
 import '../providers/download_provider.dart';
+import '../../../../core/widgets/app_network_image.dart';
 
 class DownloadsTab extends ConsumerWidget {
   const DownloadsTab({super.key});
@@ -282,7 +283,7 @@ class _ActiveDownloadCard extends ConsumerWidget {
               ClipRRect(
                 borderRadius: BorderRadius.circular(8),
                 child: item.posterUrl != null && item.posterUrl!.isNotEmpty
-                    ? Image.network(
+                    ? AppNetworkImage(
                         item.posterUrl!,
                         width: 48,
                         height: 64,
@@ -447,7 +448,7 @@ class _CompletedDownloadCard extends ConsumerWidget {
           ClipRRect(
             borderRadius: BorderRadius.circular(8),
             child: item.posterUrl != null && item.posterUrl!.isNotEmpty
-                ? Image.network(
+                ? AppNetworkImage(
                     item.posterUrl!,
                     width: 52,
                     height: 72,

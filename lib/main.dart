@@ -9,6 +9,7 @@ import 'core/backend/addon_service_provider.dart';
 import 'core/backend/addons/addon_config_repository.dart';
 import 'core/backend/source_ranking.dart';
 import 'core/network/tmdb_cache_interceptor.dart';
+import 'core/theme/app_theme.dart';
 import 'core/backend_bootstrap_service.dart';
 import 'core/settings/app_settings_repository.dart';
 import 'core/subtitles/subtitle_prefs.dart';
@@ -91,35 +92,7 @@ class MyApp extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final settings = ref.watch(appSettingsProvider);
-    final themeMode = settings.themeMode;
-
-    ThemeData theme;
-    if (themeMode == 'light') {
-      theme = ThemeData.light(useMaterial3: true).copyWith(
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: Colors.deepPurple,
-          brightness: Brightness.light,
-        ),
-      );
-    } else if (themeMode == 'amoled') {
-      theme = ThemeData.dark(useMaterial3: true).copyWith(
-        scaffoldBackgroundColor: Colors.black,
-        canvasColor: Colors.black,
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: Colors.deepPurple,
-          brightness: Brightness.dark,
-          surface: Colors.black,
-        ),
-      );
-    } else {
-      theme = ThemeData.dark(useMaterial3: true).copyWith(
-        scaffoldBackgroundColor: const Color(0xFF0F0F13),
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: Colors.deepPurple,
-          brightness: Brightness.dark,
-        ),
-      );
-    }
+    final theme = AppTheme.forMode(settings.themeMode);
 
     return MaterialApp(
       title: 'Stream App',

@@ -7,6 +7,7 @@ import '../../../search/presentation/screens/media_details_screen.dart';
 import '../../../downloads/presentation/screens/downloads_tab.dart';
 import '../providers/library_provider.dart';
 import '../providers/watched_provider.dart';
+import '../../../../core/widgets/app_network_image.dart';
 
 class LibraryScreen extends ConsumerWidget {
   const LibraryScreen({super.key});
@@ -88,7 +89,7 @@ class LibraryScreen extends ConsumerWidget {
                     leading: item.series.posterUrl != null
                         ? ClipRRect(
                             borderRadius: BorderRadius.circular(6),
-                            child: Image.network(
+                            child: AppNetworkImage(
                               item.series.posterUrl!,
                               width: 46,
                               fit: BoxFit.cover,
@@ -260,27 +261,11 @@ class LibraryScreen extends ConsumerWidget {
           children: [
             // Poster Image or Fallback
             item.posterUrl != null
-                ? Image.network(
+                ? AppNetworkImage(
                     item.posterUrl!,
                     fit: BoxFit.cover,
                     errorBuilder: (context, error, stackTrace) =>
                         _buildFallbackPoster(item),
-                    loadingBuilder: (context, child, loadingProgress) {
-                      if (loadingProgress == null) return child;
-                      return Container(
-                        color: Colors.grey.shade900,
-                        child: const Center(
-                          child: SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: Colors.redAccent,
-                            ),
-                          ),
-                        ),
-                      );
-                    },
                   )
                 : _buildFallbackPoster(item),
 

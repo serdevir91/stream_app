@@ -7,6 +7,7 @@ import '../../../../core/i18n/app_text.dart';
 import '../../domain/models/anime_item.dart';
 import '../providers/anime_discover_provider.dart';
 import 'anime_details_screen.dart';
+import '../../../../core/widgets/app_network_image.dart';
 
 class AnimeDiscoverScreen extends ConsumerStatefulWidget {
   const AnimeDiscoverScreen({super.key});
@@ -670,7 +671,7 @@ class _AnimeDiscoverScreenState extends ConsumerState<AnimeDiscoverScreen>
             children: [
               // Poster Image
               if (poster != null)
-                Image.network(
+                AppNetworkImage(
                   poster,
                   fit: BoxFit.cover,
                   errorBuilder: (_, _, _) => const ColoredBox(color: Color(0xFF1E1E28)),

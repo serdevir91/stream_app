@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../providers/mini_player_provider.dart';
+import '../../../../core/widgets/app_network_image.dart';
 
 class MiniPlayer extends ConsumerWidget {
   final VoidCallback onTap;
@@ -37,7 +38,7 @@ class MiniPlayer extends ConsumerWidget {
         child: Row(
           children: [
             if (state.posterUrl != null)
-              Image.network(
+              AppNetworkImage(
                 state.posterUrl!,
                 width: 48,
                 height: 64,

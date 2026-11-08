@@ -11,6 +11,7 @@ import 'anime_browse_screen.dart';
 import 'anime_search_screen.dart';
 import 'anime_discover_screen.dart';
 import 'anime_extensions_screen.dart';
+import '../../../../core/widgets/app_network_image.dart';
 
 class AnimeScreen extends ConsumerStatefulWidget {
   const AnimeScreen({super.key});
@@ -471,7 +472,7 @@ class _AnimeScreenState extends ConsumerState<AnimeScreen> {
                         children: [
                           // Background Image
                           if (hasRealBackdrop)
-                            Image.network(
+                            AppNetworkImage(
                               anime.backdropUrl!,
                               fit: BoxFit.cover,
                               alignment: Alignment.center,
@@ -479,7 +480,7 @@ class _AnimeScreenState extends ConsumerState<AnimeScreen> {
                                   const ColoredBox(color: Color(0xFF1E1E28)),
                             )
                           else if (anime.posterUrl != null && anime.posterUrl!.isNotEmpty)
-                            Image.network(
+                            AppNetworkImage(
                               anime.posterUrl!,
                               fit: BoxFit.cover,
                               alignment: Alignment.center,
@@ -583,7 +584,7 @@ class _AnimeScreenState extends ConsumerState<AnimeScreen> {
                                           ),
                                         ],
                                       ),
-                                      child: Image.network(
+                                      child: AppNetworkImage(
                                         anime.posterUrl!,
                                         fit: BoxFit.cover,
                                         errorBuilder: (_, _, _) => const ColoredBox(color: Colors.black38),
@@ -861,7 +862,7 @@ class _AnimeScreenState extends ConsumerState<AnimeScreen> {
                   AspectRatio(
                     aspectRatio: 2 / 3,
                     child: item.posterUrl != null
-                        ? Image.network(
+                        ? AppNetworkImage(
                             item.posterUrl!,
                             fit: BoxFit.cover,
                             errorBuilder: (context, error, stackTrace) =>

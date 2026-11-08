@@ -36,6 +36,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     });
   }
 
+  final Set<int> _visitedTabs = {0};
+
   final List<Widget> _screens = [
     const HomeContent(),
     const SearchScreen(),
@@ -49,7 +51,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final miniPlayerState = ref.watch(miniPlayerProvider);
 
     return Scaffold(
-      body: _screens[_currentIndex],
+      // Tabs keep their state once opened; unopened tabs are not built yet.
+      body: IndexedStack(
+        index: _currentIndex,
+        children: [
+          for (var i = 0; i < _screens.length; i++)
+            _visitedTabs.contains(i) ? _screens[i] : const SizedBox.shrink(),
+        ],
+      ),
       bottomNavigationBar: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -72,29 +81,32 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               },
               onClose: () {},
             ),
-          BottomNavigationBar(
-            currentIndex: _currentIndex,
-            type: BottomNavigationBarType.fixed,
-            onTap: (index) {
+          NavigationBar(
+            selectedIndex: _currentIndex,
+            onDestinationSelected: (index) {
               setState(() {
                 _currentIndex = index;
+                _visitedTabs.add(index);
               });
             },
-            items: [
-              BottomNavigationBarItem(
-                icon: const Icon(Icons.home),
+            destinations: [
+              NavigationDestination(
+                icon: const Icon(Icons.home_outlined),
+                selectedIcon: const Icon(Icons.home_rounded),
                 label: text.t('home'),
               ),
-              BottomNavigationBarItem(
-                icon: const Icon(Icons.search),
+              NavigationDestination(
+                icon: const Icon(Icons.search_rounded),
                 label: text.t('search'),
               ),
-              BottomNavigationBarItem(
-                icon: const Icon(Icons.library_books),
+              NavigationDestination(
+                icon: const Icon(Icons.video_library_outlined),
+                selectedIcon: const Icon(Icons.video_library_rounded),
                 label: text.t('library'),
               ),
-              BottomNavigationBarItem(
-                icon: const Icon(Icons.settings),
+              NavigationDestination(
+                icon: const Icon(Icons.settings_outlined),
+                selectedIcon: const Icon(Icons.settings_rounded),
                 label: text.t('settings'),
               ),
             ],

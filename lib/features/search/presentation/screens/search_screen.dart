@@ -9,6 +9,7 @@ import '../../../settings/presentation/screens/settings_screen.dart';
 import '../../domain/entities/media_item.dart';
 import '../providers/search_provider.dart';
 import 'media_details_screen.dart';
+import '../../../../core/widgets/app_network_image.dart';
 
 class SearchScreen extends ConsumerStatefulWidget {
   const SearchScreen({super.key});
@@ -301,7 +302,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
             leading: item.posterUrl != null
                 ? ClipRRect(
                     borderRadius: BorderRadius.circular(4),
-                    child: Image.network(
+                    child: AppNetworkImage(
                       item.posterUrl!,
                       width: 60,
                       height: 90,

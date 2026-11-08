@@ -17,6 +17,7 @@ import 'category_media_screen.dart';
 import '../providers/home_provider.dart';
 import '../../../../core/settings/tmdb_instructions_dialog.dart';
 import '../../../discover/presentation/screens/discover_screen.dart';
+import '../../../../core/widgets/app_network_image.dart';
 
 class HomeContent extends ConsumerStatefulWidget {
   const HomeContent({super.key});
@@ -98,7 +99,11 @@ class _HomeContentState extends ConsumerState<HomeContent> {
       ),
       child: Text(
         title,
-        style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+        style: const TextStyle(
+          fontSize: 19,
+          fontWeight: FontWeight.w800,
+          letterSpacing: -0.3,
+        ),
       ),
     );
   }
@@ -108,7 +113,7 @@ class _HomeContentState extends ConsumerState<HomeContent> {
     final poster = item.posterUrl;
 
     if (backdrop != null && backdrop.isNotEmpty) {
-      return Image.network(
+      return AppNetworkImage(
         backdrop,
         fit: BoxFit.cover,
         width: double.infinity,
@@ -122,7 +127,7 @@ class _HomeContentState extends ConsumerState<HomeContent> {
       return Stack(
         fit: StackFit.expand,
         children: [
-          Image.network(
+          AppNetworkImage(
             poster,
             fit: BoxFit.cover,
             color: Colors.black54,
@@ -132,7 +137,7 @@ class _HomeContentState extends ConsumerState<HomeContent> {
           ),
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 8),
-            child: Image.network(
+            child: AppNetworkImage(
               poster,
               fit: BoxFit.contain,
               errorBuilder: (context, error, stackTrace) =>
@@ -273,13 +278,19 @@ class _HomeContentState extends ConsumerState<HomeContent> {
               ),
               enabledBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(8),
-                borderSide: BorderSide(color: Colors.orangeAccent.withValues(alpha: 0.5)),
+                borderSide: BorderSide(
+                  color: Colors.orangeAccent.withValues(alpha: 0.5),
+                ),
               ),
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(8),
                 borderSide: const BorderSide(color: Colors.orangeAccent),
               ),
-              prefixIcon: const Icon(Icons.key, color: Colors.orangeAccent, size: 18),
+              prefixIcon: const Icon(
+                Icons.key,
+                color: Colors.orangeAccent,
+                size: 18,
+              ),
             ),
           ),
           const SizedBox(height: 12),
@@ -288,10 +299,17 @@ class _HomeContentState extends ConsumerState<HomeContent> {
             children: [
               TextButton.icon(
                 onPressed: () => showTmdbTokenInstructions(context, text),
-                icon: const Icon(Icons.help_outline, size: 14, color: Colors.orangeAccent),
+                icon: const Icon(
+                  Icons.help_outline,
+                  size: 14,
+                  color: Colors.orangeAccent,
+                ),
                 label: Text(
                   text.t('get_tmdb_token'),
-                  style: const TextStyle(color: Colors.orangeAccent, fontSize: 13),
+                  style: const TextStyle(
+                    color: Colors.orangeAccent,
+                    fontSize: 13,
+                  ),
                 ),
               ),
               const SizedBox(width: 8),
@@ -299,25 +317,37 @@ class _HomeContentState extends ConsumerState<HomeContent> {
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.orangeAccent,
                   foregroundColor: Colors.black,
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 8,
+                  ),
                   minimumSize: Size.zero,
                   tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  textStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                  textStyle: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 13,
+                  ),
                 ),
                 onPressed: () async {
                   final token = _tokenController.text.trim();
                   if (token.isEmpty) return;
 
                   final next = settings.copyWith(tmdbAccessToken: token);
-                  final status = await ref.read(appSettingsProvider.notifier).saveSettings(next);
-                  
+                  final status = await ref
+                      .read(appSettingsProvider.notifier)
+                      .saveSettings(next);
+
                   if (!context.mounted) return;
 
-                  final success = status == TmdbSyncStatus.synced || status == TmdbSyncStatus.skipped;
+                  final success =
+                      status == TmdbSyncStatus.synced ||
+                      status == TmdbSyncStatus.skipped;
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
                       content: Text(
-                        success ? text.t('token_saved_success') : text.t('token_saved_fail'),
+                        success
+                            ? text.t('token_saved_success')
+                            : text.t('token_saved_fail'),
                         style: const TextStyle(fontSize: 13),
                       ),
                       backgroundColor: success ? Colors.green : Colors.red,
@@ -404,89 +434,103 @@ class _HomeContentState extends ConsumerState<HomeContent> {
             icon: const Icon(Icons.style_rounded, color: Colors.amber),
             tooltip: text.t('discover'),
             onPressed: () {
-              Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (_) => const DiscoverScreen(),
-                ),
-              );
+              Navigator.of(
+                context,
+              ).push(MaterialPageRoute(builder: (_) => const DiscoverScreen()));
             },
           ),
         ],
       ),
-      body: SingleChildScrollView(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            if (settings.tmdbAccessToken.trim().isEmpty)
-              _buildTokenWarningBanner(context, text),
-            _buildSectionTitle(text.t('featured')),
-            _buildFeaturedSlider(
-              context,
-              featuredWeekly,
-              subtitleLanguage: settings.subtitleLanguage,
-            ),
+      // Slivers: category rows build, and fetch, only when scrolled near.
+      body: CustomScrollView(
+        slivers: [
+          SliverToBoxAdapter(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (settings.tmdbAccessToken.trim().isEmpty)
+                  _buildTokenWarningBanner(context, text),
+                _buildSectionTitle(text.t('featured')),
+                _buildFeaturedSlider(
+                  context,
+                  featuredWeekly,
+                  subtitleLanguage: settings.subtitleLanguage,
+                ),
 
-            continueItemsAsync.when(
-              data: (continueItems) {
-                if (continueItems.isEmpty) return const SizedBox.shrink();
-                return Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _buildSectionTitle(text.t('continue_watching')),
-                    _buildContinueWatchingList(
-                      context,
-                      continueItems,
-                      subtitleLanguage: settings.subtitleLanguage,
-                    ),
-                  ],
-                );
-              },
-              loading: () => const SizedBox.shrink(),
-              error: (error, stack) => const SizedBox.shrink(),
-            ),
-            if (libraryItems.isNotEmpty) ...[
-              _buildSectionTitle(text.t('my_list')),
-              _buildLibraryQuickList(context, libraryItems),
-            ],
-            ...settings.homeCategories.map((key) {
-              final asyncData = _getCategoryData(ref, key);
-              return Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  GestureDetector(
-                    behavior: HitTestBehavior.opaque,
-                    onTap: () {
-                      Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (_) => CategoryMediaScreen(
-                            categoryKey: key,
-                            title: text.t(key),
-                          ),
-                        ),
-                      );
-                    },
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                continueItemsAsync.when(
+                  data: (continueItems) {
+                    if (continueItems.isEmpty) return const SizedBox.shrink();
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Expanded(child: _buildSectionTitle(text.t(key))),
-                        const Padding(
-                          padding: EdgeInsets.only(right: 16.0, top: 24.0),
-                          child: Icon(Icons.chevron_right, color: Colors.grey),
+                        _buildSectionTitle(text.t('continue_watching')),
+                        _buildContinueWatchingList(
+                          context,
+                          continueItems,
+                          subtitleLanguage: settings.subtitleLanguage,
                         ),
                       ],
-                    ),
-                  ),
-                  _buildHorizontalList(
-                    context,
-                    asyncData,
-                    noDataText: text.t('no_data'),
-                  ),
+                    );
+                  },
+                  loading: () => const SizedBox.shrink(),
+                  error: (error, stack) => const SizedBox.shrink(),
+                ),
+                if (libraryItems.isNotEmpty) ...[
+                  _buildSectionTitle(text.t('my_list')),
+                  _buildLibraryQuickList(context, libraryItems),
                 ],
+              ],
+            ),
+          ),
+          SliverList.builder(
+            itemCount: settings.homeCategories.length,
+            itemBuilder: (context, index) {
+              final key = settings.homeCategories[index];
+              return Consumer(
+                builder: (context, ref, _) {
+                  final asyncData = _getCategoryData(ref, key);
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: () {
+                          Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (_) => CategoryMediaScreen(
+                                categoryKey: key,
+                                title: text.t(key),
+                              ),
+                            ),
+                          );
+                        },
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Expanded(child: _buildSectionTitle(text.t(key))),
+                            const Padding(
+                              padding: EdgeInsets.only(right: 16.0, top: 24.0),
+                              child: Icon(
+                                Icons.chevron_right,
+                                color: Colors.grey,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      _buildHorizontalList(
+                        context,
+                        asyncData,
+                        noDataText: text.t('no_data'),
+                      ),
+                    ],
+                  );
+                },
               );
-            }),
-            const SizedBox(height: 30),
-          ],
-        ),
+            },
+          ),
+          const SliverToBoxAdapter(child: SizedBox(height: 30)),
+        ],
       ),
     );
   }
@@ -616,9 +660,9 @@ class _HomeContentState extends ConsumerState<HomeContent> {
           ),
         );
       },
-      loading: () => SizedBox(
-        height: sliderHeight,
-        child: const Center(child: CircularProgressIndicator()),
+      loading: () => Padding(
+        padding: EdgeInsets.symmetric(horizontal: cardMargin + 10),
+        child: SkeletonBox(height: sliderHeight, radius: cardRadius),
       ),
       error: (error, _) => SizedBox(
         height: sliderHeight,
@@ -644,10 +688,14 @@ class _HomeContentState extends ConsumerState<HomeContent> {
           final item = items[index];
           final history = item.baseHistory;
           final image = history.posterUrl ?? history.backdropUrl;
-          final effectiveDuration = history.duration > 1 ? history.duration : 45 * 60 * 1000;
+          final effectiveDuration = history.duration > 1
+              ? history.duration
+              : 45 * 60 * 1000;
           final progress = item.startFromBeginning
               ? 0.0
-              : (history.lastPosition > 0 ? (history.lastPosition / effectiveDuration).clamp(0.0, 1.0) : history.progressRatio);
+              : (history.lastPosition > 0
+                    ? (history.lastPosition / effectiveDuration).clamp(0.0, 1.0)
+                    : history.progressRatio);
 
           String subtitle;
           if (history.mediaType == 'tv') {
@@ -685,7 +733,7 @@ class _HomeContentState extends ConsumerState<HomeContent> {
                           fit: StackFit.expand,
                           children: [
                             if (image != null)
-                              Image.network(
+                              AppNetworkImage(
                                 image,
                                 fit: BoxFit.cover,
                                 errorBuilder: (context, error, stackTrace) =>
@@ -699,7 +747,9 @@ class _HomeContentState extends ConsumerState<HomeContent> {
                                 value: progress.clamp(0.0, 1.0),
                                 minHeight: 4,
                                 backgroundColor: Colors.black54,
-                                valueColor: const AlwaysStoppedAnimation<Color>(Colors.redAccent),
+                                valueColor: const AlwaysStoppedAnimation<Color>(
+                                  Colors.redAccent,
+                                ),
                               ),
                             ),
                           ],
@@ -764,12 +814,15 @@ class _HomeContentState extends ConsumerState<HomeContent> {
                           fit: StackFit.expand,
                           children: [
                             item.posterUrl != null
-                                ? Image.network(
+                                ? AppNetworkImage(
                                     item.posterUrl!,
                                     fit: BoxFit.cover,
                                     width: double.infinity,
-                                    errorBuilder: (context, error, stackTrace) =>
-                                        const ColoredBox(color: Colors.grey),
+                                    errorBuilder:
+                                        (context, error, stackTrace) =>
+                                            const ColoredBox(
+                                              color: Colors.grey,
+                                            ),
                                   )
                                 : const ColoredBox(
                                     color: Colors.grey,
@@ -854,25 +907,17 @@ class _HomeContentState extends ConsumerState<HomeContent> {
                       children: [
                         Expanded(
                           child: ClipRRect(
-                            borderRadius: BorderRadius.circular(8),
+                            borderRadius: BorderRadius.circular(12),
                             child: Stack(
                               fit: StackFit.expand,
                               children: [
                                 item.posterUrl != null
-                                    ? Image.network(
+                                    ? AppNetworkImage(
                                         item.posterUrl!,
                                         fit: BoxFit.cover,
                                         width: double.infinity,
-                                        errorBuilder:
-                                            (context, error, stackTrace) =>
-                                                const ColoredBox(
-                                                  color: Colors.grey,
-                                                ),
                                       )
-                                    : const ColoredBox(
-                                        color: Colors.grey,
-                                        child: Center(child: Icon(Icons.movie)),
-                                      ),
+                                    : const ImagePlaceholder(),
                                 Positioned(
                                   bottom: 6,
                                   left: 6,
@@ -882,7 +927,9 @@ class _HomeContentState extends ConsumerState<HomeContent> {
                                       vertical: 2.5,
                                     ),
                                     decoration: BoxDecoration(
-                                      color: Colors.black.withValues(alpha: 0.65),
+                                      color: Colors.black.withValues(
+                                        alpha: 0.65,
+                                      ),
                                       borderRadius: BorderRadius.circular(4),
                                     ),
                                     child: Text(
@@ -929,10 +976,7 @@ class _HomeContentState extends ConsumerState<HomeContent> {
           ),
         );
       },
-      loading: () => const SizedBox(
-        height: 200,
-        child: Center(child: CircularProgressIndicator()),
-      ),
+      loading: () => const PosterRowSkeleton(height: 220, itemWidth: 132),
       error: (err, _) =>
           SizedBox(height: 200, child: Center(child: Text('Error: $err'))),
     );

@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/i18n/app_text.dart';
 import '../../../search/presentation/screens/media_details_screen.dart';
 import '../providers/home_provider.dart';
+import '../../../../core/widgets/app_network_image.dart';
 
 class CategoryMediaScreen extends ConsumerWidget {
   final String categoryKey;
@@ -66,7 +67,7 @@ class CategoryMediaScreen extends ConsumerWidget {
                           fit: StackFit.expand,
                           children: [
                             if (item.posterUrl != null && item.posterUrl!.isNotEmpty)
-                              Image.network(
+                              AppNetworkImage(
                                 item.posterUrl!,
                                 fit: BoxFit.cover,
                                 errorBuilder: (context, error, stackTrace) => const ColoredBox(

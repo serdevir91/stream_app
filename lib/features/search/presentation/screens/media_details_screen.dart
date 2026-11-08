@@ -22,6 +22,7 @@ import '../../../anime/domain/models/anime_item.dart';
 import '../../../anime/presentation/providers/anime_providers.dart';
 import '../../../../core/player/external_player_service.dart';
 import '../../../downloads/domain/stream_download_extras.dart';
+import '../../../../core/widgets/app_network_image.dart';
 
 typedef EpisodeTarget = ({int season, int episode});
 
@@ -1279,7 +1280,7 @@ class _MediaDetailsScreenState extends ConsumerState<MediaDetailsScreen> {
                 fit: StackFit.expand,
                 children: [
                   if (item.backdropUrl != null || item.posterUrl != null)
-                    Image.network(
+                    AppNetworkImage(
                       item.backdropUrl ?? item.posterUrl!,
                       fit: BoxFit.cover,
                       errorBuilder: (context, error, stackTrace) =>
@@ -2545,7 +2546,7 @@ class _MediaDetailsScreenState extends ConsumerState<MediaDetailsScreen> {
                           alignment: Alignment.center,
                           children: [
                             episode.stillPath != null
-                                ? Image.network(
+                                ? AppNetworkImage(
                                     episode.stillPath!,
                                     fit: BoxFit.cover,
                                     errorBuilder: (buildContext, error, stackTrace) =>
@@ -2821,7 +2822,7 @@ class _MediaDetailsScreenState extends ConsumerState<MediaDetailsScreen> {
                   fit: StackFit.expand,
                   children: [
                     item.posterUrl != null
-                        ? Image.network(
+                        ? AppNetworkImage(
                             item.posterUrl!,
                             fit: BoxFit.cover,
                             errorBuilder: (context, error, stackTrace) =>
