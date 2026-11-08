@@ -1,9 +1,9 @@
-import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/i18n/app_text.dart';
+import '../../../../core/player/external_player_service.dart';
 import '../../../player/presentation/screens/player_screen.dart';
 import '../../data/services/download_service.dart';
 import '../../domain/entities/download_item.dart';
@@ -22,6 +22,9 @@ class DownloadsTab extends ConsumerWidget {
     final allDownloads = ref.watch(allDownloadsProvider);
     final activeDownloads = ref.watch(activeDownloadsProvider);
     final completedDownloads = ref.watch(completedDownloadsProvider);
+    final failedDownloads = allDownloads
+        .where((item) => item.status == 'failed' || item.status == 'canceled')
+        .toList();
 
     if (allDownloads.isEmpty) {
       return Center(
@@ -107,6 +110,25 @@ class DownloadsTab extends ConsumerWidget {
           const SizedBox(height: 20),
         ],
 
+        if (failedDownloads.isNotEmpty) ...[
+          Row(
+            children: [
+              const Icon(Icons.error_outline_rounded,
+                  color: Colors.orangeAccent, size: 20),
+              const SizedBox(width: 8),
+              Text(
+                isTr
+                    ? 'Tamamlanamayanlar (${failedDownloads.length})'
+                    : 'Not finished (${failedDownloads.length})',
+                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          ...failedDownloads.map((item) => _FailedDownloadCard(item: item)),
+          const SizedBox(height: 20),
+        ],
+
         // Completed Downloads Section
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -155,6 +177,68 @@ class DownloadsTab extends ConsumerWidget {
   }
 }
 
+class _FailedDownloadCard extends ConsumerWidget {
+  final DownloadItem item;
+
+  const _FailedDownloadCard({required this.item});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final text = ref.watch(appTextProvider);
+    final isTr = text.languageCode == 'tr';
+    final service = ref.watch(downloadServiceProvider);
+    final canceled = item.status == 'canceled';
+    final message = canceled
+        ? (isTr ? 'İptal edildi' : 'Canceled')
+        : (item.errorMessage?.isNotEmpty == true
+            ? item.errorMessage!
+            : (isTr ? 'İndirme başarısız' : 'Download failed'));
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.fromLTRB(14, 10, 6, 10),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.05),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.orangeAccent.withValues(alpha: 0.3)),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  item.title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  message,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(color: Colors.white60, fontSize: 12),
+                ),
+              ],
+            ),
+          ),
+          IconButton(
+            icon: const Icon(Icons.refresh_rounded, color: Colors.cyanAccent),
+            tooltip: text.t('try_again'),
+            onPressed: () => service.retryDownload(item.id),
+          ),
+          IconButton(
+            icon: const Icon(Icons.delete_outline_rounded, color: Colors.redAccent),
+            tooltip: isTr ? 'Sil' : 'Delete',
+            onPressed: () => service.deleteDownload(item.id),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _ActiveDownloadCard extends ConsumerWidget {
   final DownloadItem item;
 
@@ -163,6 +247,19 @@ class _ActiveDownloadCard extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final service = ref.watch(downloadServiceProvider);
+    // Progress ticks update only this card, not the whole list.
+    return ValueListenableBuilder<DownloadItem?>(
+      valueListenable: service.watchItem(item.id),
+      builder: (context, live, _) =>
+          _buildCard(context, service, live ?? item),
+    );
+  }
+
+  Widget _buildCard(
+    BuildContext context,
+    DownloadService service,
+    DownloadItem item,
+  ) {
     final percent = (item.progress * 100).toStringAsFixed(1);
     final downloadedStr = DownloadService.formatBytes(item.downloadedBytes);
     final totalStr = item.totalBytes > 0
@@ -423,8 +520,7 @@ class _CompletedDownloadCard extends ConsumerWidget {
                         ),
                       ),
                     ),
-                    if (item.localSubtitlePath != null &&
-                        File(item.localSubtitlePath!).existsSync())
+                    if (item.localSubtitlePath?.isNotEmpty == true)
                       Container(
                         padding: const EdgeInsets.symmetric(
                             horizontal: 6, vertical: 2),
@@ -475,6 +571,17 @@ class _CompletedDownloadCard extends ConsumerWidget {
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                     onSelected: (selectedPlayer) => _play(context, player: selectedPlayer),
                     itemBuilder: (ctx) => [
+                      if (ExternalPlayerService.isSupported)
+                        PopupMenuItem(
+                          value: 'ext:',
+                          child: Row(
+                            children: [
+                              const Icon(Icons.open_in_new_rounded, color: Colors.greenAccent, size: 20),
+                              const SizedBox(width: 10),
+                              Text(text.t('open_in_external_player')),
+                            ],
+                          ),
+                        ),
                       PopupMenuItem(
                         value: 'vlc',
                         child: Row(

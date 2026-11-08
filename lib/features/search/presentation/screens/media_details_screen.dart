@@ -21,6 +21,7 @@ import '../../../anime/data/providers/anime_extensions_provider.dart';
 import '../../../anime/domain/models/anime_item.dart';
 import '../../../anime/presentation/providers/anime_providers.dart';
 import '../../../../core/player/external_player_service.dart';
+import '../../../downloads/domain/stream_download_extras.dart';
 
 typedef EpisodeTarget = ({int season, int episode});
 
@@ -414,7 +415,7 @@ class _MediaDetailsScreenState extends ConsumerState<MediaDetailsScreen> {
   }
 
   /// Player choice for the next PlayerScreen this screen opens: null uses
-  /// the settings, 'ext:<package>' an external app ('ext:' = chooser).
+  /// the settings, `ext:<package>` an external app (`ext:` = chooser).
   String? _playerOverride;
 
   /// "Open with" sheet (long press on play or an episode): in-app or one of
@@ -1085,6 +1086,9 @@ class _MediaDetailsScreenState extends ConsumerState<MediaDetailsScreen> {
                               localVideoPath: '',
                               status: 'queued',
                               createdAt: DateTime.now(),
+                              subtitleLanguage: ref.read(appSettingsProvider).subtitleLanguage,
+                              headers: streamDownloadExtras(s).headers,
+                              streamSubtitles: streamDownloadExtras(s).subtitles,
                             );
                             await downloadService.startDownload(downloadItem);
                             messenger.showSnackBar(
@@ -1191,6 +1195,9 @@ class _MediaDetailsScreenState extends ConsumerState<MediaDetailsScreen> {
             localVideoPath: '',
             status: 'queued',
             createdAt: DateTime.now(),
+            subtitleLanguage: ref.read(appSettingsProvider).subtitleLanguage,
+            headers: streamDownloadExtras(s).headers,
+            streamSubtitles: streamDownloadExtras(s).subtitles,
           );
           await downloadService.startDownload(downloadItem);
         }

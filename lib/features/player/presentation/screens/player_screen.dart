@@ -164,7 +164,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
 
   /// Package of the external player to use, [ExternalPlayerService.askValue]
   /// for the system chooser, or null to play in-app. `preferredPlayer`
-  /// 'ext:<package>' forces an external app for this screen.
+  /// `ext:<package>` forces an external app for this screen.
   String? get _externalTarget {
     if (_forceInApp || !ExternalPlayerService.isSupported) return null;
     if (_externalOverride != null) return _externalOverride;

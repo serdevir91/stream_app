@@ -21,6 +21,12 @@ class DownloadItem {
   final DateTime createdAt;
   final String? errorMessage;
 
+  /// HTTP headers the source needs (Referer, Origin, User-Agent).
+  final Map<String, String> headers;
+
+  /// Subtitles that came with the stream: url, language, label, format.
+  final List<Map<String, String>> streamSubtitles;
+
   const DownloadItem({
     required this.id,
     required this.mediaId,
@@ -43,7 +49,11 @@ class DownloadItem {
     this.speed = '',
     required this.createdAt,
     this.errorMessage,
+    this.headers = const {},
+    this.streamSubtitles = const [],
   });
+
+  static const Object _unset = Object();
 
   bool get isCompleted => status == 'completed';
   bool get isDownloading => status == 'downloading';
@@ -72,7 +82,9 @@ class DownloadItem {
     int? totalBytes,
     String? speed,
     DateTime? createdAt,
-    String? errorMessage,
+    Object? errorMessage = _unset,
+    Map<String, String>? headers,
+    List<Map<String, String>>? streamSubtitles,
   }) {
     return DownloadItem(
       id: id ?? this.id,
@@ -95,7 +107,11 @@ class DownloadItem {
       totalBytes: totalBytes ?? this.totalBytes,
       speed: speed ?? this.speed,
       createdAt: createdAt ?? this.createdAt,
-      errorMessage: errorMessage ?? this.errorMessage,
+      errorMessage: identical(errorMessage, _unset)
+          ? this.errorMessage
+          : errorMessage as String?,
+      headers: headers ?? this.headers,
+      streamSubtitles: streamSubtitles ?? this.streamSubtitles,
     );
   }
 
@@ -122,6 +138,8 @@ class DownloadItem {
       'speed': speed,
       'createdAt': createdAt.toIso8601String(),
       'errorMessage': errorMessage,
+      'headers': headers,
+      'streamSubtitles': streamSubtitles,
     };
   }
 
@@ -150,6 +168,17 @@ class DownloadItem {
           ? DateTime.tryParse(map['createdAt'].toString()) ?? DateTime.now()
           : DateTime.now(),
       errorMessage: map['errorMessage']?.toString(),
+      headers: map['headers'] is Map
+          ? (map['headers'] as Map).map(
+              (k, v) => MapEntry(k.toString(), v.toString()),
+            )
+          : const {},
+      streamSubtitles: map['streamSubtitles'] is List
+          ? (map['streamSubtitles'] as List)
+              .whereType<Map>()
+              .map((m) => m.map((k, v) => MapEntry(k.toString(), v.toString())))
+              .toList()
+          : const [],
     );
   }
 }

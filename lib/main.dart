@@ -19,6 +19,8 @@ import 'features/library/data/repositories/watched_repository.dart';
 
 import 'features/player/data/repositories/watch_history_repository.dart';
 import 'features/downloads/data/services/download_service.dart';
+import 'core/subtitles/online_subtitle_repository.dart';
+import 'package:dio/dio.dart';
 import 'features/downloads/presentation/providers/download_provider.dart';
 
 void main() async {
@@ -63,7 +65,17 @@ void main() async {
   await addonService.init();
   initAddonService(addonService);
 
-  final downloadService = DownloadService();
+  // Built per use so a TMDB token or Wyzie key saved later is picked up.
+  final downloadService = DownloadService(
+    subtitleRepoBuilder: () {
+      final settings = appSettingsRepository.getSettings();
+      return OnlineSubtitleRepository(
+        Dio(),
+        tmdbAccessToken: settings.tmdbAccessToken,
+        wyzieApiKey: settings.wyzieApiKey,
+      );
+    },
+  );
   await downloadService.init();
   initDownloadService(downloadService);
 

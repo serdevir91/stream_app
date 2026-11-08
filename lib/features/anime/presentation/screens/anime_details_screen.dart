@@ -16,6 +16,7 @@ import '../../domain/models/anime_episode.dart';
 import '../../data/providers/anime_extensions_provider.dart';
 import '../providers/anime_providers.dart';
 import 'anime_extensions_screen.dart';
+import '../../../downloads/domain/stream_download_extras.dart';
 
 class AnimeDetailsScreen extends ConsumerStatefulWidget {
   final AnimeItem anime;
@@ -470,6 +471,9 @@ class _AnimeDetailsScreenState extends ConsumerState<AnimeDetailsScreen> {
         localVideoPath: '',
         status: 'queued',
         createdAt: DateTime.now(),
+        subtitleLanguage: ref.read(appSettingsProvider).subtitleLanguage,
+        headers: streamDownloadExtras(directStream).headers,
+        streamSubtitles: streamDownloadExtras(directStream).subtitles,
       );
       await downloadService.startDownload(downloadItem);
       if (mounted) {

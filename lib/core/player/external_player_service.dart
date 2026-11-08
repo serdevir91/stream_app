@@ -88,7 +88,7 @@ class ExternalPlayerService {
     try {
       final url = await _playableUrl(source, headers, server);
       final subs = <Map<String, String>>[];
-      if (subtitle != null && !subtitle.isEmpty) {
+      if (subtitle != null && subtitle.cues.isNotEmpty) {
         final name = '${_safeName(title)}.srt';
         final subUrl = await server.serveText(name, subtitle.toSrt(timing));
         subs.add({'url': subUrl, 'name': subtitleName});
