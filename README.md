@@ -36,16 +36,18 @@ watch history, a personal library, and runtime app settings.
 
 ## Download
 
-### Android (v1.0.22)
+### Android (v1.0.29)
 
 | Architecture | File | Size |
 |-------------|------|------|
-| Universal (All Devices) | [app-release.apk](https://github.com/serdevir91/stream_app/releases/download/v1.0.22/app-release.apk) | ~98 MB |
-| ARM64 (most devices) | [app-arm64-v8a-release.apk](https://github.com/serdevir91/stream_app/releases/download/v1.0.22/app-arm64-v8a-release.apk) | ~34 MB |
-| ARM 32-bit (older devices) | [app-armeabi-v7a-release.apk](https://github.com/serdevir91/stream_app/releases/download/v1.0.22/app-armeabi-v7a-release.apk) | ~31 MB |
-| x86_64 (emulators) | [app-x86_64-release.apk](https://github.com/serdevir91/stream_app/releases/download/v1.0.22/app-x86_64-release.apk) | ~39 MB |
+| Universal (All Devices) | [app-release.apk](https://github.com/serdevir91/stream_app/releases/download/v1.0.29/app-release.apk) | ~240 MB |
+| ARM64 (most devices) | [app-arm64-v8a-release.apk](https://github.com/serdevir91/stream_app/releases/download/v1.0.29/app-arm64-v8a-release.apk) | ~81 MB |
+| ARM 32-bit (older devices) | [app-armeabi-v7a-release.apk](https://github.com/serdevir91/stream_app/releases/download/v1.0.29/app-armeabi-v7a-release.apk) | ~73 MB |
+| x86_64 (emulators) | [app-x86_64-release.apk](https://github.com/serdevir91/stream_app/releases/download/v1.0.29/app-x86_64-release.apk) | ~92 MB |
 
 > Most modern phones use ARM64. If unsure, download the Universal or ARM64 version.
+>
+> **Upgrading from 1.0.28 or older:** 1.0.29 is signed with a new key. Uninstall the old version first, then install 1.0.29. Back up your library first (Settings > Export backup) to keep it.
 
 ### Windows (v1.0.22)
 
