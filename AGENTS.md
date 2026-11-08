@@ -32,13 +32,12 @@ GitHub Releases (not on Play). Repo: `serdevir91/stream_app`.
   `flutter build apk --split-per-abi --release`. Never in parallel.
 
 ## Signing (important)
-- Releases up to 1.0.28 are signed with certificate SHA-256
-  `d5ac6ce5…85a3`. Every new release must use the same key or installed copies
-  cannot update.
-- `android/app/build.gradle.kts` reads `android/key.properties` (gitignored). Without
-  it, release builds use the debug key, which is the wrong certificate.
-- The matching keystore file is `~/SigningBackup/Workout-Tracker/android/app/upload-keystore.jks`;
-  its password is not the one in Workout-Tracker's `key.properties`.
+- Since v1.0.29 releases are signed with `~/SigningBackup/stream_app/stream-release.jks`
+  (cert SHA-256 `c8e04e6e1c22…`). Copy `~/SigningBackup/stream_app/key.properties` to
+  `android/key.properties` (gitignored) before a release build.
+- Without that file, release builds use the debug key and cannot update installed copies.
+- Releases up to 1.0.28 used another key (`d5ac6ce5…`) whose password is lost; 1.0.28
+  users had to uninstall once.
 
 ## Release
 - Bump `pubspec.yaml` (`x.y.z+n` → `x.y.(z+1)+(n+1)`), tag `vX.Y.Z`, GitHub Release
