@@ -98,7 +98,12 @@ class DownloadService {
   // Storage and change notification
   // ---------------------------------------------------------------------
 
-  Future<void> init() async {
+  Future<void>? _initFuture;
+
+  /// Opens the box and restores the queue once; later calls share that run.
+  Future<void> init() => _initFuture ??= _init();
+
+  Future<void> _init() async {
     if (!Hive.isBoxOpen(boxName)) {
       _box = await Hive.openBox(boxName);
     } else {
@@ -136,6 +141,7 @@ class DownloadService {
     _queue
       ..clear()
       ..addAll(restored.map((e) => e.id));
+    _notify();
   }
 
   Stream<List<DownloadItem>> watchDownloads() => _itemsStreamController.stream;

@@ -1486,6 +1486,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
           return;
         } catch (_) {}
       }
+      _reportPlayback(ok: false);
       setState(() {
         _errorMessageKey = 'video_playback_failed';
         _isLoading = false;
@@ -2778,7 +2779,65 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     _progressAutosaveTimer = Timer.periodic(const Duration(seconds: 15), (_) {
       unawaited(_saveProgress());
       _checkEpisodeCompletion();
+      _trackPlaybackHealth();
     });
+  }
+
+  String? _currentAddonId;
+  String? _reportedStreamUrl;
+  bool _nextEpisodePrefetched = false;
+
+  /// Tells the source ranking whether the current addon's stream played.
+  void _reportPlayback({required bool ok}) {
+    final url = _currentStreamUrl;
+    if (url == null || url == _reportedStreamUrl) return;
+    _reportedStreamUrl = url;
+    try {
+      ref.read(addonServiceProvider).reportPlayback(
+            _currentAddonId ?? widget.sourceId,
+            ok: ok,
+          );
+    } catch (_) {}
+  }
+
+  int _currentDurationMs() {
+    try {
+      if (_player != null) return _player!.state.duration.inMilliseconds;
+      final native = _nativeController;
+      if (native != null && native.value.isInitialized) {
+        return native.value.duration.inMilliseconds;
+      }
+      final vlc = _vlcViewController;
+      if (vlc != null && vlc.value.isInitialized) {
+        return vlc.value.duration.inMilliseconds;
+      }
+    } catch (_) {}
+    return 0;
+  }
+
+  /// Marks the source as working after 10 s of playback, and past 80 %
+  /// starts resolving the next episode so it opens without a wait.
+  void _trackPlaybackHealth() {
+    if (!_isDirectLink) return;
+    final position = _currentPlaybackPositionMs();
+    if (position > 10000) _reportPlayback(ok: true);
+
+    if (_nextEpisodePrefetched || !_isTvPlayback) return;
+    final duration = _currentDurationMs();
+    if (duration <= 0 || position < duration * 0.8) return;
+    final nextEpisode = _effectiveNextEpisodeNumber ?? widget.episode + 1;
+    final nextSeason = _effectiveNextSeasonNumber ?? widget.season;
+    _nextEpisodePrefetched = true;
+    try {
+      ref.read(addonServiceProvider).prefetch(
+            query: widget.title,
+            tmdbId: widget.mediaId,
+            contentType: _backendMediaType,
+            season: nextSeason,
+            episode: nextEpisode,
+            preferAnimeSources: widget.preferAnimeSources,
+          );
+    } catch (_) {}
   }
 
   Future<void> _checkEpisodeCompletion() async {
@@ -2834,29 +2893,35 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     unawaited(tryPlay(5));
   }
 
+  /// When a direct stream has not started after a few seconds, moves on to
+  /// the next direct source in ranked order, and to an embed only when no
+  /// direct source is left.
   void _startDirectLinkFallbackIfNeeded({
     required List<Map<String, dynamic>> streams,
     required Map<String, dynamic>? selectedStream,
+    int hops = 0,
   }) {
     if (selectedStream == null || selectedStream['is_direct_link'] != true) {
       return;
     }
-
-    Map<String, dynamic>? embedFallback;
-    for (final stream in streams) {
-      final isDirect = stream['is_direct_link'] == true;
-      final hasUrl = stream['url']?.toString().isNotEmpty ?? false;
-      if (!isDirect && hasUrl) {
-        embedFallback = stream;
-        break;
-      }
+    final selectedUrl = selectedStream['url']?.toString();
+    final remaining = streams
+        .where((s) =>
+            s['url']?.toString() != selectedUrl &&
+            (s['url']?.toString().isNotEmpty ?? false))
+        .toList();
+    Map<String, dynamic>? next;
+    if (hops < 2) {
+      next = remaining.where((s) => s['is_direct_link'] == true).firstOrNull;
     }
-    if (embedFallback == null) {
+    next ??= remaining.where((s) => s['is_direct_link'] != true).firstOrNull;
+    if (next == null) {
       return;
     }
+    final fallback = next;
 
     final attempt = ++_directFallbackAttempt;
-    Future<void>.delayed(const Duration(seconds: 4), () async {
+    Future<void>.delayed(const Duration(seconds: 6), () async {
       if (_isDisposed || !mounted || attempt != _directFallbackAttempt) {
         return;
       }
@@ -2877,22 +2942,32 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
         return;
       }
 
-      final fallbackUrl = embedFallback!['url']?.toString();
+      final fallbackUrl = fallback['url']?.toString();
       if (fallbackUrl == null || fallbackUrl.isEmpty) {
         return;
       }
 
+      _reportPlayback(ok: false);
       _stopAllPlayback();
 
       if (_isDisposed || !mounted || attempt != _directFallbackAttempt) {
         return;
       }
 
+      final isDirect = fallback['is_direct_link'] == true;
+      _currentAddonId = fallback['addon_id']?.toString() ?? _currentAddonId;
       _initializePlayer(
         fallbackUrl,
-        provider: embedFallback['provider']?.toString(),
-        isDirectLink: false,
+        provider: fallback['provider']?.toString(),
+        isDirectLink: isDirect,
       );
+      if (isDirect) {
+        _startDirectLinkFallbackIfNeeded(
+          streams: remaining,
+          selectedStream: fallback,
+          hops: hops + 1,
+        );
+      }
       final text = ref.read(appTextProvider);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -2962,6 +3037,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
         final selectedStream = _selectPreferredStream(streams);
         final stream = selectedStream ?? streams.first;
         if (_isDisposed) return;
+        _currentAddonId = stream['addon_id']?.toString();
         _initializePlayer(
           stream['url'].toString(),
           provider: stream['provider']?.toString(),
@@ -4353,6 +4429,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
       );
     }
 
+    _currentAddonId = stream['addon_id']?.toString() ?? _currentAddonId;
     _initializePlayer(
       newUrl,
       provider: stream['provider']?.toString() ?? stream['title']?.toString(),

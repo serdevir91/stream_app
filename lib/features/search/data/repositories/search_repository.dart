@@ -222,7 +222,9 @@ class SearchRepository {
         'https://api.themoviedb.org/3/$type/$mediaId',
         queryParameters: {
           'language': _tmdbLanguage,
-          'append_to_response': 'credits',
+          // One request instead of three: credits and recommendations ride
+          // along with the details.
+          'append_to_response': 'credits,recommendations',
         },
         options: _tmdbOptions,
       );
@@ -276,46 +278,14 @@ class SearchRepository {
             }
           }
 
-          try {
-            final recResponse = await _dio.get(
-              'https://api.themoviedb.org/3/movie/$mediaId/recommendations',
-              queryParameters: {'language': _tmdbLanguage, 'page': 1},
-              options: _tmdbOptions,
-            );
-            if (recResponse.statusCode == 200 && recResponse.data is Map) {
-              final results = recResponse.data['results'];
-              if (results is List) {
-                final existingIds = relatedItems.map((item) => item.id).toSet();
-                recommendations = results
-                    .whereType<Map>()
-                    .map((json) => MediaItem.fromTmdbJson({...json, 'media_type': 'movie'}))
-                    .where((item) => !existingIds.contains(item.id) && item.id != mediaId)
-                    .toList();
-              }
-            }
-          } catch (e) {
-            developer.log('Recommendations fetch failed: $e', name: 'SearchRepository');
-          }
+          final existingIds = relatedItems.map((item) => item.id).toSet();
+          recommendations = _embeddedRecommendations(data, 'movie')
+              .where((item) => !existingIds.contains(item.id) && item.id != mediaId)
+              .toList();
         } else {
-          try {
-            final recResponse = await _dio.get(
-              'https://api.themoviedb.org/3/tv/$mediaId/recommendations',
-              queryParameters: {'language': _tmdbLanguage, 'page': 1},
-              options: _tmdbOptions,
-            );
-            if (recResponse.statusCode == 200 && recResponse.data is Map) {
-              final results = recResponse.data['results'];
-              if (results is List) {
-                recommendations = results
-                    .whereType<Map>()
-                    .map((json) => MediaItem.fromTmdbJson({...json, 'media_type': 'tv'}))
-                    .where((item) => item.id != mediaId)
-                    .toList();
-              }
-            }
-          } catch (e) {
-            developer.log('TV Recommendations fetch failed: $e', name: 'SearchRepository');
-          }
+          recommendations = _embeddedRecommendations(data, 'tv')
+              .where((item) => item.id != mediaId)
+              .toList();
         }
 
         return MediaDetailsInfo(
@@ -346,6 +316,19 @@ class SearchRepository {
     }
 
     return null;
+  }
+
+  static List<MediaItem> _embeddedRecommendations(
+    Map<String, dynamic> data,
+    String mediaType,
+  ) {
+    final block = data['recommendations'];
+    final results = block is Map ? block['results'] : null;
+    if (results is! List) return const [];
+    return results
+        .whereType<Map>()
+        .map((json) => MediaItem.fromTmdbJson({...json, 'media_type': mediaType}))
+        .toList();
   }
 
   Future<List<MediaItem>> _getPersonCredits(dynamic personId, String personName) async {

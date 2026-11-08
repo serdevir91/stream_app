@@ -1,14 +1,21 @@
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../../core/network/tmdb_cache_interceptor.dart';
 import '../../../../core/settings/app_settings_provider.dart';
 import '../../domain/entities/media_item.dart';
 import '../../data/repositories/search_repository.dart';
 import '../../../player/presentation/providers/player_provider.dart';
 import '../../../library/presentation/providers/watched_provider.dart';
 
-final dioProvider = Provider<Dio>((ref) {
-  return Dio();
-});
+/// One Dio for TMDB with sane timeouts and a 6 h response cache.
+final Dio _sharedDio = Dio(
+  BaseOptions(
+    connectTimeout: const Duration(seconds: 8),
+    receiveTimeout: const Duration(seconds: 15),
+  ),
+)..interceptors.add(TmdbCacheInterceptor());
+
+final dioProvider = Provider<Dio>((ref) => _sharedDio);
 
 final searchRepositoryProvider = Provider<SearchRepository>((ref) {
   final dio = ref.watch(dioProvider);

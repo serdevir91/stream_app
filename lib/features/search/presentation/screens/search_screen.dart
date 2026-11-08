@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -26,13 +28,32 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
     );
   }
 
+  Timer? _debounce;
+
   @override
   void dispose() {
+    _debounce?.cancel();
     _searchController.dispose();
     super.dispose();
   }
 
+  /// Searches as the user types, once they pause for 350 ms.
+  void _onQueryChanged(String value) {
+    _debounce?.cancel();
+    final query = value.trim();
+    if (query.isEmpty) {
+      ref.read(searchQueryProvider.notifier).setQuery('');
+      return;
+    }
+    if (query.length < 2) return;
+    _debounce = Timer(const Duration(milliseconds: 350), () {
+      if (!mounted) return;
+      ref.read(searchQueryProvider.notifier).setQuery(query);
+    });
+  }
+
   void _submitSearch() {
+    _debounce?.cancel();
     final query = _searchController.text.trim();
     ref.read(searchQueryProvider.notifier).setQuery(query);
     if (query.isNotEmpty) {
@@ -124,11 +145,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
               controller: _searchController,
               textInputAction: TextInputAction.search,
               onSubmitted: (_) => _submitSearch(),
-              onChanged: (value) {
-                if (value.trim().isEmpty && hasQuery) {
-                  ref.read(searchQueryProvider.notifier).setQuery('');
-                }
-              },
+              onChanged: _onQueryChanged,
               decoration: InputDecoration(
                 hintText: text.t('search_hint'),
                 border: const OutlineInputBorder(),

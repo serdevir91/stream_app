@@ -37,6 +37,7 @@ class MediaDetailsScreen extends ConsumerStatefulWidget {
 class _MediaDetailsScreenState extends ConsumerState<MediaDetailsScreen> {
   int? _selectedSeason;
   bool _isResolving = false;
+  String? _resolveProgress;
   int? _highlightedEpisodeNumber;
   int _selectedTabIndex = 0;
   final Map<int, GlobalKey> _episodeKeys = {};
@@ -46,6 +47,29 @@ class _MediaDetailsScreenState extends ConsumerState<MediaDetailsScreen> {
   void initState() {
     super.initState();
     _scrollController = ScrollController();
+    if (widget.mediaItem.type != 'tv') {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _prefetchSources(1, 1));
+    }
+  }
+
+  String? _prefetchedTarget;
+
+  /// Starts resolving the title the play button will open, so the tap finds
+  /// the sources ready in the cache.
+  void _prefetchSources(int season, int episode) {
+    final isTv = widget.mediaItem.type == 'tv';
+    final target = isTv ? '$season:$episode' : 'movie';
+    if (_prefetchedTarget == target) return;
+    _prefetchedTarget = target;
+    try {
+      ref.read(addonServiceProvider).prefetch(
+            query: widget.mediaItem.title,
+            tmdbId: widget.mediaItem.id,
+            contentType: isTv ? 'series' : 'movie',
+            season: season,
+            episode: episode,
+          );
+    } catch (_) {}
   }
 
   @override
@@ -317,54 +341,12 @@ class _MediaDetailsScreenState extends ConsumerState<MediaDetailsScreen> {
     List<Map<String, dynamic>> streams,
     bool preferAnimeSources,
   ) {
-    final sorted = List<Map<String, dynamic>>.from(streams);
-    sorted.sort((a, b) {
-      final aDirect = a['is_direct_link'] == true ? 1 : 0;
-      final bDirect = b['is_direct_link'] == true ? 1 : 0;
-      final directCompare = bDirect.compareTo(aDirect);
-      if (directCompare != 0) return directCompare;
-      return _streamProviderScore(
-        a,
-        preferAnimeSources,
-      ).compareTo(_streamProviderScore(b, preferAnimeSources));
-    });
-    return sorted;
-  }
-
-  int _streamProviderScore(
-    Map<String, dynamic> stream,
-    bool preferAnimeSources,
-  ) {
-    if (!preferAnimeSources) {
-      return 0;
-    }
-    final addonId = stream['addon_id']?.toString().toLowerCase() ?? '';
-    final provider = stream['provider']?.toString().toLowerCase() ?? '';
-    if (addonId.contains('openani') || provider.contains('openanime')) {
-      return 0;
-    }
-    if (provider.contains('vidsrc anime') ||
-        provider.contains('2embed anime') ||
-        provider.contains('multiembed anime') ||
-        provider.contains('smashystream anime')) {
-      return 1;
-    }
-    if (addonId.contains('anime') || provider.contains('anime')) {
-      return 2;
-    }
-    if (addonId.contains('autoembed') || provider.contains('autoembed')) {
-      return 3;
-    }
-    if (addonId.contains('streamimdb') || provider.contains('streamimdb')) {
-      return 4;
-    }
-    if (addonId.contains('vidsrccc') || provider.contains('vidsrc.cc')) {
-      return 5;
-    }
-    if (addonId.contains('vidsrc') || provider.contains('vidsrc')) return 6;
-    if (addonId.contains('videasy') || provider.contains('videasy')) return 7;
-    if (addonId.contains('embedsu') || provider.contains('embedsu')) return 8;
-    return 10;
+    // Addon results arrive already ranked (quality, reliability, speed), so
+    // only move direct links ahead and otherwise keep that order.
+    return [
+      ...streams.where((s) => s['is_direct_link'] == true),
+      ...streams.where((s) => s['is_direct_link'] != true),
+    ];
   }
 
   bool _preferAnimeSources() {
@@ -482,6 +464,13 @@ class _MediaDetailsScreenState extends ConsumerState<MediaDetailsScreen> {
     run(choice == 'in_app' ? ref.read(appSettingsProvider).videoPlayer : choice);
   }
 
+  String _resolvingLabel(AppText text) {
+    final progress = _resolveProgress;
+    return progress == null
+        ? text.t('resolving')
+        : '${text.t('resolving')} $progress';
+  }
+
   Future<void> _resolveAndPickSource({
     int season = 1,
     int episode = 1,
@@ -543,18 +532,44 @@ class _MediaDetailsScreenState extends ConsumerState<MediaDetailsScreen> {
       final streams = <Map<String, dynamic>>[];
       if (addons.isNotEmpty) {
         try {
-          final data = await addonService.resolve(
-            query: widget.mediaItem.title,
-            tmdbId: widget.mediaItem.id,
-            contentType: widget.mediaItem.type == 'tv' ? 'series' : 'movie',
-            season: season,
-            episode: episode,
-          );
-          final addonStreams = (data['streams'] as List<dynamic>? ?? <dynamic>[])
-              .whereType<Map>()
-              .map((entry) => Map<String, dynamic>.from(entry))
-              .toList();
-          streams.addAll(addonStreams);
+          final contentType = widget.mediaItem.type == 'tv' ? 'series' : 'movie';
+          final hasPreferredSource =
+              (preferredSourceId?.trim().isNotEmpty ?? false) ||
+              settings.preferredSourceId.trim().isNotEmpty;
+          if (settings.autoSelectSource && !hasPreferredSource && !preferAnimeSources) {
+            // Auto play: start on the first good source instead of waiting
+            // for every addon.
+            final data = await addonService.resolveFast(
+              query: widget.mediaItem.title,
+              tmdbId: widget.mediaItem.id,
+              contentType: contentType,
+              season: season,
+              episode: episode,
+            );
+            streams.addAll(
+              (data['streams'] as List<dynamic>? ?? <dynamic>[])
+                  .whereType<Map>()
+                  .map((entry) => Map<String, dynamic>.from(entry)),
+            );
+          } else {
+            await for (final progress in addonService.resolveStream(
+              query: widget.mediaItem.title,
+              tmdbId: widget.mediaItem.id,
+              contentType: contentType,
+              season: season,
+              episode: episode,
+              preferAnimeSources: preferAnimeSources,
+            )) {
+              if (mounted && progress.total > 1) {
+                setState(() {
+                  _resolveProgress = '${progress.finished}/${progress.total}';
+                });
+              }
+              if (progress.done) {
+                streams.addAll(progress.streams);
+              }
+            }
+          }
         } catch (e) {
           debugPrint('AddonService resolve error: $e');
         }
@@ -720,6 +735,7 @@ class _MediaDetailsScreenState extends ConsumerState<MediaDetailsScreen> {
       if (mounted) {
         setState(() {
           _isResolving = false;
+          _resolveProgress = null;
         });
       }
     }
@@ -1657,7 +1673,7 @@ class _MediaDetailsScreenState extends ConsumerState<MediaDetailsScreen> {
                                     )
                                   : const Icon(Icons.play_arrow_rounded, size: 24),
                               label: Text(
-                                _isResolving ? text.t('resolving') : text.t('play_now'),
+                                _isResolving ? _resolvingLabel(text) : text.t('play_now'),
                                 style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
                               ),
                             ),
@@ -2074,6 +2090,7 @@ class _MediaDetailsScreenState extends ConsumerState<MediaDetailsScreen> {
         )];
         final shouldAdvanceToNextEpisode = continueHistory?.isWatched == true && nextTarget != null;
         final primaryTarget = shouldAdvanceToNextEpisode ? nextTarget : continueTarget;
+        _prefetchSources(primaryTarget.season, primaryTarget.episode);
         final primaryHistory = tvEpisodeHistory[_episodeHistoryKey(
           primaryTarget.season,
           primaryTarget.episode,
@@ -2246,7 +2263,7 @@ class _MediaDetailsScreenState extends ConsumerState<MediaDetailsScreen> {
                               ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
                               : const Icon(Icons.play_arrow_rounded, size: 18),
                           label: Text(
-                            _isResolving ? text.t('resolving') : text.t('play_now'),
+                            _isResolving ? _resolvingLabel(text) : text.t('play_now'),
                             style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
                           ),
                         ),

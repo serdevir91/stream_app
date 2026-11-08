@@ -7,6 +7,8 @@ import 'package:media_kit/media_kit.dart';
 import 'core/backend/addon_service.dart';
 import 'core/backend/addon_service_provider.dart';
 import 'core/backend/addons/addon_config_repository.dart';
+import 'core/backend/source_ranking.dart';
+import 'core/network/tmdb_cache_interceptor.dart';
 import 'core/backend_bootstrap_service.dart';
 import 'core/settings/app_settings_repository.dart';
 import 'core/subtitles/subtitle_prefs.dart';
@@ -33,35 +35,28 @@ void main() async {
   await Hive.initFlutter();
 
   final appSettingsRepository = AppSettingsRepository();
-  await appSettingsRepository.init();
-  await SubtitlePrefs.init();
-  final appSettings = appSettingsRepository.getSettings();
-
-  await BackendBootstrapService.ensureBackendRunning(
-    tmdbAccessToken: appSettings.tmdbAccessToken,
-  );
-  await BackendBootstrapService.syncTmdbToken(appSettings.tmdbAccessToken);
-
-  final sourcesRepository = SourcesRepository();
-  await sourcesRepository.init();
-
-  final watchHistoryRepository = WatchHistoryRepository();
-  await watchHistoryRepository.init();
-
-  final libraryRepository = LibraryRepository();
-  await libraryRepository.init();
-
-  final watchedRepository = WatchedRepository();
-  await watchedRepository.init();
-
   final addonConfigRepository = AddonConfigRepository();
-  await addonConfigRepository.init();
+  // Local boxes open side by side; none of them touches the network.
+  await Future.wait([
+    appSettingsRepository.init(),
+    SubtitlePrefs.init(),
+    SourceStats.init(),
+    TmdbCacheInterceptor.init(),
+    SourcesRepository().init(),
+    WatchHistoryRepository().init(),
+    LibraryRepository().init(),
+    WatchedRepository().init(),
+    addonConfigRepository.init(),
+  ]);
+  final appSettings = appSettingsRepository.getSettings();
   initAddonConfigRepository(addonConfigRepository);
 
   final addonService = AddonService(
     configRepo: addonConfigRepository,
     tmdbAccessToken: appSettings.tmdbAccessToken,
-  );
+  )..preferredLanguage = appSettings.appLanguage == 'en'
+        ? appSettings.subtitleLanguage
+        : appSettings.appLanguage;
   await addonService.init();
   initAddonService(addonService);
 
@@ -76,10 +71,18 @@ void main() async {
       );
     },
   );
-  await downloadService.init();
   initDownloadService(downloadService);
 
   runApp(const ProviderScope(child: MyApp()));
+
+  // Work the first frame does not need runs after it.
+  WidgetsBinding.instance.addPostFrameCallback((_) async {
+    await downloadService.init();
+    await BackendBootstrapService.ensureBackendRunning(
+      tmdbAccessToken: appSettings.tmdbAccessToken,
+    );
+    await BackendBootstrapService.syncTmdbToken(appSettings.tmdbAccessToken);
+  });
 }
 
 class MyApp extends ConsumerWidget {
