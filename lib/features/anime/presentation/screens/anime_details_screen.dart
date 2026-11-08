@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../../core/theme/theme_x.dart';
 
 import '../../../../core/i18n/app_text.dart';
 import '../../../../core/settings/app_settings_provider.dart';
@@ -174,7 +175,7 @@ class _AnimeDetailsScreenState extends ConsumerState<AnimeDetailsScreen> {
         File(downloaded.localVideoPath).existsSync()) {
       Navigator.of(context).push(
         MaterialPageRoute(
-          builder: (_) => PlayerScreen(
+          builder: (_) => DarkScope(child: PlayerScreen(
             mediaId: 'anime_${anime.malId}',
             title: anime.isMovie
                 ? anime.displayTitle
@@ -187,7 +188,7 @@ class _AnimeDetailsScreenState extends ConsumerState<AnimeDetailsScreen> {
             localVideoPath: downloaded.localVideoPath,
             localSubtitlePath: downloaded.localSubtitlePath,
             preferAnimeSources: true,
-          ),
+          )),
         ),
       );
       return;
@@ -398,7 +399,7 @@ class _AnimeDetailsScreenState extends ConsumerState<AnimeDetailsScreen> {
 
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => PlayerScreen(
+        builder: (_) => DarkScope(child: PlayerScreen(
           mediaId: 'anime_${widget.anime.malId}',
           title: widget.anime.isMovie
               ? widget.anime.displayTitle
@@ -418,7 +419,7 @@ class _AnimeDetailsScreenState extends ConsumerState<AnimeDetailsScreen> {
               : null,
           totalEpisodesInSeason: totalEpisodes,
           preferAnimeSources: true,
-        ),
+        )),
       ),
     );
   }
@@ -1908,7 +1909,7 @@ class _AnimeDetailsScreenState extends ConsumerState<AnimeDetailsScreen> {
               onTap: () {
                 Navigator.of(context).push(
                   MaterialPageRoute(
-                    builder: (_) => AnimeDetailsScreen(anime: rec),
+                    builder: (_) => DarkScope(child: AnimeDetailsScreen(anime: rec)),
                   ),
                 );
               },

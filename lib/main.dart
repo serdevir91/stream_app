@@ -102,6 +102,10 @@ class MyApp extends ConsumerWidget {
       navigatorObservers: [_baselineObserver],
       debugShowCheckedModeBanner: false,
       theme: theme,
+      builder: (context, child) => AnnotatedRegion<SystemUiOverlayStyle>(
+        value: AppTheme.overlayStyle(theme.brightness),
+        child: child ?? const SizedBox.shrink(),
+      ),
       home: const HomeScreen(),
     );
   }

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../../core/theme/theme_x.dart';
 
 import '../../../../core/i18n/app_text.dart';
 import '../../../search/domain/entities/media_item.dart';
@@ -43,7 +44,7 @@ class LibraryScreen extends ConsumerWidget {
               ),
             ],
             indicatorColor: Colors.cyanAccent,
-            labelColor: Colors.white,
+            labelColor: Theme.of(context).colorScheme.onSurface,
             unselectedLabelColor: Colors.grey,
           ),
         ),
@@ -110,7 +111,7 @@ class LibraryScreen extends ConsumerWidget {
                       Navigator.of(context).push(
                         MaterialPageRoute(
                           builder: (context) =>
-                              MediaDetailsScreen(mediaItem: item.series),
+                              DarkScope(child: MediaDetailsScreen(mediaItem: item.series)),
                         ),
                       );
                     },
@@ -250,7 +251,7 @@ class LibraryScreen extends ConsumerWidget {
       onTap: () {
         Navigator.of(context).push(
           MaterialPageRoute(
-            builder: (context) => MediaDetailsScreen(mediaItem: item),
+            builder: (context) => DarkScope(child: MediaDetailsScreen(mediaItem: item)),
           ),
         );
       },
@@ -380,7 +381,7 @@ class LibraryScreen extends ConsumerWidget {
             maxLines: 3,
             overflow: TextOverflow.ellipsis,
             style: const TextStyle(
-              color: Colors.white70,
+              color: Colors.grey,
               fontSize: 11,
               fontWeight: FontWeight.w600,
             ),

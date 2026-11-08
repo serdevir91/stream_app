@@ -1,4 +1,5 @@
 import 'dart:async';
+import '../../../../core/theme/theme_x.dart';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -177,7 +178,7 @@ class _HomeContentState extends ConsumerState<HomeContent> {
         : settings.preferredSourceId.trim();
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => PlayerScreen(
+        builder: (_) => DarkScope(child: PlayerScreen(
           mediaId: item.id,
           title: item.title,
           type: item.type,
@@ -187,7 +188,7 @@ class _HomeContentState extends ConsumerState<HomeContent> {
           backdropUrl: item.backdropUrl,
           sourceId: effectiveSourceId.isEmpty ? null : effectiveSourceId,
           subtitleLanguage: subtitleLanguage,
-        ),
+        )),
       ),
     );
   }
@@ -255,7 +256,6 @@ class _HomeContentState extends ConsumerState<HomeContent> {
                 child: Text(
                   text.t('tmdb_token_warning'),
                   style: const TextStyle(
-                    color: Colors.white,
                     fontSize: 14,
                     fontWeight: FontWeight.w500,
                     height: 1.3,
@@ -271,7 +271,6 @@ class _HomeContentState extends ConsumerState<HomeContent> {
             decoration: InputDecoration(
               isDense: true,
               hintText: text.t('paste_token_here'),
-              hintStyle: const TextStyle(color: Colors.white38),
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(8),
                 borderSide: const BorderSide(color: Colors.orangeAccent),
@@ -436,7 +435,7 @@ class _HomeContentState extends ConsumerState<HomeContent> {
             onPressed: () {
               Navigator.of(
                 context,
-              ).push(MaterialPageRoute(builder: (_) => const DiscoverScreen()));
+              ).push(MaterialPageRoute(builder: (_) => DarkScope(child: const DiscoverScreen())));
             },
           ),
         ],
@@ -586,7 +585,7 @@ class _HomeContentState extends ConsumerState<HomeContent> {
                 onTap: () {
                   Navigator.of(context).push(
                     MaterialPageRoute(
-                      builder: (_) => MediaDetailsScreen(mediaItem: item),
+                      builder: (_) => DarkScope(child: MediaDetailsScreen(mediaItem: item)),
                     ),
                   );
                 },
@@ -769,7 +768,7 @@ class _HomeContentState extends ConsumerState<HomeContent> {
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
                         fontSize: 12,
-                        color: Colors.white70,
+                        color: Colors.grey,
                       ),
                     ),
                   ],
@@ -796,7 +795,7 @@ class _HomeContentState extends ConsumerState<HomeContent> {
             onTap: () {
               Navigator.of(context).push(
                 MaterialPageRoute(
-                  builder: (_) => MediaDetailsScreen(mediaItem: item),
+                  builder: (_) => DarkScope(child: MediaDetailsScreen(mediaItem: item)),
                 ),
               );
             },
@@ -894,7 +893,7 @@ class _HomeContentState extends ConsumerState<HomeContent> {
                 onTap: () {
                   Navigator.of(context).push(
                     MaterialPageRoute(
-                      builder: (_) => MediaDetailsScreen(mediaItem: item),
+                      builder: (_) => DarkScope(child: MediaDetailsScreen(mediaItem: item)),
                     ),
                   );
                 },

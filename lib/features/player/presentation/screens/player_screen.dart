@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import '../../../../core/theme/theme_x.dart';
 
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
@@ -3837,7 +3838,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     _stopAllPlayback();
     Navigator.of(context).pushReplacement(
       MaterialPageRoute(
-        builder: (_) => PlayerScreen(
+        builder: (_) => DarkScope(child: PlayerScreen(
           mediaId: widget.mediaId,
           title: widget.title,
           type: widget.type,
@@ -3851,7 +3852,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
           preferredPlayer: _externalResult != null
               ? 'ext:${_externalTarget == ExternalPlayerService.askValue ? '' : _externalTarget ?? ''}'
               : widget.preferredPlayer,
-        ),
+        )),
       ),
     );
   }

@@ -1,6 +1,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../../core/theme/theme_x.dart';
 
 import '../../../../core/i18n/app_text.dart';
 import '../../../../core/player/external_player_service.dart';
@@ -198,7 +199,7 @@ class _FailedDownloadCard extends ConsumerWidget {
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.fromLTRB(14, 10, 6, 10),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.05),
+        color: context.fg.withValues(alpha: 0.05),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: Colors.orangeAccent.withValues(alpha: 0.3)),
       ),
@@ -219,7 +220,7 @@ class _FailedDownloadCard extends ConsumerWidget {
                   message,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(color: Colors.white60, fontSize: 12),
+                  style: TextStyle(color: context.fgMuted, fontSize: 12),
                 ),
               ],
             ),
@@ -271,7 +272,7 @@ class _ActiveDownloadCard extends ConsumerWidget {
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.05),
+        color: context.fg.withValues(alpha: 0.05),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: Colors.cyanAccent.withValues(alpha: 0.3)),
       ),
@@ -328,7 +329,7 @@ class _ActiveDownloadCard extends ConsumerWidget {
                           padding: const EdgeInsets.symmetric(
                               horizontal: 6, vertical: 2),
                           decoration: BoxDecoration(
-                            color: Colors.white10,
+                            color: context.line,
                             borderRadius: BorderRadius.circular(4),
                           ),
                           child: Text(
@@ -355,7 +356,7 @@ class _ActiveDownloadCard extends ConsumerWidget {
                 ),
               ),
               IconButton(
-                icon: const Icon(Icons.close_rounded, color: Colors.white70),
+                icon: Icon(Icons.close_rounded, color: context.fgMuted),
                 onPressed: () => service.cancelDownload(item.id),
                 tooltip: 'İptal Et',
               ),
@@ -366,7 +367,7 @@ class _ActiveDownloadCard extends ConsumerWidget {
             borderRadius: BorderRadius.circular(4),
             child: LinearProgressIndicator(
               value: item.progress > 0 ? item.progress : null,
-              backgroundColor: Colors.white10,
+              backgroundColor: context.line,
               valueColor: const AlwaysStoppedAnimation(Colors.cyanAccent),
               minHeight: 6,
             ),
@@ -395,11 +396,13 @@ class _ActiveDownloadCard extends ConsumerWidget {
   }
 
   Widget _fallbackThumb() {
-    return Container(
-      width: 48,
-      height: 64,
-      color: Colors.white10,
-      child: const Icon(Icons.movie_rounded, color: Colors.white38),
+    return Builder(
+      builder: (context) => Container(
+        width: 48,
+        height: 64,
+        color: context.line,
+        child: Icon(Icons.movie_rounded, color: context.fgFaint),
+      ),
     );
   }
 }
@@ -412,7 +415,7 @@ class _CompletedDownloadCard extends ConsumerWidget {
   void _play(BuildContext context, {String? player}) {
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => PlayerScreen(
+        builder: (_) => DarkScope(child: PlayerScreen(
           mediaId: item.mediaId,
           title: item.title,
           type: item.mediaType,
@@ -423,7 +426,7 @@ class _CompletedDownloadCard extends ConsumerWidget {
           localVideoPath: item.localVideoPath,
           localSubtitlePath: item.localSubtitlePath,
           preferredPlayer: player,
-        ),
+        )),
       ),
     );
   }
@@ -439,9 +442,9 @@ class _CompletedDownloadCard extends ConsumerWidget {
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.05),
+        color: context.fg.withValues(alpha: 0.05),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+        border: Border.all(color: context.fg.withValues(alpha: 0.08)),
       ),
       child: Row(
         children: [
@@ -495,7 +498,7 @@ class _CompletedDownloadCard extends ConsumerWidget {
                       padding: const EdgeInsets.symmetric(
                           horizontal: 6, vertical: 2),
                       decoration: BoxDecoration(
-                        color: Colors.white10,
+                        color: context.line,
                         borderRadius: BorderRadius.circular(4),
                       ),
                       child: Text(
@@ -510,14 +513,14 @@ class _CompletedDownloadCard extends ConsumerWidget {
                       padding: const EdgeInsets.symmetric(
                           horizontal: 6, vertical: 2),
                       decoration: BoxDecoration(
-                        color: Colors.white10,
+                        color: context.line,
                         borderRadius: BorderRadius.circular(4),
                       ),
                       child: Text(
                         totalStr,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 10,
-                          color: Colors.white70,
+                          color: context.fgMuted,
                         ),
                       ),
                     ),
@@ -560,15 +563,15 @@ class _CompletedDownloadCard extends ConsumerWidget {
                     icon: const Icon(Icons.play_arrow_rounded, size: 24),
                     style: IconButton.styleFrom(
                       backgroundColor: Theme.of(context).colorScheme.primary,
-                      foregroundColor: Colors.white,
+                      foregroundColor: Theme.of(context).colorScheme.onPrimary,
                     ),
                     onPressed: () => _play(context),
                     tooltip: text.t('play_now'),
                   ),
                   PopupMenuButton<String>(
-                    icon: const Icon(Icons.more_vert_rounded, size: 20, color: Colors.white70),
+                    icon: Icon(Icons.more_vert_rounded, size: 20, color: context.fgMuted),
                     tooltip: isTr ? 'Oynatıcı Seçenekleri' : 'Player Options',
-                    color: const Color(0xFF1E1E1E),
+                    color: context.card,
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                     onSelected: (selectedPlayer) => _play(context, player: selectedPlayer),
                     itemBuilder: (ctx) => [
@@ -661,11 +664,13 @@ class _CompletedDownloadCard extends ConsumerWidget {
   }
 
   Widget _fallbackThumb() {
-    return Container(
-      width: 52,
-      height: 72,
-      color: Colors.white10,
-      child: const Icon(Icons.movie_rounded, color: Colors.white38),
+    return Builder(
+      builder: (context) => Container(
+        width: 52,
+        height: 72,
+        color: context.line,
+        child: Icon(Icons.movie_rounded, color: context.fgFaint),
+      ),
     );
   }
 }

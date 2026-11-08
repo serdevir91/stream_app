@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../../core/theme/theme_x.dart';
 
 import '../../../../core/app_baseline.dart';
 import '../../../../core/i18n/app_text.dart';
@@ -71,14 +72,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 final state = ref.read(miniPlayerProvider);
                 Navigator.of(context).push(
                   MaterialPageRoute(
-                    builder: (_) => PlayerScreen(
+                    builder: (_) => DarkScope(child: PlayerScreen(
                       mediaId: state.mediaId ?? '',
                       title: state.title ?? '',
                       type: state.type ?? 'movie',
                       season: state.season,
                       episode: state.episode,
                       posterUrl: state.posterUrl,
-                    ),
+                    )),
                   ),
                 );
               },

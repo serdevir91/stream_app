@@ -21,6 +21,14 @@ final appTextProvider = Provider<AppText>((ref) {
 
 const Map<String, Map<String, String>> _translations = {
   'en': {
+    'auto_select_source': 'Auto-pick best source',
+    'export_backup': 'Export backup',
+    'how_to_get_token': 'How to get a token',
+    'import_backup': 'Import backup',
+    'install_update': 'Install update',
+    'overview': 'Overview',
+    'save_watch_history': 'Save watch history',
+    'tutorial_title': 'Show app tour',
     'app_name': 'Stream App',
     'home': 'Home',
     'anime': 'Anime',
@@ -323,6 +331,14 @@ const Map<String, Map<String, String>> _translations = {
     'reset': 'Reset',
   },
   'tr': {
+    'auto_select_source': 'En iyi kaynağı otomatik seç',
+    'export_backup': 'Yedeği dışa aktar',
+    'how_to_get_token': 'Token nasıl alınır',
+    'import_backup': 'Yedeği içe aktar',
+    'install_update': 'Güncellemeyi yükle',
+    'overview': 'Genel Bakış',
+    'save_watch_history': 'İzleme geçmişini kaydet',
+    'tutorial_title': 'Uygulama turunu göster',
     'app_name': 'Stream App',
     'home': 'Ana Sayfa',
     'anime': 'Anime',

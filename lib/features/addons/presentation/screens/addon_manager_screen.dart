@@ -1,4 +1,5 @@
 import 'dart:convert';
+import '../../../../core/theme/theme_x.dart';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
@@ -238,9 +239,9 @@ class AddonManagerScreen extends ConsumerWidget {
                             ),
                             child: Text(
                               text.t('builtin'),
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontSize: 10,
-                                color: Colors.white70,
+                                color: context.fgMuted,
                               ),
                             ),
                           ),
@@ -357,7 +358,7 @@ class AddonManagerScreen extends ConsumerWidget {
         icon: const Icon(Icons.add),
         label: Text(text.t('add_source_addon')),
         backgroundColor: Colors.deepPurple,
-        foregroundColor: Colors.white,
+        foregroundColor: context.fg,
       ),
     );
   }

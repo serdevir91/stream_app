@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../../core/theme/theme_x.dart';
 
 import '../../../../core/i18n/app_text.dart';
 import '../../../search/presentation/screens/media_details_screen.dart';
@@ -53,7 +54,7 @@ class CategoryMediaScreen extends ConsumerWidget {
                 onTap: () {
                   Navigator.of(context).push(
                     MaterialPageRoute(
-                      builder: (_) => MediaDetailsScreen(mediaItem: item),
+                      builder: (_) => DarkScope(child: MediaDetailsScreen(mediaItem: item)),
                     ),
                   );
                 },

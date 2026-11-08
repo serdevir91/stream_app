@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../../core/theme/theme_x.dart';
 
 import '../../../../core/backend/addon_service_provider.dart';
 import '../../../../core/i18n/app_text.dart';
@@ -496,7 +497,7 @@ class _MediaDetailsScreenState extends ConsumerState<MediaDetailsScreen> {
         File(downloaded.localVideoPath).existsSync()) {
       Navigator.of(context).push(
         MaterialPageRoute(
-          builder: (_) => PlayerScreen(
+          builder: (_) => DarkScope(child: PlayerScreen(
             mediaId: widget.mediaItem.id,
             title: downloaded.title,
             type: widget.mediaItem.type,
@@ -507,7 +508,7 @@ class _MediaDetailsScreenState extends ConsumerState<MediaDetailsScreen> {
             localVideoPath: downloaded.localVideoPath,
             localSubtitlePath: downloaded.localSubtitlePath,
             preferredPlayer: _playerOverride,
-          ),
+          )),
         ),
       );
       return;
@@ -771,7 +772,7 @@ class _MediaDetailsScreenState extends ConsumerState<MediaDetailsScreen> {
 
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => PlayerScreen(
+        builder: (_) => DarkScope(child: PlayerScreen(
           mediaId: widget.mediaItem.id,
           title: widget.mediaItem.title,
           type: widget.mediaItem.type,
@@ -791,7 +792,7 @@ class _MediaDetailsScreenState extends ConsumerState<MediaDetailsScreen> {
           totalEpisodesInSeason: episodeCount,
           preferAnimeSources: _preferAnimeSources(),
           preferredPlayer: _playerOverride,
-        ),
+        )),
       ),
     );
   }
@@ -890,7 +891,7 @@ class _MediaDetailsScreenState extends ConsumerState<MediaDetailsScreen> {
                           Navigator.pop(sheetContext);
                           Navigator.of(context).push(
                             MaterialPageRoute(
-                              builder: (_) => PlayerScreen(
+                              builder: (_) => DarkScope(child: PlayerScreen(
                                 mediaId: widget.mediaItem.id,
                                 title: widget.mediaItem.title,
                                 type: widget.mediaItem.type,
@@ -910,7 +911,7 @@ class _MediaDetailsScreenState extends ConsumerState<MediaDetailsScreen> {
                                 totalEpisodesInSeason: totalEpisodesInSeason,
                                 preferAnimeSources: _preferAnimeSources(),
                                 preferredPlayer: _playerOverride,
-                              ),
+                              )),
                             ),
                           );
                         },
@@ -2805,7 +2806,7 @@ class _MediaDetailsScreenState extends ConsumerState<MediaDetailsScreen> {
       onTap: () {
         Navigator.of(context).push(
           MaterialPageRoute(
-            builder: (_) => MediaDetailsScreen(mediaItem: item),
+            builder: (_) => DarkScope(child: MediaDetailsScreen(mediaItem: item)),
           ),
         );
       },

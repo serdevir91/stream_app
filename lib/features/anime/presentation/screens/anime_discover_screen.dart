@@ -2,6 +2,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../../core/theme/theme_x.dart';
 
 import '../../../../core/i18n/app_text.dart';
 import '../../domain/models/anime_item.dart';
@@ -596,7 +597,7 @@ class _AnimeDiscoverScreenState extends ConsumerState<AnimeDiscoverScreen>
                                 if (state.cards.isNotEmpty) {
                                   Navigator.of(context).push(
                                     MaterialPageRoute(
-                                      builder: (_) => AnimeDetailsScreen(anime: state.cards.first),
+                                      builder: (_) => DarkScope(child: AnimeDetailsScreen(anime: state.cards.first)),
                                     ),
                                   );
                                 }
@@ -648,7 +649,7 @@ class _AnimeDiscoverScreenState extends ConsumerState<AnimeDiscoverScreen>
       onTap: () {
         Navigator.of(context).push(
           MaterialPageRoute(
-            builder: (_) => AnimeDetailsScreen(anime: item),
+            builder: (_) => DarkScope(child: AnimeDetailsScreen(anime: item)),
           ),
         );
       },

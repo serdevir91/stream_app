@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../../core/theme/theme_x.dart';
 
 import '../../../../core/i18n/app_text.dart';
 import '../../domain/models/anime_item.dart';
@@ -103,7 +104,7 @@ class _AnimeScreenState extends ConsumerState<AnimeScreen> {
             tooltip: text.languageCode == 'tr' ? 'Anime Keşfet' : 'Anime Discover',
             onPressed: () {
               Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const AnimeDiscoverScreen()),
+                MaterialPageRoute(builder: (_) => DarkScope(child: const AnimeDiscoverScreen())),
               );
             },
           ),
@@ -121,7 +122,7 @@ class _AnimeScreenState extends ConsumerState<AnimeScreen> {
             tooltip: text.t('search'),
             onPressed: () {
               Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const AnimeSearchScreen()),
+                MaterialPageRoute(builder: (_) => DarkScope(child: const AnimeSearchScreen())),
               );
             },
           ),
@@ -185,7 +186,7 @@ class _AnimeScreenState extends ConsumerState<AnimeScreen> {
                             borderRadius: BorderRadius.circular(16),
                             onTap: () {
                               Navigator.of(context).push(
-                                MaterialPageRoute(builder: (_) => const AnimeDiscoverScreen()),
+                                MaterialPageRoute(builder: (_) => DarkScope(child: const AnimeDiscoverScreen())),
                               );
                             },
                             child: Container(
@@ -262,10 +263,10 @@ class _AnimeScreenState extends ConsumerState<AnimeScreen> {
                               onViewAll: () {
                                 Navigator.of(context).push(
                                   MaterialPageRoute(
-                                    builder: (_) => AnimeBrowseScreen(
+                                    builder: (_) => DarkScope(child: AnimeBrowseScreen(
                                       title: state.selectedGenre!,
                                       genre: state.selectedGenre,
-                                    ),
+                                    )),
                                   ),
                                 );
                               },
@@ -283,10 +284,10 @@ class _AnimeScreenState extends ConsumerState<AnimeScreen> {
                             onViewAll: () {
                               Navigator.of(context).push(
                                 MaterialPageRoute(
-                                  builder: (_) => AnimeBrowseScreen(
+                                  builder: (_) => DarkScope(child: AnimeBrowseScreen(
                                     title: text.languageCode == 'tr' ? 'Trend Animeler' : 'Trending Anime',
                                     filter: 'airing',
-                                  ),
+                                  )),
                                 ),
                               );
                             },
@@ -304,10 +305,10 @@ class _AnimeScreenState extends ConsumerState<AnimeScreen> {
                             onViewAll: () {
                               Navigator.of(context).push(
                                 MaterialPageRoute(
-                                  builder: (_) => AnimeBrowseScreen(
+                                  builder: (_) => DarkScope(child: AnimeBrowseScreen(
                                     title: text.languageCode == 'tr' ? 'Bu Sezonun Animeleri' : 'This Season',
                                     isSeasonNow: true,
-                                  ),
+                                  )),
                                 ),
                               );
                             },
@@ -325,10 +326,10 @@ class _AnimeScreenState extends ConsumerState<AnimeScreen> {
                             onViewAll: () {
                               Navigator.of(context).push(
                                 MaterialPageRoute(
-                                  builder: (_) => AnimeBrowseScreen(
+                                  builder: (_) => DarkScope(child: AnimeBrowseScreen(
                                     title: text.languageCode == 'tr' ? 'Anime Filmleri' : 'Anime Movies',
                                     isMovies: true,
-                                  ),
+                                  )),
                                 ),
                               );
                             },
@@ -346,10 +347,10 @@ class _AnimeScreenState extends ConsumerState<AnimeScreen> {
                             onViewAll: () {
                               Navigator.of(context).push(
                                 MaterialPageRoute(
-                                  builder: (_) => AnimeBrowseScreen(
+                                  builder: (_) => DarkScope(child: AnimeBrowseScreen(
                                     title: text.languageCode == 'tr' ? 'En Popüler Animeler' : 'Popular Anime',
                                     filter: 'bypopularity',
-                                  ),
+                                  )),
                                 ),
                               );
                             },
@@ -367,9 +368,9 @@ class _AnimeScreenState extends ConsumerState<AnimeScreen> {
                             onViewAll: () {
                               Navigator.of(context).push(
                                 MaterialPageRoute(
-                                  builder: (_) => AnimeBrowseScreen(
+                                  builder: (_) => DarkScope(child: AnimeBrowseScreen(
                                     title: text.languageCode == 'tr' ? 'En Çok Beğenilenler' : 'Top Rated Anime',
-                                  ),
+                                  )),
                                 ),
                               );
                             },
@@ -387,10 +388,10 @@ class _AnimeScreenState extends ConsumerState<AnimeScreen> {
                             onViewAll: () {
                               Navigator.of(context).push(
                                 MaterialPageRoute(
-                                  builder: (_) => AnimeBrowseScreen(
+                                  builder: (_) => DarkScope(child: AnimeBrowseScreen(
                                     title: text.languageCode == 'tr' ? 'Yakında Yayınlanacaklar' : 'Upcoming Anime',
                                     filter: 'upcoming',
-                                  ),
+                                  )),
                                 ),
                               );
                             },
@@ -408,10 +409,10 @@ class _AnimeScreenState extends ConsumerState<AnimeScreen> {
                             onViewAll: () {
                               Navigator.of(context).push(
                                 MaterialPageRoute(
-                                  builder: (_) => AnimeBrowseScreen(
+                                  builder: (_) => DarkScope(child: AnimeBrowseScreen(
                                     title: text.languageCode == 'tr' ? 'Son Güncellenenler' : 'Recently Updated',
                                     isRecentlyUpdated: true,
-                                  ),
+                                  )),
                                 ),
                               );
                             },
@@ -457,7 +458,7 @@ class _AnimeScreenState extends ConsumerState<AnimeScreen> {
                 onTap: () {
                   Navigator.of(context).push(
                     MaterialPageRoute(
-                      builder: (_) => AnimeDetailsScreen(anime: anime),
+                      builder: (_) => DarkScope(child: AnimeDetailsScreen(anime: anime)),
                     ),
                   );
                 },
@@ -846,7 +847,7 @@ class _AnimeScreenState extends ConsumerState<AnimeScreen> {
           HapticFeedback.lightImpact();
           Navigator.of(context).push(
             MaterialPageRoute(
-              builder: (_) => AnimeDetailsScreen(anime: item),
+              builder: (_) => DarkScope(child: AnimeDetailsScreen(anime: item)),
             ),
           );
         },

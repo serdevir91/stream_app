@@ -17,7 +17,6 @@ void showTmdbTokenInstructions(BuildContext context, AppText text) {
             Text(
               isTr ? 'TMDB Token Nasıl Alınır?' : 'How to Get TMDB Token?',
               style: const TextStyle(
-                color: Colors.white,
                 fontSize: 18,
                 fontWeight: FontWeight.bold,
               ),
@@ -73,7 +72,7 @@ void showTmdbTokenInstructions(BuildContext context, AppText text) {
             onPressed: () => Navigator.of(context).pop(),
             child: Text(
               isTr ? 'Kapat' : 'Close',
-              style: const TextStyle(color: Colors.white70),
+              style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
             ),
           ),
           ElevatedButton.icon(
@@ -123,7 +122,6 @@ Widget _buildStep(String stepNumber, String instruction) {
           child: Text(
             instruction,
             style: const TextStyle(
-              color: Colors.white70,
               fontSize: 13,
               height: 1.3,
             ),

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../../core/theme/theme_x.dart';
 
 import '../../../../core/i18n/app_text.dart';
 import '../../../../core/settings/app_settings.dart';
@@ -94,7 +95,7 @@ class HomeCategoriesManagerScreen extends ConsumerWidget {
                     child: Center(
                       child: Text(
                         text.t('no_active_categories'),
-                        style: const TextStyle(color: Colors.white70),
+                        style: TextStyle(color: context.fgMuted),
                       ),
                     ),
                   ),

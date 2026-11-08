@@ -1,5 +1,6 @@
 import 'package:flutter/cupertino.dart' show CupertinoPageTransitionsBuilder;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 /// Colors, shapes and motion shared by every screen. Three modes: light,
 /// dark and pure black (AMOLED).
@@ -47,6 +48,12 @@ class AppTheme {
     }
   }
 
+  /// Status and navigation bar icons that contrast with the page.
+  static SystemUiOverlayStyle overlayStyle(Brightness brightness) =>
+      brightness == Brightness.light
+          ? SystemUiOverlayStyle.dark.copyWith(statusBarColor: Colors.transparent)
+          : SystemUiOverlayStyle.light.copyWith(statusBarColor: Colors.transparent);
+
   static ThemeData _build(ColorScheme scheme, {required Color scaffold}) {
     final base = ThemeData(
       useMaterial3: true,
@@ -68,6 +75,8 @@ class AppTheme {
       ),
       appBarTheme: AppBarTheme(
         backgroundColor: scaffold,
+        foregroundColor: scheme.onSurface,
+        systemOverlayStyle: overlayStyle(scheme.brightness),
         surfaceTintColor: Colors.transparent,
         elevation: 0,
         scrolledUnderElevation: 0,

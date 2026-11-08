@@ -1,4 +1,5 @@
 import 'dart:async';
+import '../../../../core/theme/theme_x.dart';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -87,7 +88,6 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                 child: Text(
                   text.t('tmdb_token_warning'),
                   style: const TextStyle(
-                    color: Colors.white,
                     fontSize: 14,
                     fontWeight: FontWeight.w500,
                     height: 1.3,
@@ -173,7 +173,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                       child: Text(
                         text.t('api_required'),
                         textAlign: TextAlign.center,
-                        style: const TextStyle(color: Colors.white70),
+                        style: const TextStyle(color: Colors.grey),
                       ),
                     ),
                   ),
@@ -254,7 +254,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
             padding: const EdgeInsets.only(bottom: 14),
             child: Text(
               text.t('search_to_start'),
-              style: const TextStyle(color: Colors.white70),
+              style: const TextStyle(color: Colors.grey),
             ),
           ),
         ],
@@ -351,7 +351,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
             onTap: () {
               Navigator.of(context).push(
                 MaterialPageRoute(
-                  builder: (_) => MediaDetailsScreen(mediaItem: item),
+                  builder: (_) => DarkScope(child: MediaDetailsScreen(mediaItem: item)),
                 ),
               );
             },

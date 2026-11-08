@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../../core/theme/theme_x.dart';
 
 import '../../../../core/i18n/app_text.dart';
 import '../../data/providers/anime_extensions_provider.dart';
@@ -15,9 +16,9 @@ class AnimeExtensionsScreen extends ConsumerWidget {
     final notifier = ref.read(animeExtensionsProvider.notifier);
 
     return Scaffold(
-      backgroundColor: const Color(0xFF0F0F13),
+      backgroundColor: context.bg,
       appBar: AppBar(
-        backgroundColor: const Color(0xFF0F0F13),
+        backgroundColor: context.bg,
         elevation: 0,
         title: Text(
           text.languageCode == 'tr' ? 'Anime Eklentileri & Kaynaklar' : 'Anime Extensions & Sources',
@@ -26,12 +27,12 @@ class AnimeExtensionsScreen extends ConsumerWidget {
         actions: [
           IconButton(
             tooltip: text.languageCode == 'tr' ? 'Varsayılana Sıfırla' : 'Reset to Defaults',
-            icon: const Icon(Icons.restore_rounded, color: Colors.white70),
+            icon: Icon(Icons.restore_rounded, color: context.fgMuted),
             onPressed: () async {
               final confirm = await showDialog<bool>(
                 context: context,
                 builder: (ctx) => AlertDialog(
-                  backgroundColor: const Color(0xFF1B1B26),
+                  backgroundColor: context.card,
                   title: Text(text.languageCode == 'tr' ? 'Sıfırla' : 'Reset'),
                   content: Text(
                     text.languageCode == 'tr'
@@ -41,7 +42,7 @@ class AnimeExtensionsScreen extends ConsumerWidget {
                   actions: [
                     TextButton(
                       onPressed: () => Navigator.pop(ctx, false),
-                      child: Text(text.t('cancel'), style: const TextStyle(color: Colors.white54)),
+                      child: Text(text.t('cancel'), style: TextStyle(color: context.fgMuted)),
                     ),
                     FilledButton(
                       style: FilledButton.styleFrom(backgroundColor: Colors.deepPurpleAccent),
@@ -83,7 +84,7 @@ class AnimeExtensionsScreen extends ConsumerWidget {
                     text.languageCode == 'tr'
                         ? 'Animeler için kullanılan kaynakları buradan bağımsız olarak açıp kapatabilir ve sürükleyerek öncelik sırasını değiştirebilirsiniz.'
                         : 'Manage dedicated anime streaming providers independently. Toggle on/off and reorder to set server priority.',
-                    style: const TextStyle(color: Colors.white70, fontSize: 12, height: 1.4),
+                    style: TextStyle(color: context.fgMuted, fontSize: 12, height: 1.4),
                   ),
                 ),
               ],
@@ -105,12 +106,12 @@ class AnimeExtensionsScreen extends ConsumerWidget {
                   key: ValueKey(ext.id),
                   margin: const EdgeInsets.only(bottom: 10),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF171722),
+                    color: context.card,
                     borderRadius: BorderRadius.circular(14),
                     border: Border.all(
                       color: ext.isEnabled
                           ? Colors.deepPurpleAccent.withValues(alpha: 0.3)
-                          : Colors.white.withValues(alpha: 0.05),
+                          : context.fg.withValues(alpha: 0.05),
                     ),
                   ),
                   child: ListTile(
@@ -122,7 +123,7 @@ class AnimeExtensionsScreen extends ConsumerWidget {
                       decoration: BoxDecoration(
                         color: ext.isEnabled
                             ? Colors.deepPurpleAccent.withValues(alpha: 0.15)
-                            : Colors.white.withValues(alpha: 0.05),
+                            : context.fg.withValues(alpha: 0.05),
                         borderRadius: BorderRadius.circular(10),
                       ),
                       child: Text(
@@ -136,7 +137,7 @@ class AnimeExtensionsScreen extends ConsumerWidget {
                           child: Text(
                             ext.name,
                             style: TextStyle(
-                              color: ext.isEnabled ? Colors.white : Colors.white54,
+                              color: ext.isEnabled ? context.fg : context.fgMuted,
                               fontWeight: FontWeight.bold,
                               fontSize: 14,
                             ),
@@ -146,12 +147,12 @@ class AnimeExtensionsScreen extends ConsumerWidget {
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                           decoration: BoxDecoration(
-                            color: Colors.white.withValues(alpha: 0.08),
+                            color: context.fg.withValues(alpha: 0.08),
                             borderRadius: BorderRadius.circular(4),
                           ),
                           child: Text(
                             'v${ext.version}',
-                            style: const TextStyle(color: Colors.white38, fontSize: 10),
+                            style: TextStyle(color: context.fgFaint, fontSize: 10),
                           ),
                         ),
                         if (ext.isDirectStream) ...[
@@ -174,7 +175,7 @@ class AnimeExtensionsScreen extends ConsumerWidget {
                       padding: const EdgeInsets.only(top: 4.0),
                       child: Text(
                         ext.description,
-                        style: const TextStyle(color: Colors.white38, fontSize: 11, height: 1.3),
+                        style: TextStyle(color: context.fgFaint, fontSize: 11, height: 1.3),
                       ),
                     ),
                     trailing: Row(
@@ -184,8 +185,8 @@ class AnimeExtensionsScreen extends ConsumerWidget {
                           value: ext.isEnabled,
                           activeThumbColor: Colors.deepPurpleAccent,
                           activeTrackColor: Colors.deepPurpleAccent.withValues(alpha: 0.4),
-                          inactiveThumbColor: Colors.white38,
-                          inactiveTrackColor: Colors.white12,
+                          inactiveThumbColor: context.fgFaint,
+                          inactiveTrackColor: context.line,
                           onChanged: (val) {
                             HapticFeedback.selectionClick();
                             notifier.toggleExtension(ext.id, val);
@@ -194,7 +195,7 @@ class AnimeExtensionsScreen extends ConsumerWidget {
                         const SizedBox(width: 4),
                         ReorderableDragStartListener(
                           index: index,
-                          child: const Icon(Icons.drag_handle_rounded, color: Colors.white38),
+                          child: Icon(Icons.drag_handle_rounded, color: context.fgFaint),
                         ),
                       ],
                     ),

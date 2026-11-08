@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../../core/theme/theme_x.dart';
 
 import '../../../../core/i18n/app_text.dart';
 import '../../domain/models/anime_item.dart';
@@ -184,7 +185,7 @@ class _AnimeSearchScreenState extends ConsumerState<AnimeSearchScreen> {
                                 onTap: () {
                                   Navigator.of(context).push(
                                     MaterialPageRoute(
-                                      builder: (_) => AnimeDetailsScreen(anime: item),
+                                      builder: (_) => DarkScope(child: AnimeDetailsScreen(anime: item)),
                                     ),
                                   );
                                 },

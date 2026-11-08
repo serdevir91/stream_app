@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:file_picker/file_picker.dart';
+import '../../../../core/theme/theme_x.dart';
 
 import '../../../../core/app_baseline.dart';
 import '../../../../core/backup/local_backup_service.dart';
@@ -422,9 +423,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     _ensureInitialized(settings);
 
     return Scaffold(
-      backgroundColor: const Color(0xFF0F0F13),
+      backgroundColor: context.bg,
       appBar: AppBar(
-        backgroundColor: const Color(0xFF0F0F13),
+        backgroundColor: context.bg,
         elevation: 0,
         title: Text(
           text.t('settings'),
@@ -466,22 +467,22 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             children: [
               // Theme Mode (Light, Dark, AMOLED Pure Black per workspace rules)
               ListTile(
-                leading: const Icon(Icons.brightness_medium_rounded, color: Colors.white70),
-                title: Text(text.t('theme_mode'), style: const TextStyle(color: Colors.white, fontSize: 14)),
+                leading: Icon(Icons.brightness_medium_rounded, color: context.fgMuted),
+                title: Text(text.t('theme_mode'), style: TextStyle(color: context.fg, fontSize: 14)),
                 subtitle: Text(
                   _themeMode == 'amoled'
-                      ? 'AMOLED (Pure Black)'
-                      : (_themeMode == 'light' ? text.t('light_theme') : text.t('dark_theme')),
-                  style: const TextStyle(color: Colors.white38, fontSize: 12),
+                      ? text.t('theme_amoled')
+                      : (_themeMode == 'light' ? text.t('theme_light') : text.t('theme_dark')),
+                  style: TextStyle(color: context.fgFaint, fontSize: 12),
                 ),
                 trailing: DropdownButton<String>(
                   value: _themeMode,
-                  dropdownColor: const Color(0xFF1E1E28),
+                  dropdownColor: context.card,
                   underline: const SizedBox.shrink(),
                   items: [
-                    DropdownMenuItem(value: 'dark', child: Text(text.t('dark_theme'))),
-                    DropdownMenuItem(value: 'light', child: Text(text.t('light_theme'))),
-                    DropdownMenuItem(value: 'amoled', child: const Text('AMOLED Black')),
+                    DropdownMenuItem(value: 'dark', child: Text(text.t('theme_dark'))),
+                    DropdownMenuItem(value: 'light', child: Text(text.t('theme_light'))),
+                    DropdownMenuItem(value: 'amoled', child: Text(text.t('theme_amoled'))),
                   ],
                   onChanged: (val) {
                     if (val != null) {
@@ -491,19 +492,19 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   },
                 ),
               ),
-              const Divider(color: Colors.white10, height: 1),
+              Divider(color: context.line, height: 1),
 
               // App Language
               ListTile(
-                leading: const Icon(Icons.language_rounded, color: Colors.white70),
-                title: Text(text.t('app_language'), style: const TextStyle(color: Colors.white, fontSize: 14)),
+                leading: Icon(Icons.language_rounded, color: context.fgMuted),
+                title: Text(text.t('app_language'), style: TextStyle(color: context.fg, fontSize: 14)),
                 subtitle: Text(
                   _appLanguage == 'tr' ? 'Türkçe' : (_appLanguage == 'ar' ? 'العربية' : (_appLanguage == 'fa' ? 'فارسی' : 'English')),
-                  style: const TextStyle(color: Colors.white38, fontSize: 12),
+                  style: TextStyle(color: context.fgFaint, fontSize: 12),
                 ),
                 trailing: DropdownButton<String>(
                   value: _appLanguage,
-                  dropdownColor: const Color(0xFF1E1E28),
+                  dropdownColor: context.card,
                   underline: const SizedBox.shrink(),
                   items: const [
                     DropdownMenuItem(value: 'en', child: Text('English')),
@@ -519,15 +520,15 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   },
                 ),
               ),
-              const Divider(color: Colors.white10, height: 1),
+              Divider(color: context.line, height: 1),
 
               // Subtitle Language
               ListTile(
-                leading: const Icon(Icons.subtitles_rounded, color: Colors.white70),
-                title: Text(text.t('subtitle_language'), style: const TextStyle(color: Colors.white, fontSize: 14)),
+                leading: Icon(Icons.subtitles_rounded, color: context.fgMuted),
+                title: Text(text.t('subtitle_language'), style: TextStyle(color: context.fg, fontSize: 14)),
                 trailing: DropdownButton<String>(
                   value: _subtitleLanguage,
-                  dropdownColor: const Color(0xFF1E1E28),
+                  dropdownColor: context.card,
                   underline: const SizedBox.shrink(),
                   items: const [
                     DropdownMenuItem(value: 'en', child: Text('English')),
@@ -570,13 +571,13 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 ),
                 title: Text(
                   text.languageCode == 'tr' ? 'Anime Eklentileri Yöneticisi' : 'Anime Extensions Manager',
-                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
+                  style: TextStyle(color: context.fg, fontWeight: FontWeight.bold, fontSize: 14),
                 ),
                 subtitle: Text(
                   '${animeExtensions.where((e) => e.isEnabled).length}/${animeExtensions.length} ${text.languageCode == 'tr' ? 'kaynak aktif (VidSrc, 2Embed, AniWave...)' : 'sources active'}',
-                  style: const TextStyle(color: Colors.white38, fontSize: 12),
+                  style: TextStyle(color: context.fgFaint, fontSize: 12),
                 ),
-                trailing: const Icon(Icons.arrow_forward_ios_rounded, color: Colors.white38, size: 14),
+                trailing: Icon(Icons.arrow_forward_ios_rounded, color: context.fgFaint, size: 14),
                 onTap: () {
                   Navigator.of(context).push(
                     MaterialPageRoute(builder: (_) => const AnimeExtensionsScreen()),
@@ -599,8 +600,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             children: [
               // TMDB Token Status
               ListTile(
-                leading: const Icon(Icons.vpn_key_rounded, color: Colors.white70),
-                title: const Text('TMDB API Access Token', style: TextStyle(color: Colors.white, fontSize: 14)),
+                leading: Icon(Icons.vpn_key_rounded, color: context.fgMuted),
+                title: Text('TMDB API Access Token', style: TextStyle(color: context.fg, fontSize: 14)),
                 subtitle: Text(
                   _tmdbTokenController.text.trim().isNotEmpty
                       ? '● Connected'
@@ -610,35 +611,35 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     fontSize: 12,
                   ),
                 ),
-                trailing: const Icon(Icons.edit_rounded, color: Colors.white38, size: 16),
+                trailing: Icon(Icons.edit_rounded, color: context.fgFaint, size: 16),
                 onTap: () => _openTmdbModal(context, text),
               ),
-              const Divider(color: Colors.white10, height: 1),
+              Divider(color: context.line, height: 1),
 
               // Movies Addons Manager
               ListTile(
-                leading: const Icon(Icons.hub_rounded, color: Colors.white70),
+                leading: Icon(Icons.hub_rounded, color: context.fgMuted),
                 title: Text(text.languageCode == 'tr' ? 'Film & Dizi Eklentileri' : 'Movie & TV Addons',
-                    style: const TextStyle(color: Colors.white, fontSize: 14)),
+                    style: TextStyle(color: context.fg, fontSize: 14)),
                 subtitle: Text(text.languageCode == 'tr' ? '13+ Dahili ve Harici Sağlayıcı' : '13+ Streaming Addons',
-                    style: const TextStyle(color: Colors.white38, fontSize: 12)),
-                trailing: const Icon(Icons.arrow_forward_ios_rounded, color: Colors.white38, size: 14),
+                    style: TextStyle(color: context.fgFaint, fontSize: 12)),
+                trailing: Icon(Icons.arrow_forward_ios_rounded, color: context.fgFaint, size: 14),
                 onTap: () {
                   Navigator.of(context).push(
                     MaterialPageRoute(builder: (_) => const AddonManagerScreen()),
                   );
                 },
               ),
-              const Divider(color: Colors.white10, height: 1),
+              Divider(color: context.line, height: 1),
 
               // Preferred Mirror
               ListTile(
-                leading: const Icon(Icons.dns_rounded, color: Colors.white70),
+                leading: Icon(Icons.dns_rounded, color: context.fgMuted),
                 title: Text(text.languageCode == 'tr' ? 'Tercih Edilen Ayna (Mirror)' : 'Preferred Mirror',
-                    style: const TextStyle(color: Colors.white, fontSize: 14)),
+                    style: TextStyle(color: context.fg, fontSize: 14)),
                 trailing: DropdownButton<String>(
                   value: _preferredMirror,
-                  dropdownColor: const Color(0xFF1E1E28),
+                  dropdownColor: context.card,
                   underline: const SizedBox.shrink(),
                   items: const [
                     DropdownMenuItem(value: 'auto', child: Text('Auto')),
@@ -671,11 +672,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             children: [
               // Video Player Engine
               ListTile(
-                leading: const Icon(Icons.smart_display_rounded, color: Colors.white70),
-                title: Text(text.t('video_player'), style: const TextStyle(color: Colors.white, fontSize: 14)),
+                leading: Icon(Icons.smart_display_rounded, color: context.fgMuted),
+                title: Text(text.t('video_player'), style: TextStyle(color: context.fg, fontSize: 14)),
                 trailing: DropdownButton<String>(
                   value: _videoPlayer,
-                  dropdownColor: const Color(0xFF1E1E28),
+                  dropdownColor: context.card,
                   underline: const SizedBox.shrink(),
                   items: const [
                     DropdownMenuItem(value: 'native', child: Text('Native (VideoPlayer)')),
@@ -691,20 +692,20 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 ),
               ),
               if (ExternalPlayerService.isSupported) ...[
-                const Divider(color: Colors.white10, height: 1),
+                Divider(color: context.line, height: 1),
                 _buildExternalPlayerTile(text),
               ],
-              const Divider(color: Colors.white10, height: 1),
+              Divider(color: context.line, height: 1),
 
               // Auto Select Source
               SwitchListTile(
-                secondary: const Icon(Icons.flash_auto_rounded, color: Colors.white70),
-                title: Text(text.t('auto_select_source'), style: const TextStyle(color: Colors.white, fontSize: 14)),
+                secondary: Icon(Icons.flash_auto_rounded, color: context.fgMuted),
+                title: Text(text.t('auto_select_source'), style: TextStyle(color: context.fg, fontSize: 14)),
                 subtitle: Text(
                   text.languageCode == 'tr'
                       ? 'En hızlı kaynağı otomatik seçerek başlatır'
                       : 'Automatically play the best available source',
-                  style: const TextStyle(color: Colors.white38, fontSize: 12),
+                  style: TextStyle(color: context.fgFaint, fontSize: 12),
                 ),
                 value: _autoSelectSource,
                 activeTrackColor: Colors.deepPurpleAccent,
@@ -713,12 +714,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   _saveSettings();
                 },
               ),
-              const Divider(color: Colors.white10, height: 1),
+              Divider(color: context.line, height: 1),
 
               // Auto Select Subtitles
               SwitchListTile(
-                secondary: const Icon(Icons.closed_caption_rounded, color: Colors.white70),
-                title: Text(text.t('auto_select_subtitle'), style: const TextStyle(color: Colors.white, fontSize: 14)),
+                secondary: Icon(Icons.closed_caption_rounded, color: context.fgMuted),
+                title: Text(text.t('auto_select_subtitle'), style: TextStyle(color: context.fg, fontSize: 14)),
                 value: _autoSelectSubtitle,
                 activeTrackColor: Colors.deepPurpleAccent,
                 onChanged: (val) {
@@ -742,8 +743,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             children: [
               // Watch History Toggle
               SwitchListTile(
-                secondary: const Icon(Icons.history_rounded, color: Colors.white70),
-                title: Text(text.t('save_watch_history'), style: const TextStyle(color: Colors.white, fontSize: 14)),
+                secondary: Icon(Icons.history_rounded, color: context.fgMuted),
+                title: Text(text.t('save_watch_history'), style: TextStyle(color: context.fg, fontSize: 14)),
                 value: _watchHistoryEnabled,
                 activeTrackColor: Colors.deepPurpleAccent,
                 onChanged: (val) {
@@ -751,50 +752,50 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   _saveSettings();
                 },
               ),
-              const Divider(color: Colors.white10, height: 1),
+              Divider(color: context.line, height: 1),
 
               // Export Backup
               ListTile(
-                leading: const Icon(Icons.file_upload_outlined, color: Colors.white70),
-                title: Text(text.t('export_backup'), style: const TextStyle(color: Colors.white, fontSize: 14)),
+                leading: Icon(Icons.file_upload_outlined, color: context.fgMuted),
+                title: Text(text.t('export_backup'), style: TextStyle(color: context.fg, fontSize: 14)),
                 trailing: _isExportingBackup
                     ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                    : const Icon(Icons.chevron_right_rounded, color: Colors.white38),
+                    : Icon(Icons.chevron_right_rounded, color: context.fgFaint),
                 onTap: _isExportingBackup ? null : _exportLocalBackup,
               ),
-              const Divider(color: Colors.white10, height: 1),
+              Divider(color: context.line, height: 1),
 
               // Import Backup
               ListTile(
-                leading: const Icon(Icons.file_download_outlined, color: Colors.white70),
-                title: Text(text.t('import_backup'), style: const TextStyle(color: Colors.white, fontSize: 14)),
+                leading: Icon(Icons.file_download_outlined, color: context.fgMuted),
+                title: Text(text.t('import_backup'), style: TextStyle(color: context.fg, fontSize: 14)),
                 trailing: _isImportingBackup
                     ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                    : const Icon(Icons.chevron_right_rounded, color: Colors.white38),
+                    : Icon(Icons.chevron_right_rounded, color: context.fgFaint),
                 onTap: _isImportingBackup ? null : _importLocalBackup,
               ),
-              const Divider(color: Colors.white10, height: 1),
+              Divider(color: context.line, height: 1),
 
               // Cloud Sync Server Settings
               ListTile(
-                leading: const Icon(Icons.cloud_queue_rounded, color: Colors.white70),
-                title: Text(text.languageCode == 'tr' ? 'Bulut Senkronizasyon Sunucusu' : 'Cloud Sync Server', style: const TextStyle(color: Colors.white, fontSize: 14)),
+                leading: Icon(Icons.cloud_queue_rounded, color: context.fgMuted),
+                title: Text(text.languageCode == 'tr' ? 'Bulut Senkronizasyon Sunucusu' : 'Cloud Sync Server', style: TextStyle(color: context.fg, fontSize: 14)),
                 subtitle: Text(
                   _syncServerUrl.isNotEmpty ? _syncServerUrl : (text.languageCode == 'tr' ? 'Yapılandırılmadı' : 'Not configured'),
-                  style: const TextStyle(color: Colors.white38, fontSize: 12),
+                  style: TextStyle(color: context.fgFaint, fontSize: 12),
                 ),
-                trailing: const Icon(Icons.chevron_right_rounded, color: Colors.white38),
+                trailing: Icon(Icons.chevron_right_rounded, color: context.fgFaint),
                 onTap: () => _openSyncServerModal(context, text),
               ),
-              const Divider(color: Colors.white10, height: 1),
+              Divider(color: context.line, height: 1),
 
               // Manual Cloud Sync
               ListTile(
-                leading: const Icon(Icons.cloud_sync_rounded, color: Colors.white70),
-                title: Text(text.t('sync_now'), style: const TextStyle(color: Colors.white, fontSize: 14)),
+                leading: Icon(Icons.cloud_sync_rounded, color: context.fgMuted),
+                title: Text(text.t('sync_now'), style: TextStyle(color: context.fg, fontSize: 14)),
                 trailing: _isSyncing
                     ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                    : const Icon(Icons.sync_rounded, color: Colors.white38),
+                    : Icon(Icons.sync_rounded, color: context.fgFaint),
                 onTap: _isSyncing ? null : _manualSync,
               ),
             ],
@@ -812,12 +813,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           _buildCard(
             children: [
               ListTile(
-                leading: const Icon(Icons.app_shortcut_rounded, color: Colors.white70),
-                title: const Text('StreamApp', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14)),
-                subtitle: Text('Version $_currentVersion', style: const TextStyle(color: Colors.white38, fontSize: 12)),
+                leading: Icon(Icons.app_shortcut_rounded, color: context.fgMuted),
+                title: Text('StreamApp', style: TextStyle(color: context.fg, fontWeight: FontWeight.bold, fontSize: 14)),
+                subtitle: Text('Version $_currentVersion', style: TextStyle(color: context.fgFaint, fontSize: 12)),
                 trailing: FilledButton.tonal(
                   style: FilledButton.styleFrom(
-                    backgroundColor: Colors.white.withValues(alpha: 0.08),
+                    backgroundColor: context.fg.withValues(alpha: 0.08),
                   ),
                   onPressed: _isCheckingForUpdates ? null : _checkUpdates,
                   child: _isCheckingForUpdates
@@ -826,12 +827,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 ),
               ),
               if (_updateInfo != null) ...[
-                const Divider(color: Colors.white10, height: 1),
+                Divider(color: context.line, height: 1),
                 ListTile(
                   leading: const Icon(Icons.system_update_rounded, color: Colors.deepPurpleAccent),
                   title: Text(
                     '${text.t('new_update_found')}: ${_updateInfo!.latestVersion}',
-                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
+                    style: TextStyle(color: context.fg, fontWeight: FontWeight.bold, fontSize: 13),
                   ),
                   subtitle: _isDownloadingUpdate
                       ? LinearProgressIndicator(value: _downloadProgress, color: Colors.deepPurpleAccent)
@@ -844,35 +845,35 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 ),
               ],
               if (_updateError.isNotEmpty) ...[
-                const Divider(color: Colors.white10, height: 1),
+                Divider(color: context.line, height: 1),
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                   child: Text(_updateError, style: const TextStyle(color: Colors.redAccent, fontSize: 12)),
                 ),
               ],
-              const Divider(color: Colors.white10, height: 1),
+              Divider(color: context.line, height: 1),
               ListTile(
                 leading: const Icon(Icons.star_rate_rounded, color: Colors.amber),
-                title: Text(text.t('rate_app'), style: const TextStyle(color: Colors.white, fontSize: 14)),
-                subtitle: Text(text.t('rate_app_desc'), style: const TextStyle(color: Colors.white38, fontSize: 12)),
-                trailing: const Icon(Icons.open_in_new_rounded, color: Colors.white38, size: 18),
+                title: Text(text.t('rate_app'), style: TextStyle(color: context.fg, fontSize: 14)),
+                subtitle: Text(text.t('rate_app_desc'), style: TextStyle(color: context.fgFaint, fontSize: 12)),
+                trailing: Icon(Icons.open_in_new_rounded, color: context.fgFaint, size: 18),
                 onTap: AppBaseline.openRepo,
               ),
               if (AppBaseline.donationUrl.isNotEmpty) ...[
-                const Divider(color: Colors.white10, height: 1),
+                Divider(color: context.line, height: 1),
                 ListTile(
                   leading: const Icon(Icons.favorite_rounded, color: Colors.pinkAccent),
-                  title: Text(text.t('support_app'), style: const TextStyle(color: Colors.white, fontSize: 14)),
-                  subtitle: Text(text.t('support_app_desc'), style: const TextStyle(color: Colors.white38, fontSize: 12)),
-                  trailing: const Icon(Icons.open_in_new_rounded, color: Colors.white38, size: 18),
+                  title: Text(text.t('support_app'), style: TextStyle(color: context.fg, fontSize: 14)),
+                  subtitle: Text(text.t('support_app_desc'), style: TextStyle(color: context.fgFaint, fontSize: 12)),
+                  trailing: Icon(Icons.open_in_new_rounded, color: context.fgFaint, size: 18),
                   onTap: AppBaseline.openDonation,
                 ),
               ],
-              const Divider(color: Colors.white10, height: 1),
+              Divider(color: context.line, height: 1),
               ListTile(
-                leading: const Icon(Icons.help_outline_rounded, color: Colors.white70),
-                title: Text(text.t('tutorial_title'), style: const TextStyle(color: Colors.white, fontSize: 14)),
-                trailing: const Icon(Icons.chevron_right_rounded, color: Colors.white38),
+                leading: Icon(Icons.help_outline_rounded, color: context.fgMuted),
+                title: Text(text.t('tutorial_title'), style: TextStyle(color: context.fg, fontSize: 14)),
+                trailing: Icon(Icons.chevron_right_rounded, color: context.fgFaint),
                 onTap: () => OnboardingTutorialDialog.show(context),
               ),
             ],
@@ -899,21 +900,21 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       );
     }
     return ListTile(
-      leading: const Icon(Icons.open_in_new_rounded, color: Colors.white70),
+      leading: Icon(Icons.open_in_new_rounded, color: context.fgMuted),
       title: Text(
         text.t('video_player_app'),
-        style: const TextStyle(color: Colors.white, fontSize: 14),
+        style: TextStyle(color: context.fg, fontSize: 14),
       ),
       subtitle: Text(
         text.t('video_player_app_desc'),
-        style: const TextStyle(color: Colors.white38, fontSize: 12),
+        style: TextStyle(color: context.fgFaint, fontSize: 12),
       ),
       trailing: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 150),
         child: DropdownButton<String>(
           value: _externalPlayer,
           isExpanded: true,
-          dropdownColor: const Color(0xFF1E1E28),
+          dropdownColor: context.card,
           underline: const SizedBox.shrink(),
           items: items,
           onChanged: (val) {
@@ -954,9 +955,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   Widget _buildCard({required List<Widget> children}) {
     return Container(
       decoration: BoxDecoration(
-        color: const Color(0xFF171720),
+        color: context.card,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
+        border: Border.all(color: context.fg.withValues(alpha: 0.05)),
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(16),
@@ -970,7 +971,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   void _openTmdbModal(BuildContext context, AppText text) {
     showModalBottomSheet(
       context: context,
-      backgroundColor: const Color(0xFF1B1B26),
+      backgroundColor: context.card,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
@@ -987,36 +988,36 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   width: 40,
                   height: 4,
                   decoration: BoxDecoration(
-                    color: Colors.white24,
+                    color: context.cs.outline,
                     borderRadius: BorderRadius.circular(2),
                   ),
                 ),
               ),
               const SizedBox(height: 16),
-              const Text(
+              Text(
                 'TMDB Access Token',
-                style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18),
+                style: TextStyle(color: context.fg, fontWeight: FontWeight.bold, fontSize: 18),
               ),
               const SizedBox(height: 8),
               Text(
                 text.languageCode == 'tr'
                     ? 'Film ve dizi afişleri ve metaverileri için TMDB Read Access Token (v4) gereklidir.'
                     : 'Required for movies and TV series posters, metadata and discovery.',
-                style: const TextStyle(color: Colors.white54, fontSize: 12),
+                style: TextStyle(color: context.fgMuted, fontSize: 12),
               ),
               const SizedBox(height: 16),
               TextField(
                 controller: _tmdbTokenController,
                 maxLines: 2,
-                style: const TextStyle(color: Colors.white, fontSize: 13),
+                style: TextStyle(color: context.fg, fontSize: 13),
                 decoration: InputDecoration(
                   hintText: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
-                  hintStyle: const TextStyle(color: Colors.white24),
+                  hintStyle: TextStyle(color: context.cs.outline),
                   filled: true,
-                  fillColor: Colors.black26,
+                  fillColor: context.cardHigh,
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
-                    borderSide: const BorderSide(color: Colors.white12),
+                    borderSide: BorderSide(color: context.line),
                   ),
                 ),
               ),
@@ -1049,7 +1050,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   void _openSyncServerModal(BuildContext context, AppText text) {
     showModalBottomSheet(
       context: context,
-      backgroundColor: const Color(0xFF1B1B26),
+      backgroundColor: context.card,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
@@ -1068,7 +1069,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       width: 40,
                       height: 4,
                       decoration: BoxDecoration(
-                        color: Colors.white24,
+                        color: context.cs.outline,
                         borderRadius: BorderRadius.circular(2),
                       ),
                     ),
@@ -1076,25 +1077,25 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   const SizedBox(height: 16),
                   Text(
                     text.t('sync_title'),
-                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18),
+                    style: TextStyle(color: context.fg, fontWeight: FontWeight.bold, fontSize: 18),
                   ),
                   const SizedBox(height: 8),
                   Text(
                     text.t('sync_desc'),
-                    style: const TextStyle(color: Colors.white54, fontSize: 12),
+                    style: TextStyle(color: context.fgMuted, fontSize: 12),
                   ),
                   const SizedBox(height: 16),
                   TextField(
                     controller: _syncServerUrlController,
-                    style: const TextStyle(color: Colors.white, fontSize: 13),
+                    style: TextStyle(color: context.fg, fontSize: 13),
                     decoration: InputDecoration(
                       hintText: 'https://sync.example.com',
-                      hintStyle: const TextStyle(color: Colors.white24),
+                      hintStyle: TextStyle(color: context.cs.outline),
                       filled: true,
-                      fillColor: Colors.black26,
+                      fillColor: context.cardHigh,
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
-                        borderSide: const BorderSide(color: Colors.white12),
+                        borderSide: BorderSide(color: context.line),
                       ),
                     ),
                   ),
@@ -1111,7 +1112,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                               if (ctx.mounted) Navigator.pop(ctx);
                             },
                       icon: _isSyncRegistering
-                          ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                          ? SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: context.fg))
                           : const Icon(Icons.app_registration_rounded),
                       label: Text(text.t('register_device')),
                     ),
