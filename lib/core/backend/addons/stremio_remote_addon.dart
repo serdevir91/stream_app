@@ -245,7 +245,36 @@ class StremioRemoteAddon extends BaseAddon {
       var title = titleParts.where((p) => p.isNotEmpty).join(' - ').trim();
       if (title.isEmpty) title = _manifest.name;
 
+      final hints = stream['behaviorHints'];
+      Map<String, String>? headers;
+      String? filename;
+      if (hints is Map) {
+        final proxy = hints['proxyHeaders'];
+        final request = proxy is Map ? proxy['request'] : null;
+        if (request is Map && request.isNotEmpty) {
+          headers = request.map((k, v) => MapEntry(k.toString(), v.toString()));
+        }
+        filename = hints['filename']?.toString();
+      }
+      final rawSubs = stream['subtitles'];
+      final subtitles = <Map<String, String>>[
+        if (rawSubs is List)
+          for (final s in rawSubs)
+            if (s is Map && s['url'] != null)
+              {
+                'url': s['url'].toString(),
+                'language': (s['lang'] ?? s['language'] ?? '').toString(),
+                'label': (s['label'] ?? s['lang'] ?? 'Subtitle').toString(),
+                'format': s['url'].toString().toLowerCase().contains('.vtt')
+                    ? 'vtt'
+                    : 'srt',
+              },
+      ];
+
       parsed.add(StreamResult(
+        headers: headers,
+        subtitles: subtitles.isEmpty ? null : subtitles,
+        filename: filename,
         url: streamUrl,
         title: title.length > 140 ? title.substring(0, 140) : title,
         quality: (stream['name'] ?? '').toString().length > 60

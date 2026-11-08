@@ -5,13 +5,67 @@ class OnlineSubtitleResult {
   final String label;
   final String languageCode;
   final String format;
+  /// Frame rate the subtitle was timed for, when the source reports it.
+  final double? fps;
+  final String? releaseName;
 
   const OnlineSubtitleResult({
     required this.url,
     required this.label,
     required this.languageCode,
     this.format = 'srt',
+    this.fps,
+    this.releaseName,
   });
+}
+
+/// Scores how well a subtitle release name matches the video release name.
+/// Higher is better; 0 means nothing in common or no hint.
+double releaseSimilarity(String? videoRelease, String? subtitleRelease) {
+  if (videoRelease == null || subtitleRelease == null) return 0;
+  final a = _releaseTokens(videoRelease);
+  final b = _releaseTokens(subtitleRelease);
+  if (a.isEmpty || b.isEmpty) return 0;
+  double score = 0;
+  final sa = _sourceClass(a);
+  final sb = _sourceClass(b);
+  if (sa != null && sa == sb) score += 6;
+  if (sa != null && sb != null && sa != sb) score -= 4;
+  const distinctive = {
+    'amzn', 'nf', 'dsnp', 'hmax', 'atvp', 'hulu', 'pcok', 'max', 'repack',
+    'proper', 'extended', 'unrated', 'directors', 'imax', 'remastered',
+  };
+  for (final t in a.intersection(b)) {
+    if (distinctive.contains(t)) score += 3;
+  }
+  final ga = _releaseGroup(videoRelease);
+  final gb = _releaseGroup(subtitleRelease);
+  if (ga != null && ga == gb) score += 8;
+  return score;
+}
+
+Set<String> _releaseTokens(String value) => value
+    .toLowerCase()
+    .replaceAll('web-dl', 'webdl')
+    .replaceAll('blu-ray', 'bluray')
+    .split(RegExp(r'[^a-z0-9]+'))
+    .where((t) => t.isNotEmpty)
+    .toSet();
+
+String? _sourceClass(Set<String> tokens) {
+  if (tokens.any((t) => t == 'bluray' || t == 'brrip' || t == 'bdrip' || t == 'remux')) {
+    return 'bluray';
+  }
+  if (tokens.any((t) => t == 'web' || t == 'webdl' || t == 'webrip')) return 'web';
+  if (tokens.any((t) => t == 'hdtv' || t == 'pdtv')) return 'hdtv';
+  if (tokens.any((t) => t == 'dvdrip' || t == 'dvd')) return 'dvd';
+  return null;
+}
+
+String? _releaseGroup(String value) {
+  final cleaned = value.replaceAll(RegExp(r'\.(srt|vtt|mkv|mp4|ass)$', caseSensitive: false), '');
+  final m = RegExp(r'-([A-Za-z0-9]{2,})(?:\[[^\]]*\])?$').firstMatch(cleaned.trim());
+  return m?.group(1)?.toLowerCase();
 }
 
 class OnlineSubtitleRepository {
@@ -91,6 +145,7 @@ class OnlineSubtitleRepository {
     required int season,
     required int episode,
     required String languageCode,
+    String? releaseHint,
   }) async {
     final normalizedImdb = _extractImdbId(imdbId);
     final openSubtitlesImdbId = normalizedImdb?.replaceFirst(
@@ -116,6 +171,7 @@ class OnlineSubtitleRepository {
           season: season,
           episode: episode,
           languageCode: language,
+          releaseHint: releaseHint,
         );
         if (wyzieResult != null) {
           return wyzieResult;
@@ -128,6 +184,7 @@ class OnlineSubtitleRepository {
         season: season,
         episode: episode,
         languageCode: language,
+        releaseHint: releaseHint,
       );
       if (result != null) {
         return result;
@@ -143,9 +200,10 @@ class OnlineSubtitleRepository {
     required int season,
     required int episode,
     required String languageCode,
+    String? releaseHint,
   }) async {
     final cacheKey =
-        'wyzie:$mediaType:$imdbId:$season:$episode:$languageCode:${_wyzieApiKey.trim().hashCode}';
+        'wyzie:$mediaType:$imdbId:$season:$episode:$languageCode:${_wyzieApiKey.trim().hashCode}:${releaseHint.hashCode}';
     if (_subtitleCache.containsKey(cacheKey)) {
       return _subtitleCache[cacheKey];
     }
@@ -186,8 +244,8 @@ class OnlineSubtitleRepository {
               .where(_isUsableWyzieSubtitle)
               .toList()
             ..sort(
-              (a, b) =>
-                  _scoreWyzieSubtitle(b).compareTo(_scoreWyzieSubtitle(a)),
+              (a, b) => _scoreWyzieSubtitle(b, releaseHint)
+                  .compareTo(_scoreWyzieSubtitle(a, releaseHint)),
             );
 
       if (candidates.isEmpty) {
@@ -210,6 +268,7 @@ class OnlineSubtitleRepository {
         ].join(' - '),
         languageCode: languageCode,
         format: 'srt',
+        releaseName: release,
       );
       _subtitleCache[cacheKey] = result;
       return result;
@@ -225,10 +284,12 @@ class OnlineSubtitleRepository {
     required int season,
     required int episode,
     required String languageCode,
+    String? releaseHint,
   }) async {
     final osLanguage =
         _openSubtitlesLanguageCodes[languageCode] ?? languageCode;
-    final cacheKey = '$mediaType:$imdbId:$season:$episode:$osLanguage';
+    final cacheKey =
+        '$mediaType:$imdbId:$season:$episode:$osLanguage:${releaseHint.hashCode}';
     if (_subtitleCache.containsKey(cacheKey)) {
       return _subtitleCache[cacheKey];
     }
@@ -262,7 +323,10 @@ class OnlineSubtitleRepository {
               .map((item) => Map<String, dynamic>.from(item))
               .where(_isUsableSubtitle)
               .toList()
-            ..sort((a, b) => _scoreSubtitle(b).compareTo(_scoreSubtitle(a)));
+            ..sort(
+              (a, b) => _scoreSubtitle(b, releaseHint)
+                  .compareTo(_scoreSubtitle(a, releaseHint)),
+            );
 
       if (candidates.isEmpty) {
         _subtitleCache[cacheKey] = null;
@@ -287,6 +351,10 @@ class OnlineSubtitleRepository {
         ].join(' - '),
         languageCode: languageCode,
         format: 'srt',
+        fps: _parseFps(best['MovieFPS']),
+        releaseName: best['MovieReleaseName']?.toString().trim().isNotEmpty == true
+            ? best['MovieReleaseName'].toString().trim()
+            : fileName,
       );
       _subtitleCache[cacheKey] = result;
       return result;
@@ -313,8 +381,18 @@ class OnlineSubtitleRepository {
     return true;
   }
 
-  double _scoreSubtitle(Map<String, dynamic> item) {
+  double? _parseFps(Object? value) {
+    final fps = _toDouble(value);
+    return fps > 1 ? fps : null;
+  }
+
+  double _scoreSubtitle(Map<String, dynamic> item, [String? releaseHint]) {
     double score = 0;
+    score += releaseSimilarity(
+          releaseHint,
+          '${item['MovieReleaseName'] ?? ''} ${item['SubFileName'] ?? ''}',
+        ) *
+        3;
     score += _toDouble(item['Score']);
     score += _toDouble(item['SubDownloadsCnt']) / 1000;
     score += _toDouble(item['SubRating']) * 2;
@@ -326,8 +404,9 @@ class OnlineSubtitleRepository {
     return score;
   }
 
-  double _scoreWyzieSubtitle(Map<String, dynamic> item) {
+  double _scoreWyzieSubtitle(Map<String, dynamic> item, [String? releaseHint]) {
     double score = 0;
+    score += releaseSimilarity(releaseHint, item['release']?.toString()) * 3;
     score += _toDouble(item['downloadCount']) / 1000;
     if (item['isHearingImpaired'] == true) score -= 3;
     if (item['ai'] == true) score -= 1;

@@ -807,6 +807,18 @@ class VixSrcAddon extends BaseAddon {
             quality: variant.quality,
             provider: 'VixSrc Direct',
             isDirectLink: true,
+            headers: res.headers.isNotEmpty
+                ? res.headers
+                : VixSrcExtractor.defaultHeaders,
+            subtitles: [
+              for (final sub in res.subtitles)
+                {
+                  'url': sub.url,
+                  'language': sub.language,
+                  'label': sub.name,
+                  'format': 'vtt',
+                },
+            ],
           ),
         );
       }

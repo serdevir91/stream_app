@@ -46,6 +46,12 @@ class StreamResult {
   final String? quality;
   final String? provider;
   final bool isDirectLink;
+  /// HTTP headers the stream host requires (Referer, Origin, User-Agent).
+  final Map<String, String>? headers;
+  /// Subtitle tracks shipped with the stream: {url, language, label, format}.
+  final List<Map<String, String>>? subtitles;
+  /// Original release file name, used to match subtitles to the same cut.
+  final String? filename;
 
   StreamResult({
     required this.url,
@@ -53,6 +59,9 @@ class StreamResult {
     this.quality,
     this.provider,
     this.isDirectLink = true,
+    this.headers,
+    this.subtitles,
+    this.filename,
   });
 
   Map<String, dynamic> toJson() => {
@@ -61,6 +70,9 @@ class StreamResult {
         'quality': quality,
         'provider': provider,
         'is_direct_link': isDirectLink,
+        if (headers != null && headers!.isNotEmpty) 'headers': headers,
+        if (subtitles != null && subtitles!.isNotEmpty) 'subtitles': subtitles,
+        if (filename != null) 'filename': filename,
       };
 }
 

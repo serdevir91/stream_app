@@ -20,6 +20,9 @@ import 'package:webview_windows/webview_windows.dart' as windows_webview;
 
 import '../../../../core/backend/addon_service_provider.dart';
 import '../../../../core/subtitles/online_subtitle_repository.dart';
+import '../../../../core/subtitles/subtitle_engine.dart';
+import '../../../../core/subtitles/subtitle_prefs.dart';
+import '../../../../core/player/stream_headers.dart';
 import '../../../../core/i18n/app_text.dart';
 import '../../../../core/player/local_media_server.dart';
 
@@ -116,14 +119,24 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   OnlineSubtitleResult? _activeOnlineSubtitle;
   bool _nativeSubtitlesEnabled = true;
   bool _embedSubtitlesEnabled = true;
-  List<vp.Caption> _parsedCaptions = const [];
+  SubtitleDocument _parsedCaptions = SubtitleDocument.empty;
   String _directCaptionText = '';
   Timer? _directSubtitleTimer;
-  List<vp.Caption> _embedCaptions = const [];
+  SubtitleDocument _embedCaptions = SubtitleDocument.empty;
   String _embedCaptionText = '';
   Timer? _embedSubtitleTimer;
   bool _embedSubtitleTickRunning = false;
   double _subtitleDelaySeconds = 0.0;
+  double _subtitleScale = 1.0;
+  // null = automatic frame-rate correction, otherwise a fixed scale.
+  double? _subtitleScaleOverride;
+  bool _subtitleScaleChecked = false;
+  int _lastRawPositionMs = -1;
+  final Stopwatch _positionSampleClock = Stopwatch();
+  SubtitleTiming get _subtitleTiming => SubtitleTiming(
+    offsetSeconds: _subtitleDelaySeconds,
+    scale: _subtitleScaleOverride ?? _subtitleScale,
+  );
   List<Map<String, dynamic>> _availableStreams = const [];
   String? _currentMirrorName;
 
@@ -173,7 +186,9 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     if (widget.initialStreams != null && widget.initialStreams!.isNotEmpty) {
       _availableStreams = widget.initialStreams!;
     }
-    _subtitleDelaySeconds = ref.read(appSettingsProvider).defaultSubtitleOffset;
+    _subtitleDelaySeconds =
+        SubtitlePrefs.offsetFor(widget.mediaId) ??
+        ref.read(appSettingsProvider).defaultSubtitleOffset;
     _enterFullscreenMode();
     _armControlsAutoHide();
     _configureAudioSession();
@@ -331,6 +346,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
         _initNativePlayer(
           url,
           seekMs: _savedPositionMs,
+          headers: _headersForStream(url),
         ).then((_) => _attachOnlineSubtitle(url)),
       );
     } else {
@@ -341,7 +357,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
         _videoController = controller;
         _isLoading = false;
       });
-      player.open(Media(url), play: true);
+      player.open(Media(url, httpHeaders: _headersForStream(url)), play: true);
       _ensureDirectPlaybackStarts(player);
       _startProgressAutosave();
       if (_savedPositionMs > 0) {
@@ -432,30 +448,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
           languageCode: chosenSub['language']?.toString() ?? 'tr',
           format: chosenSub['format']?.toString() ?? 'vtt',
         );
-        setState(() {
-          _activeOnlineSubtitle = subResult;
-          _nativeSubtitlesEnabled = true;
-        });
-        try {
-          final captionFile = await _loadClosedCaptionFile(subResult);
-          _cachedCaptionFile = captionFile;
-          _parsedCaptions = captionFile.captions;
-          _startDirectSubtitleListener();
-        } catch (e) {
-          debugPrint('Stream attached subtitle parse error: $e');
-        }
-        final player = _player;
-        if (player != null) {
-          try {
-            await player.setSubtitleTrack(
-              SubtitleTrack.uri(
-                subResult.url,
-                title: subResult.label,
-                language: subResult.languageCode,
-              ),
-            );
-          } catch (_) {}
-        }
+        await _activateDirectSubtitle(subResult);
         return;
       }
     }
@@ -479,54 +472,75 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
       season: widget.season,
       episode: widget.episode,
       languageCode: widget.subtitleLanguage,
+      releaseHint: _currentReleaseHint(streamUrl),
     );
     if (subtitle == null || _isDisposed || _currentStreamUrl != streamUrl) {
       return;
     }
 
-    setState(() {
-      _activeOnlineSubtitle = subtitle;
-      _nativeSubtitlesEnabled = true;
-    });
+    await _activateDirectSubtitle(subtitle);
+  }
 
+  /// HTTP headers a stream needs (Referer, Origin, User-Agent). Sources put
+  /// them in `headers` or, for Stremio addons, `behaviorHints.proxyHeaders`.
+  Map<String, String>? _headersForStream(String streamUrl) {
+    final matched = _availableStreams.firstWhere(
+      (s) => s['url'] == streamUrl,
+      orElse: () => const {},
+    );
+    return streamHeadersOf(matched);
+  }
+
+  /// Release name of the playing stream (addon titles usually carry it),
+  /// used to pick a subtitle cut for the same release.
+  String? _currentReleaseHint(String streamUrl) {
+    final matched = _availableStreams.firstWhere(
+      (s) => s['url'] == streamUrl,
+      orElse: () => const {},
+    );
+    final hints = matched['behaviorHints'];
+    final parts = [
+      matched['title'],
+      matched['name'],
+      matched['filename'],
+      hints is Map ? hints['filename'] : null,
+      Uri.tryParse(streamUrl)?.pathSegments.lastOrNull,
+    ].whereType<Object>().map((e) => e.toString()).where((e) => e.isNotEmpty);
+    final joined = parts.join(' ');
+    return joined.isEmpty ? null : joined;
+  }
+
+  /// Loads [subtitle] into the overlay. Every engine (media_kit, VLC,
+  /// ExoPlayer) shows external subtitles only through this overlay, so one
+  /// offset and one clock apply everywhere.
+  Future<void> _activateDirectSubtitle(OnlineSubtitleResult subtitle) async {
+    final streamAtStart = _currentStreamUrl;
     try {
-      final captionFile = await _loadClosedCaptionFile(subtitle);
-      _cachedCaptionFile = captionFile;
-      _parsedCaptions = captionFile.captions;
+      final doc = await _loadSubtitleDocument(subtitle);
+      if (_isDisposed || !mounted || _currentStreamUrl != streamAtStart) return;
+      if (doc.isEmpty) {
+        debugPrint('Subtitle had no cues: ${subtitle.label}');
+        return;
+      }
+      setState(() {
+        _activeOnlineSubtitle = subtitle;
+        _parsedCaptions = doc;
+        _nativeSubtitlesEnabled = true;
+        _selectedSubtitleTrackIndex = -2;
+        _directCaptionText = '';
+        _subtitleScale = 1.0;
+        _subtitleScaleChecked = false;
+      });
+      final player = _player;
+      if (player != null) {
+        try {
+          await player.setSubtitleTrack(SubtitleTrack.no());
+        } catch (_) {}
+      }
       _startDirectSubtitleListener();
     } catch (e) {
-      debugPrint('Online subtitle parse error: $e');
+      debugPrint('Subtitle load failed: $e');
     }
-
-    final player = _player;
-    if (player != null) {
-      try {
-        await player.setSubtitleTrack(
-          SubtitleTrack.uri(
-            subtitle.url,
-            title: subtitle.label,
-            language: subtitle.languageCode,
-          ),
-        );
-        if (mounted) {
-          setState(() {
-            _selectedSubtitleTrackIndex = -2;
-          });
-        }
-      } catch (e) {
-        debugPrint('Media Kit subtitle attach failed: $e');
-      }
-      return;
-    }
-
-    if (_vlcViewController != null) {
-      try {
-        await _vlcViewController?.addSubtitleFromNetwork(subtitle.url);
-      } catch (_) {}
-      return;
-    }
-
-    await _applyNativeSubtitle(subtitle);
   }
 
   Future<void> _attachOnlineSubtitleToEmbed(
@@ -559,11 +573,13 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     }
 
     try {
-      final captionFile = await _loadClosedCaptionFile(subtitle);
+      final captionFile = await _loadSubtitleDocument(subtitle);
       if (_isDisposed || _embedUrl != expectedEmbedUrl) return;
       setState(() {
         _activeOnlineSubtitle = subtitle;
-        _embedCaptions = captionFile.captions;
+        _embedCaptions = captionFile;
+        _subtitleScale = 1.0;
+        _subtitleScaleChecked = false;
         _embedSubtitlesEnabled = true;
         _embedCaptionText = '';
       });
@@ -606,73 +622,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     } catch (_) {}
   }
 
-  vp.ClosedCaptionFile? _cachedCaptionFile;
-
-  List<vp.Caption> _shiftCaptions(List<vp.Caption> base, double delaySec) {
-    final offset = Duration(milliseconds: (delaySec * 1000).toInt());
-    return base.map((c) {
-      final start = c.start + offset;
-      final end = c.end + offset;
-      return vp.Caption(
-        number: c.number,
-        start: start.isNegative ? Duration.zero : start,
-        end: end.isNegative ? Duration.zero : end,
-        text: c.text,
-      );
-    }).toList();
-  }
-
-  Future<void> _applyNativeSubtitle(OnlineSubtitleResult subtitle) async {
-    final controller = _nativeController;
-    if (controller == null) return;
-    try {
-      final baseFile = await _loadClosedCaptionFile(subtitle);
-      _cachedCaptionFile = baseFile;
-      final shifted = _shiftCaptions(baseFile.captions, _subtitleDelaySeconds);
-      await controller.setClosedCaptionFile(
-        Future.value(_ShiftedClosedCaptionFile(shifted)),
-      );
-    } catch (e) {
-      debugPrint('Native subtitle attach failed: $e');
-    }
-  }
-
-  String _decodeTurkishSubtitleBytes(List<int> bytes) {
-    if (bytes.isEmpty) return '';
-    String text;
-    try {
-      text = utf8.decode(bytes);
-    } catch (_) {
-      try {
-        text = latin1.decode(bytes);
-      } catch (_) {
-        text = String.fromCharCodes(bytes);
-      }
-    }
-
-    const mojibakeMap = <String, String>{
-      'Ã§': 'ç', 'Ã‡': 'Ç',
-      'Ã¶': 'ö', 'Ã–': 'Ö',
-      'Ã¼': 'ü', 'Ãœ': 'Ü',
-      'ÄŸ': 'ğ', 'Äž': 'Ğ',
-      'Ä±': 'ı', 'Ä°': 'İ',
-      'ÅŸ': 'ş', 'Åž': 'Ş',
-      'Ã½': 'ı',
-      'Ã ': 'à', 'Ã©': 'é',
-      'ð': 'ğ', 'Ð': 'Ğ',
-      'ý': 'ı', 'Ý': 'İ',
-      'þ': 'ş', 'Þ': 'Ş',
-      'Ãž': 'Ş',
-    };
-
-    mojibakeMap.forEach((wrong, correct) {
-      text = text.replaceAll(wrong, correct);
-    });
-
-    return text;
-  }
-
-  Future<vp.ClosedCaptionFile> _loadClosedCaptionFile(
+  Future<SubtitleDocument> _loadSubtitleDocument(
     OnlineSubtitleResult subtitle,
   ) async {
     List<int> bytes = <int>[];
@@ -687,48 +637,118 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
       );
       bytes = response.data ?? <int>[];
     } else {
-      final file = File(subtitle.url);
+      final path = subtitle.url.startsWith('file://')
+          ? Uri.parse(subtitle.url).toFilePath()
+          : subtitle.url;
+      final file = File(path);
       if (await file.exists()) {
         bytes = await file.readAsBytes();
       }
     }
-
-    if (bytes.length > 2 && bytes[0] == 0x1f && bytes[1] == 0x8b) {
-      try {
-        bytes = gzip.decode(bytes);
-      } catch (_) {}
-    }
-
-    final content = _decodeTurkishSubtitleBytes(bytes);
-    if (subtitle.format.toLowerCase() == 'vtt' ||
-        content.trimLeft().startsWith('WEBVTT')) {
-      return vp.WebVTTCaptionFile(content);
-    }
-    return vp.SubRipCaptionFile(content);
+    return SubtitleEngine.parseBytes(bytes, format: subtitle.format);
   }
 
   void _startDirectSubtitleListener() {
     _directSubtitleTimer?.cancel();
     if (_parsedCaptions.isEmpty) return;
-    _directSubtitleTimer = Timer.periodic(const Duration(milliseconds: 150), (_) {
+    _lastRawPositionMs = -1;
+    _directSubtitleTimer = Timer.periodic(const Duration(milliseconds: 80), (_) {
       if (_isDisposed) return;
-      Duration currentPos = Duration.zero;
-      if (_player != null) {
-        currentPos = _player!.state.position;
-      } else if (_vlcViewController != null && _vlcViewController!.value.isInitialized) {
-        currentPos = _vlcViewController!.value.position;
-      } else if (_nativeController != null && _nativeController!.value.isInitialized) {
-        currentPos = _nativeController!.value.position;
-      } else {
-        return;
-      }
-      final nextText = _captionTextAt(currentPos);
+      final sample = _directPlaybackSample();
+      if (sample == null) return;
+      _maybeDetectSubtitleScale(sample.duration);
+      final nextText = _nativeSubtitlesEnabled
+          ? _captionTextAt(sample.position)
+          : '';
       if (mounted && nextText != _directCaptionText) {
         setState(() {
           _directCaptionText = nextText;
         });
       }
     });
+  }
+
+  /// Current playback position of the direct engine. Engines publish their
+  /// position in steps (video_player every 500 ms), so the value is
+  /// extrapolated between reports while playing.
+  ({Duration position, Duration duration})? _directPlaybackSample() {
+    Duration raw;
+    Duration duration;
+    bool playing;
+    final player = _player;
+    if (player != null) {
+      raw = player.state.position;
+      duration = player.state.duration;
+      playing = player.state.playing;
+      // mpv may auto-select an embedded track after load; keep it off while
+      // the overlay shows the external subtitle.
+      final sid = player.state.track.subtitle.id;
+      if (_selectedSubtitleTrackIndex == -2 && sid != 'no' && sid != 'auto') {
+        unawaited(player.setSubtitleTrack(SubtitleTrack.no()));
+      }
+    } else if (_vlcViewController != null &&
+        _vlcViewController!.value.isInitialized) {
+      final v = _vlcViewController!.value;
+      raw = v.position;
+      duration = v.duration;
+      playing = v.isPlaying;
+    } else if (_nativeController != null &&
+        _nativeController!.value.isInitialized) {
+      final v = _nativeController!.value;
+      raw = v.position;
+      duration = v.duration;
+      playing = v.isPlaying;
+    } else {
+      return null;
+    }
+    final rawMs = raw.inMilliseconds;
+    if (rawMs != _lastRawPositionMs || !playing) {
+      _lastRawPositionMs = rawMs;
+      _positionSampleClock
+        ..reset()
+        ..start();
+    }
+    var ms = rawMs;
+    if (playing) {
+      ms += _positionSampleClock.elapsedMilliseconds.clamp(0, 1000);
+    }
+    return (position: Duration(milliseconds: ms), duration: duration);
+  }
+
+  void _maybeDetectSubtitleScale(Duration duration) {
+    if (_subtitleScaleChecked || duration <= Duration.zero) return;
+    _subtitleScaleChecked = true;
+    unawaited(_applyAutoSubtitleScale(duration));
+  }
+
+  /// Fixes subtitles made for another frame rate (e.g. 25 fps subtitle on a
+  /// 23.976 fps video), which otherwise drift further apart over time.
+  Future<void> _applyAutoSubtitleScale(Duration duration) async {
+    var scale = 1.0;
+    final subFps = _activeOnlineSubtitle?.fps;
+    if (subFps != null) {
+      scale = SubtitleEngine.scaleForFps(subFps, await _readVideoFps());
+    }
+    if (scale == 1.0) {
+      final doc = _parsedCaptions.isNotEmpty ? _parsedCaptions : _embedCaptions;
+      scale = SubtitleEngine.detectScaleFromDuration(doc.lastCueEnd, duration);
+    }
+    if (scale != 1.0 && mounted && !_isDisposed) {
+      debugPrint('Subtitle frame-rate correction: x${scale.toStringAsFixed(4)}');
+      setState(() => _subtitleScale = scale);
+    }
+  }
+
+  Future<double?> _readVideoFps() async {
+    final player = _player;
+    if (player == null) return null;
+    try {
+      final platform = player.platform as dynamic;
+      final value = await platform.getProperty('container-fps');
+      return double.tryParse(value.toString());
+    } catch (_) {
+      return null;
+    }
   }
 
   void _startEmbedSubtitleTimer() {
@@ -772,42 +792,28 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   }
 
   String _captionTextAt(Duration position) {
-    final delayOffset = Duration(
-      milliseconds: (_subtitleDelaySeconds * 1000).toInt(),
-    );
-    final adjusted = position + delayOffset;
-    final captions = _parsedCaptions.isNotEmpty ? _parsedCaptions : _embedCaptions;
-    for (final caption in captions) {
-      if (adjusted >= caption.start && adjusted <= caption.end) {
-        return caption.text;
-      }
-    }
-    return '';
+    final doc = _parsedCaptions.isNotEmpty ? _parsedCaptions : _embedCaptions;
+    return doc.textAt(position, _subtitleTiming);
   }
 
+  /// Positive [newDelay] shows subtitles later, negative earlier. Saved per
+  /// title so the next episode starts with the same correction.
   void _updateSubtitleDelay(double newDelay) {
     _subtitleDelaySeconds = double.parse(
       newDelay.toStringAsFixed(2),
-    ).clamp(-15.0, 15.0);
-    if (_nativeController != null && _cachedCaptionFile != null) {
-      final shifted = _shiftCaptions(
-        _cachedCaptionFile!.captions,
-        _subtitleDelaySeconds,
-      );
-      _nativeController!.setClosedCaptionFile(
-        Future.value(_ShiftedClosedCaptionFile(shifted)),
-      );
-    }
-    if (_player != null) {
-      try {
-        (_player!.platform as dynamic)?.setProperty(
-          'sub-delay',
-          '$_subtitleDelaySeconds',
-        );
-      } catch (_) {}
-    }
+    ).clamp(-30.0, 30.0);
+    unawaited(SubtitlePrefs.setOffset(widget.mediaId, _subtitleDelaySeconds));
     unawaited(_updateEmbedSubtitleText());
     setState(() {});
+  }
+
+  void _setSubtitleScaleOverride(double? scale) {
+    setState(() {
+      _subtitleScaleOverride = scale;
+      if (scale == null) {
+        _subtitleScaleChecked = false;
+      }
+    });
   }
 
   Widget _buildSubtitleSyncControl(StateSetter setModalState) {
@@ -936,9 +942,63 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                 ),
               ],
             ),
+            const SizedBox(height: 6),
+            Text(
+              text.languageCode == 'tr'
+                  ? '− altyazıyı öne alır, + geciktirir. Bu dizi/film için kaydedilir.'
+                  : '− shows subtitles earlier, + later. Saved for this title.',
+              style: const TextStyle(color: Colors.white54, fontSize: 11),
+            ),
+            const SizedBox(height: 10),
+            Text(
+              text.languageCode == 'tr'
+                  ? 'Giderek kayıyorsa (FPS düzeltme)'
+                  : 'Drifts more over time (frame rate fix)',
+              style: const TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.w600,
+                fontSize: 12,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: [
+                _scaleChip(
+                  setModalState,
+                  text.languageCode == 'tr'
+                      ? 'Otomatik${_subtitleScale != 1.0 ? ' (x${_subtitleScale.toStringAsFixed(3)})' : ''}'
+                      : 'Auto${_subtitleScale != 1.0 ? ' (x${_subtitleScale.toStringAsFixed(3)})' : ''}',
+                  null,
+                ),
+                _scaleChip(
+                  setModalState,
+                  text.languageCode == 'tr' ? 'Kapalı' : 'Off',
+                  1.0,
+                ),
+                _scaleChip(setModalState, '23.976 → 25', 23.976 / 25),
+                _scaleChip(setModalState, '25 → 23.976', 25 / 23.976),
+                _scaleChip(setModalState, '24 → 25', 24 / 25),
+                _scaleChip(setModalState, '25 → 24', 25 / 24),
+              ],
+            ),
           ],
         ),
       ),
+    );
+  }
+
+  Widget _scaleChip(StateSetter setModalState, String label, double? scale) {
+    final selected = scale == null
+        ? _subtitleScaleOverride == null
+        : _subtitleScaleOverride != null &&
+              (_subtitleScaleOverride! - scale).abs() < 0.0001;
+    return ChoiceChip(
+      label: Text(label, style: const TextStyle(fontSize: 11)),
+      selected: selected,
+      onSelected: (_) => setModalState(() => _setSubtitleScaleOverride(scale)),
+      visualDensity: VisualDensity.compact,
     );
   }
 
@@ -1045,7 +1105,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
       _loadingStatusKey = 'loading_video';
       _isLoading = true;
       _activeOnlineSubtitle = null;
-      _parsedCaptions = const [];
+      _parsedCaptions = SubtitleDocument.empty;
       _directCaptionText = '';
     });
 
@@ -1126,32 +1186,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
             languageCode: widget.subtitleLanguage,
             format: 'srt',
           );
-          _activeOnlineSubtitle = subtitle;
-          _nativeSubtitlesEnabled = true;
-
-          try {
-            final captionFile = await _loadClosedCaptionFile(subtitle);
-            _cachedCaptionFile = captionFile;
-            _parsedCaptions = captionFile.captions;
-            _startDirectSubtitleListener();
-
-            if (_nativeController != null) {
-              await _nativeController!.setClosedCaptionFile(
-                Future.value(captionFile),
-              );
-            }
-          } catch (e) {
-            debugPrint('Local subtitle parse error: $e');
-          }
-
-          if (_player != null) {
-            unawaited(_setMediaKitSubtitleSafely(_player!, subFile.uri.toString()));
-          }
-          if (_vlcViewController != null) {
-            try {
-              await _vlcViewController?.addSubtitleFromFile(subFile);
-            } catch (_) {}
-          }
+          await _activateDirectSubtitle(subtitle);
         }
       }
     } catch (e) {
@@ -1174,26 +1209,6 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
         _errorMessageKey = 'video_playback_failed';
         _isLoading = false;
       });
-    }
-  }
-
-  Future<void> _setMediaKitSubtitleSafely(Player player, String uri) async {
-    for (int i = 0; i < 20; i++) {
-      if (_isDisposed || _player != player) return;
-      if (player.state.duration > Duration.zero) break;
-      await Future<void>.delayed(const Duration(milliseconds: 200));
-    }
-    if (_isDisposed || _player != player) return;
-    try {
-      await player.setSubtitleTrack(
-        SubtitleTrack.uri(
-          uri,
-          title: 'Yerel Altyazı',
-          language: widget.subtitleLanguage,
-        ),
-      );
-    } catch (e) {
-      debugPrint('MediaKit subtitle track attach error: $e');
     }
   }
 
@@ -1295,7 +1310,17 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     return runtimeMinutes * 60 * 1000;
   }
 
+  /// True once the page has reported `timeupdate` for the current embed.
+  bool _embedTimeupdateSeen = false;
+
   int get _currentEmbedPositionMs {
+    if (_embedTimeupdateSeen) {
+      // Last reported position plus the time played since that report.
+      final sinceReport = _embedWatchStopwatch.isRunning
+          ? _embedWatchStopwatch.elapsedMilliseconds.clamp(0, 3000)
+          : 0;
+      return _embedPositionOffsetMs + sinceReport;
+    }
     if (_lastEmbedPositionMs != null && _lastEmbedPositionMs! > 0) {
       return _lastEmbedPositionMs!;
     }
@@ -1306,8 +1331,8 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   }
 
   Future<int> _getEmbedVideoPositionMs() async {
-    if (_lastEmbedPositionMs != null && _lastEmbedPositionMs! > 0) {
-      return _lastEmbedPositionMs!;
+    if (_embedTimeupdateSeen) {
+      return _currentEmbedPositionMs;
     }
     const js =
         '(function(){var v=document.querySelector("video");return v?v.currentTime:0;})()';
@@ -1332,7 +1357,12 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
         }
       }
     } catch (_) {}
-    return _currentEmbedPositionMs;
+    // Cross-origin player: no position available. Use the wall clock that
+    // started at the resume point instead of a frozen cached value.
+    return _embedPositionOffsetMs +
+        (_embedWatchStopwatch.isRunning
+            ? _embedWatchStopwatch.elapsedMilliseconds
+            : 0);
   }
 
   Future<int> _getEmbedVideoDurationMs() async {
@@ -1381,6 +1411,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
 
       if (currentTimeSec != null && currentTimeSec >= 0) {
         final positionMs = (currentTimeSec * 1000).toInt();
+        _embedTimeupdateSeen = true;
         _lastEmbedPositionMs = positionMs;
         _embedPositionOffsetMs = positionMs;
         _embedWatchStopwatch.reset();
@@ -1470,10 +1501,12 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
       _activeOnlineSubtitle = null;
       _nativeSubtitlesEnabled = true;
       _embedSubtitlesEnabled = true;
-      _embedCaptions = const [];
+      _embedCaptions = SubtitleDocument.empty;
       _embedCaptionText = '';
-      _parsedCaptions = const [];
+      _parsedCaptions = SubtitleDocument.empty;
       _directCaptionText = '';
+      _subtitleScale = 1.0;
+      _subtitleScaleChecked = false;
     });
     _embedSubtitleTimer?.cancel();
     _directSubtitleTimer?.cancel();
@@ -1545,16 +1578,28 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
         _startProgressAutosave();
         unawaited(_attachOnlineSubtitle(streamUrl));
       } else if (_useNativePlayer) {
-        await _initNativePlayer(streamUrl, seekMs: resumeMs);
+        await _initNativePlayer(
+          streamUrl,
+          seekMs: resumeMs,
+          headers: _headersForStream(streamUrl),
+        );
         unawaited(_attachOnlineSubtitle(streamUrl));
       } else {
         final player = Player();
         _player = player;
         _videoController = VideoController(player);
+        final headers = _headersForStream(streamUrl);
         if (resumeMs > 0) {
-          player.open(Media(streamUrl, start: Duration(milliseconds: resumeMs)), play: true);
+          player.open(
+            Media(
+              streamUrl,
+              start: Duration(milliseconds: resumeMs),
+              httpHeaders: headers,
+            ),
+            play: true,
+          );
         } else {
-          player.open(Media(streamUrl), play: true);
+          player.open(Media(streamUrl, httpHeaders: headers), play: true);
         }
         _ensureDirectPlaybackStarts(player);
         setState(() {
@@ -1958,6 +2003,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
       // Reset embed tracking variables
       _lastEmbedPositionMs = startAtMs > 0 ? startAtMs : null;
       _lastEmbedDurationMs = null;
+      _embedTimeupdateSeen = false;
 
       if (startAtMs <= 0 && ref.read(appSettingsProvider).watchHistoryEnabled) {
         final repo = ref.read(watchHistoryRepositoryProvider);
@@ -3131,9 +3177,9 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     return Stack(
       children: [
         Positioned.fill(child: Center(child: renderedContent)),
-        if (_nativeController != null && _nativeSubtitlesEnabled)
-          _buildNativeClosedCaption(),
-        if ((_player != null || _vlcViewController != null) &&
+        if ((_player != null ||
+                _vlcViewController != null ||
+                _nativeController != null) &&
             _nativeSubtitlesEnabled &&
             _directCaptionText.isNotEmpty)
           _buildDirectClosedCaption(),
@@ -3347,54 +3393,6 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
             ),
           ),
       ],
-    );
-  }
-
-  Widget _buildNativeClosedCaption() {
-    final controller = _nativeController;
-    if (controller == null) {
-      return const SizedBox.shrink();
-    }
-
-    return Positioned(
-      left: 24,
-      right: 24,
-      bottom: _showOverlayControls ? 112 : 32,
-      child: IgnorePointer(
-        child: ValueListenableBuilder<vp.VideoPlayerValue>(
-          valueListenable: controller,
-          builder: (context, value, child) {
-            final caption = value.caption.text;
-            if (caption.isEmpty) {
-              return const SizedBox.shrink();
-            }
-            return Center(
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  color: Colors.black.withValues(alpha: 0.72),
-                  borderRadius: BorderRadius.circular(4),
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 6,
-                  ),
-                  child: Text(
-                    caption,
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 18,
-                      fontWeight: FontWeight.w600,
-                      height: 1.25,
-                    ),
-                  ),
-                ),
-              ),
-            );
-          },
-        ),
-      ),
     );
   }
 
@@ -4210,7 +4208,11 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                       ),
                       onTap: () {
                         _player!.setSubtitleTrack(SubtitleTrack.no());
-                        setState(() => _selectedSubtitleTrackIndex = -1);
+                        setState(() {
+                          _selectedSubtitleTrackIndex = -1;
+                          _nativeSubtitlesEnabled = false;
+                          _directCaptionText = '';
+                        });
                         Navigator.pop(sheetContext);
                       },
                     ),
@@ -4229,14 +4231,11 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                           style: const TextStyle(color: Colors.white),
                         ),
                         onTap: () {
-                          _player!.setSubtitleTrack(
-                            SubtitleTrack.uri(
-                              _activeOnlineSubtitle!.url,
-                              title: _activeOnlineSubtitle!.label,
-                              language: _activeOnlineSubtitle!.languageCode,
-                            ),
-                          );
-                          setState(() => _selectedSubtitleTrackIndex = -2);
+                          _player!.setSubtitleTrack(SubtitleTrack.no());
+                          setState(() {
+                            _selectedSubtitleTrackIndex = -2;
+                            _nativeSubtitlesEnabled = true;
+                          });
                           Navigator.pop(sheetContext);
                         },
                       ),
@@ -4257,7 +4256,11 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                         ),
                         onTap: () {
                           _player!.setSubtitleTrack(track);
-                          setState(() => _selectedSubtitleTrackIndex = index);
+                          setState(() {
+                            _selectedSubtitleTrackIndex = index;
+                            _nativeSubtitlesEnabled = false;
+                            _directCaptionText = '';
+                          });
                           Navigator.pop(sheetContext);
                         },
                       );
@@ -4319,9 +4322,9 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                         style: const TextStyle(color: Colors.white),
                       ),
                       onTap: () {
-                        _nativeController!.setClosedCaptionFile(null);
                         setState(() {
                           _nativeSubtitlesEnabled = false;
+                          _directCaptionText = '';
                         });
                         Navigator.pop(sheetContext);
                       },
@@ -4341,7 +4344,6 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                         setState(() {
                           _nativeSubtitlesEnabled = true;
                         });
-                        unawaited(_applyNativeSubtitle(subtitle));
                         Navigator.pop(sheetContext);
                       },
                     ),
@@ -4389,11 +4391,3 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     );
   }
 }
-
-class _ShiftedClosedCaptionFile extends vp.ClosedCaptionFile {
-  final List<vp.Caption> _shiftedCaptions;
-  _ShiftedClosedCaptionFile(this._shiftedCaptions);
-  @override
-  List<vp.Caption> get captions => _shiftedCaptions;
-}
-

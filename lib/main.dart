@@ -9,6 +9,7 @@ import 'core/backend/addon_service_provider.dart';
 import 'core/backend/addons/addon_config_repository.dart';
 import 'core/backend_bootstrap_service.dart';
 import 'core/settings/app_settings_repository.dart';
+import 'core/subtitles/subtitle_prefs.dart';
 import 'core/settings/app_settings_provider.dart';
 import 'features/sources/data/repositories/sources_repository.dart';
 
@@ -31,6 +32,7 @@ void main() async {
 
   final appSettingsRepository = AppSettingsRepository();
   await appSettingsRepository.init();
+  await SubtitlePrefs.init();
   final appSettings = appSettingsRepository.getSettings();
 
   await BackendBootstrapService.ensureBackendRunning(

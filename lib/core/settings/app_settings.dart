@@ -30,7 +30,7 @@ const List<String> defaultHomeCategories = [
 ];
 
 class AppSettings {
-  static const int schemaVersion = 13;
+  static const int schemaVersion = 14;
 
   final String appLanguage;
   final String subtitleLanguage;
@@ -50,6 +50,10 @@ class AppSettings {
   final int completionPercentage;
   final List<String> homeCategories;
   final bool hasSeenTutorial;
+  /// '' = in-app player, 'ask' = ask every time, otherwise an Android package.
+  final String externalPlayer;
+  final int completedPlays;
+  final bool reviewPromptShown;
 
   const AppSettings({
     required this.appLanguage,
@@ -70,6 +74,9 @@ class AppSettings {
     required this.completionPercentage,
     required this.homeCategories,
     this.hasSeenTutorial = false,
+    this.externalPlayer = '',
+    this.completedPlays = 0,
+    this.reviewPromptShown = false,
   });
 
   static const AppSettings defaults = AppSettings(
@@ -82,7 +89,7 @@ class AppSettings {
     preferredSourceId: '',
     preferredMirror: 'auto',
     videoPlayer: 'native',
-    autoSelectSubtitle: false,
+    autoSelectSubtitle: true,
     defaultSubtitleOffset: 0.0,
     themeMode: 'dark',
     librarySort: 'recent',
@@ -112,6 +119,9 @@ class AppSettings {
     int? completionPercentage,
     List<String>? homeCategories,
     bool? hasSeenTutorial,
+    String? externalPlayer,
+    int? completedPlays,
+    bool? reviewPromptShown,
   }) {
     return AppSettings(
       appLanguage: appLanguage ?? this.appLanguage,
@@ -134,6 +144,9 @@ class AppSettings {
       completionPercentage: completionPercentage ?? this.completionPercentage,
       homeCategories: homeCategories ?? this.homeCategories,
       hasSeenTutorial: hasSeenTutorial ?? this.hasSeenTutorial,
+      externalPlayer: externalPlayer ?? this.externalPlayer,
+      completedPlays: completedPlays ?? this.completedPlays,
+      reviewPromptShown: reviewPromptShown ?? this.reviewPromptShown,
     );
   }
 
@@ -158,10 +171,18 @@ class AppSettings {
       'completionPercentage': completionPercentage,
       'homeCategories': homeCategories,
       'hasSeenTutorial': hasSeenTutorial,
+      'externalPlayer': externalPlayer,
+      'completedPlays': completedPlays,
+      'reviewPromptShown': reviewPromptShown,
     };
   }
 
   factory AppSettings.fromMap(Map<dynamic, dynamic> map) {
+    final storedSchema =
+        map['schemaVersion'] is int ? map['schemaVersion'] as int : 0;
+    // v14: one subtitle renderer with "+ = later" offsets. Old offsets had
+    // mixed signs per engine, so they are reset, and auto subtitles turn on.
+    final migrateTo14 = storedSchema < 14;
     return AppSettings(
       appLanguage: (map['appLanguage'] ?? 'en').toString(),
       subtitleLanguage: (map['subtitleLanguage'] ?? 'en').toString(),
@@ -172,8 +193,9 @@ class AppSettings {
       preferredSourceId: (map['preferredSourceId'] ?? '').toString(),
       preferredMirror: (map['preferredMirror'] ?? 'auto').toString(),
       videoPlayer: (map['videoPlayer'] ?? 'native').toString(),
-      autoSelectSubtitle: (map['autoSelectSubtitle'] ?? false) == true,
-      defaultSubtitleOffset: (map['defaultSubtitleOffset'] is num)
+      autoSelectSubtitle:
+          migrateTo14 || (map['autoSelectSubtitle'] ?? true) == true,
+      defaultSubtitleOffset: !migrateTo14 && (map['defaultSubtitleOffset'] is num)
           ? (map['defaultSubtitleOffset'] as num).toDouble()
           : 0.0,
       themeMode: (map['themeMode'] ?? 'dark').toString(),
@@ -189,6 +211,10 @@ class AppSettings {
               .toList() ??
           defaultHomeCategories,
       hasSeenTutorial: (map['hasSeenTutorial'] ?? false) == true,
+      externalPlayer: (map['externalPlayer'] ?? '').toString(),
+      completedPlays:
+          map['completedPlays'] is int ? map['completedPlays'] as int : 0,
+      reviewPromptShown: (map['reviewPromptShown'] ?? false) == true,
     );
   }
 }
