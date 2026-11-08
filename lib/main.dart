@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:media_kit/media_kit.dart';
 
+import 'core/app_baseline.dart';
 import 'core/backend/addon_service.dart';
 import 'core/backend/addon_service_provider.dart';
 import 'core/backend/addons/addon_config_repository.dart';
@@ -86,6 +87,8 @@ void main() async {
   });
 }
 
+final _baselineObserver = BaselineNavigatorObserver();
+
 class MyApp extends ConsumerWidget {
   const MyApp({super.key});
 
@@ -96,6 +99,7 @@ class MyApp extends ConsumerWidget {
 
     return MaterialApp(
       title: 'Stream App',
+      navigatorObservers: [_baselineObserver],
       debugShowCheckedModeBanner: false,
       theme: theme,
       home: const HomeScreen(),

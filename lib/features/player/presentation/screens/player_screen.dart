@@ -18,6 +18,7 @@ import 'package:webview_flutter_android/webview_flutter_android.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:webview_windows/webview_windows.dart' as windows_webview;
 
+import '../../../../core/app_baseline.dart';
 import '../../../../core/backend/addon_service_provider.dart';
 import '../../../../core/subtitles/online_subtitle_repository.dart';
 import '../../../../core/subtitles/subtitle_engine.dart';
@@ -1280,6 +1281,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     if (position <= 0 || runtime <= 0) return;
     final isWatched = result.completed ||
         position >= runtime * (settings.completionPercentage / 100.0);
+    _noteCompletion(isWatched);
     _savedPositionMs = isWatched ? 0 : position;
     if (!settings.watchHistoryEnabled) return;
     try {
@@ -2784,6 +2786,14 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   }
 
   String? _currentAddonId;
+  bool _completionCounted = false;
+
+  /// Counts a finished title once per player session for the review prompt.
+  void _noteCompletion(bool isWatched) {
+    if (!isWatched || _completionCounted) return;
+    _completionCounted = true;
+    unawaited(AppBaseline.recordCompletion(ref));
+  }
   String? _reportedStreamUrl;
   bool _nextEpisodePrefetched = false;
 
@@ -3150,6 +3160,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
         final runtimeMs = await _getEmbedVideoDurationMs();
         final position = elapsed.clamp(0, runtimeMs - 1000);
         final isWatched = position >= (runtimeMs * completionThreshold);
+        _noteCompletion(isWatched);
 
         await repo.saveProgress(
           WatchHistory(
@@ -3180,6 +3191,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
         final dur = rawDur > 0 ? rawDur : _episodeRuntimeMs();
         if (pos > 0 && dur > 0) {
           final isWatched = pos >= dur * completionThreshold;
+          _noteCompletion(isWatched);
           await repo.saveProgress(
             WatchHistory(
               mediaId: widget.mediaId,
@@ -3211,6 +3223,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
 
       if (pos > 0 && dur > 0) {
         final isWatched = pos >= dur * completionThreshold;
+        _noteCompletion(isWatched);
 
         await repo.saveProgress(
           WatchHistory(
@@ -3370,6 +3383,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
           : _episodeRuntimeMs();
       final isWatched =
           capturedPositionMs >= finalDur * completionThreshold;
+      _noteCompletion(isWatched);
       try {
         await repo.saveProgress(
           WatchHistory(
@@ -3402,6 +3416,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
         : _episodeRuntimeMs();
     final position = pos.clamp(0, runtimeMs - 1000);
     final isWatched = position >= (runtimeMs * completionThreshold);
+    _noteCompletion(isWatched);
     try {
       await repo.saveProgress(
         WatchHistory(
@@ -4410,6 +4425,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
           : _episodeRuntimeMs();
       final completionThreshold = ref.read(appSettingsProvider).completionPercentage / 100.0;
       final isWatched = currentPos >= (dur * completionThreshold);
+      _noteCompletion(isWatched);
       unawaited(
         repo.saveProgress(
           WatchHistory(

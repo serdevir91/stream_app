@@ -42,6 +42,8 @@ class MainActivity : FlutterActivity() {
                         }
                     }
 
+                    "supportedAbis" -> result.success(android.os.Build.SUPPORTED_ABIS.toList())
+
                     else -> result.notImplemented()
                 }
             }

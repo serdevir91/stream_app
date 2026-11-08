@@ -82,6 +82,37 @@ class AppUpdaterService {
     return parts.take(3).toList();
   }
 
+  Future<List<String>> _supportedAbis() async {
+    try {
+      final abis = await _updaterChannel.invokeListMethod<String>('supportedAbis');
+      return abis ?? const [];
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  /// The release APK for this device: the split APK of its preferred ABI,
+  /// else the universal `app-release.apk`, else any APK.
+  @visibleForTesting
+  static dynamic pickApkAsset(List<dynamic> assets, List<String> abis) {
+    final apks = assets
+        .where((a) => a is Map && a['name'].toString().toLowerCase().endsWith('.apk'))
+        .toList();
+    if (apks.isEmpty) return null;
+    for (final abi in abis) {
+      final match = apks.where(
+        (a) => a['name'].toString().toLowerCase().contains('-${abi.toLowerCase()}-'),
+      );
+      if (match.isNotEmpty) return match.first;
+    }
+    final splitAbis = ['arm64-v8a', 'armeabi-v7a', 'x86_64', 'x86'];
+    final universal = apks.where((a) {
+      final name = a['name'].toString().toLowerCase();
+      return !splitAbis.any((abi) => name.contains('-$abi-'));
+    });
+    return universal.isNotEmpty ? universal.first : apks.first;
+  }
+
   Future<AppUpdateInfo?> checkForUpdate() async {
     try {
       final currentVersion = await getCurrentVersion();
@@ -124,11 +155,7 @@ class AppUpdaterService {
                 fileName = winAsset['name'].toString();
               }
             } else if (Platform.isAndroid) {
-              // Try to find .apk for Android
-              final apkAsset = assets.firstWhere(
-                (a) => a['name'].toString().toLowerCase().endsWith('.apk'),
-                orElse: () => null,
-              );
+              final apkAsset = pickApkAsset(assets, await _supportedAbis());
               if (apkAsset != null) {
                 downloadUrl = apkAsset['browser_download_url'].toString();
                 fileName = apkAsset['name'].toString();

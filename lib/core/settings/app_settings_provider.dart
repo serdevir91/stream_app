@@ -19,6 +19,13 @@ class AppSettingsNotifier extends Notifier<AppSettings> {
     return _repository.getSettings();
   }
 
+  /// Saves a change that does not touch the TMDB token.
+  Future<void> patch(AppSettings Function(AppSettings current) change) async {
+    final next = change(state);
+    state = next;
+    await _repository.saveSettings(next);
+  }
+
   Future<TmdbSyncStatus> saveSettings(AppSettings next) async {
     state = next;
     await _repository.saveSettings(next);

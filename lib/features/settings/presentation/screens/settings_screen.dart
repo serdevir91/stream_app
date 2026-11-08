@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:file_picker/file_picker.dart';
 
+import '../../../../core/app_baseline.dart';
 import '../../../../core/backup/local_backup_service.dart';
 import '../../../../core/i18n/app_text.dart';
 import '../../../../core/settings/app_settings.dart';
@@ -847,6 +848,24 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                   child: Text(_updateError, style: const TextStyle(color: Colors.redAccent, fontSize: 12)),
+                ),
+              ],
+              const Divider(color: Colors.white10, height: 1),
+              ListTile(
+                leading: const Icon(Icons.star_rate_rounded, color: Colors.amber),
+                title: Text(text.t('rate_app'), style: const TextStyle(color: Colors.white, fontSize: 14)),
+                subtitle: Text(text.t('rate_app_desc'), style: const TextStyle(color: Colors.white38, fontSize: 12)),
+                trailing: const Icon(Icons.open_in_new_rounded, color: Colors.white38, size: 18),
+                onTap: AppBaseline.openRepo,
+              ),
+              if (AppBaseline.donationUrl.isNotEmpty) ...[
+                const Divider(color: Colors.white10, height: 1),
+                ListTile(
+                  leading: const Icon(Icons.favorite_rounded, color: Colors.pinkAccent),
+                  title: Text(text.t('support_app'), style: const TextStyle(color: Colors.white, fontSize: 14)),
+                  subtitle: Text(text.t('support_app_desc'), style: const TextStyle(color: Colors.white38, fontSize: 12)),
+                  trailing: const Icon(Icons.open_in_new_rounded, color: Colors.white38, size: 18),
+                  onTap: AppBaseline.openDonation,
                 ),
               ],
               const Divider(color: Colors.white10, height: 1),

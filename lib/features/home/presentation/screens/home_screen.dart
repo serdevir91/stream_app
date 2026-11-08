@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../../core/app_baseline.dart';
 import '../../../../core/i18n/app_text.dart';
 import '../../../../core/settings/app_settings_provider.dart';
 import '../../../../core/sync/sync_provider.dart';
@@ -32,6 +33,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       final settings = ref.read(appSettingsProvider);
       if (!settings.hasSeenTutorial && mounted) {
         OnboardingTutorialDialog.show(context);
+      } else if (mounted) {
+        AppBaseline.checkForUpdatesSilently(context);
       }
     });
   }
