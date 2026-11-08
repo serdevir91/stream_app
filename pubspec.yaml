@@ -54,6 +54,7 @@ dependencies:
   video_player: ^2.11.1
   flutter_vlc_player: ^7.4.4
   encrypt: ^5.0.3
+  flutter_foreground_task: ^11.0.3
 
 dev_dependencies:
   flutter_test:

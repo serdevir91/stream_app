@@ -3,6 +3,9 @@
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
     <application
@@ -46,6 +49,10 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/file_paths" />
         </provider>
+        <service
+            android:name="com.pravera.flutter_foreground_task.service.ForegroundService"
+            android:foregroundServiceType="dataSync"
+            android:exported="false" />
     </application>
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and
@@ -57,5 +64,16 @@
             <action android:name="android.intent.action.PROCESS_TEXT"/>
             <data android:mimeType="text/plain"/>
         </intent>
+        <!-- External video players for "Open with" -->
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:scheme="http" android:mimeType="video/*"/>
+        </intent>
+        <package android:name="org.videolan.vlc"/>
+        <package android:name="com.mxtech.videoplayer.ad"/>
+        <package android:name="com.mxtech.videoplayer.pro"/>
+        <package android:name="com.brouken.player"/>
+        <package android:name="is.xyz.mpv"/>
+        <package android:name="org.courville.nova"/>
     </queries>
 </manifest>

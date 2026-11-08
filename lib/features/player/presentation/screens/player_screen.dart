@@ -25,6 +25,7 @@ import '../../../../core/subtitles/subtitle_prefs.dart';
 import '../../../../core/player/stream_headers.dart';
 import '../../../../core/i18n/app_text.dart';
 import '../../../../core/player/local_media_server.dart';
+import '../../../../core/player/external_player_service.dart';
 
 import '../providers/player_provider.dart';
 import '../../../search/presentation/providers/search_provider.dart';
@@ -113,6 +114,11 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   int? _lastEmbedDurationMs;
   String? _currentStreamUrl;
   int _savedPositionMs = 0;
+  // External player: last result shown on the return panel, and a flag that
+  // keeps playback in-app after the user picks "Play here".
+  ExternalPlaybackResult? _externalResult;
+  bool _forceInApp = false;
+  String? _externalOverride;
   vp.VideoPlayerController? _nativeController;
   VlcPlayerController? _vlcViewController;
   int _selectedSubtitleTrackIndex = -1;
@@ -141,8 +147,9 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   String? _currentMirrorName;
 
   String get _selectedVideoPlayer {
-    if (widget.preferredPlayer != null && widget.preferredPlayer!.isNotEmpty) {
-      return widget.preferredPlayer!;
+    final pref = widget.preferredPlayer;
+    if (pref != null && pref.isNotEmpty && !pref.startsWith('ext:')) {
+      return pref;
     }
     try {
       return ref.read(appSettingsProvider).videoPlayer;
@@ -154,6 +161,26 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   bool get _useNativePlayer => _selectedVideoPlayer == 'native';
   bool get _useVlcPlayer => _selectedVideoPlayer == 'vlc';
   bool get _forceWebView => _selectedVideoPlayer == 'webview';
+
+  /// Package of the external player to use, [ExternalPlayerService.askValue]
+  /// for the system chooser, or null to play in-app. `preferredPlayer`
+  /// 'ext:<package>' forces an external app for this screen.
+  String? get _externalTarget {
+    if (_forceInApp || !ExternalPlayerService.isSupported) return null;
+    if (_externalOverride != null) return _externalOverride;
+    final pref = widget.preferredPlayer;
+    if (pref != null && pref.startsWith('ext:')) {
+      final pkg = pref.substring(4);
+      return pkg.isEmpty ? ExternalPlayerService.askValue : pkg;
+    }
+    if (pref != null && pref.isNotEmpty) return null;
+    try {
+      final value = ref.read(appSettingsProvider).externalPlayer;
+      return value.isEmpty ? null : value;
+    } catch (_) {
+      return null;
+    }
+  }
 
   Set<String> _trustedEmbedHosts = const {};
   bool _showOverlayControls = true;
@@ -1037,6 +1064,40 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     } catch (_) {}
   }
 
+  int _currentPlaybackPositionMs() {
+    try {
+      if (_player != null) return _player!.state.position.inMilliseconds;
+      final native = _nativeController;
+      if (native != null && native.value.isInitialized) {
+        return native.value.position.inMilliseconds;
+      }
+      final vlc = _vlcViewController;
+      if (vlc != null && vlc.value.isInitialized) {
+        return vlc.value.position.inMilliseconds;
+      }
+    } catch (_) {}
+    return 0;
+  }
+
+  /// Stops and releases the in-app engines before handing off playback.
+  void _stopInAppEngines() {
+    _stopAllPlayback();
+    _progressAutosaveTimer?.cancel();
+    final player = _player;
+    final native = _nativeController;
+    final vlc = _vlcViewController;
+    setState(() {
+      _player = null;
+      _videoController = null;
+      _nativeController = null;
+      _vlcViewController = null;
+      _directCaptionText = '';
+    });
+    if (player != null) unawaited(player.dispose());
+    if (native != null) unawaited(native.dispose());
+    if (vlc != null) unawaited(vlc.dispose());
+  }
+
   void _stopAllPlayback() {
     _embedSubtitleTimer?.cancel();
     try {
@@ -1093,6 +1154,217 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     }
   }
 
+  /// Where playback should start: the in-session position, else the saved
+  /// history entry unless that episode is already watched.
+  int _resumePositionMs() {
+    int resumeMs = _savedPositionMs;
+    if (resumeMs <= 0 && ref.read(appSettingsProvider).watchHistoryEnabled) {
+      final repo = ref.read(watchHistoryRepositoryProvider);
+      final history = repo.getProgress(
+        widget.mediaId,
+        mediaType: _normalizedMediaType,
+        season: widget.season,
+        episode: widget.episode,
+      );
+      if (history != null && history.lastPosition > 0 && !history.isWatched) {
+        resumeMs = history.lastPosition;
+      }
+    }
+    return resumeMs;
+  }
+
+  String get _externalTitle {
+    if (_normalizedMediaType == 'tv') {
+      final s = widget.season.toString().padLeft(2, '0');
+      final e = widget.episode.toString().padLeft(2, '0');
+      return '${widget.title} S${s}E$e';
+    }
+    return widget.title;
+  }
+
+  /// Plays [source] (stream URL or local file) in the external player. The
+  /// subtitle is picked first so it opens already attached and in sync; the
+  /// return panel then offers resume, next episode or in-app playback.
+  Future<void> _playExternally(
+    String source,
+    int resumeMs, {
+    String? localSubtitlePath,
+  }) async {
+    final target = _externalTarget;
+    if (target == null || _isDisposed || !mounted) return;
+    final isLocal = !source.startsWith('http://') && !source.startsWith('https://');
+    setState(() {
+      _isLoading = true;
+      _externalResult = null;
+      _loadingStatusKey = 'preparing_subtitle';
+    });
+
+    if (_parsedCaptions.isEmpty) {
+      try {
+        if (isLocal) {
+          if (localSubtitlePath != null &&
+              localSubtitlePath.isNotEmpty &&
+              await File(localSubtitlePath).exists()) {
+            await _activateDirectSubtitle(
+              OnlineSubtitleResult(
+                url: localSubtitlePath,
+                label: 'Subtitle',
+                languageCode: widget.subtitleLanguage,
+                format: 'srt',
+              ),
+            );
+          }
+        } else {
+          await _attachOnlineSubtitle(source).timeout(
+            const Duration(seconds: 10),
+          );
+        }
+      } catch (e) {
+        debugPrint('External subtitle prep: $e');
+      }
+    }
+    // The overlay clock has no engine here; the SRT carries the timing.
+    _directSubtitleTimer?.cancel();
+    if (_isDisposed || !mounted) return;
+    if (!isLocal && _currentStreamUrl != source) return;
+
+    setState(() => _loadingStatusKey = 'opening_external_player');
+    final result = await ExternalPlayerService.play(
+      source: source,
+      title: _externalTitle,
+      packageName: target,
+      headers: isLocal ? null : _headersForStream(source),
+      positionMs: resumeMs,
+      subtitle: _parsedCaptions.isEmpty ? null : _parsedCaptions,
+      timing: _subtitleTiming,
+      subtitleName: _activeOnlineSubtitle?.label ?? 'Subtitle',
+    );
+    if (_isDisposed || !mounted) return;
+
+    if (!result.launched) {
+      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+        SnackBar(
+          content: Text(ref.read(appTextProvider).t('external_player_failed')),
+        ),
+      );
+      _forceInApp = true;
+      if (isLocal) {
+        await _initializeLocalPlayback(
+          source,
+          localSubtitlePath: localSubtitlePath,
+        );
+      } else {
+        await _initializePlayer(
+          source,
+          provider: _currentMirrorName,
+          isDirectLink: true,
+        );
+      }
+      return;
+    }
+
+    await _saveExternalProgress(result);
+    if (_isDisposed || !mounted) return;
+    setState(() {
+      _isLoading = false;
+      _externalResult = result;
+    });
+  }
+
+  Future<void> _saveExternalProgress(ExternalPlaybackResult result) async {
+    final settings = ref.read(appSettingsProvider);
+    final runtime = result.durationMs > 0
+        ? result.durationMs
+        : _episodeRuntimeMs();
+    final position = result.completed ? runtime : result.positionMs;
+    if (position <= 0 || runtime <= 0) return;
+    final isWatched = result.completed ||
+        position >= runtime * (settings.completionPercentage / 100.0);
+    _savedPositionMs = isWatched ? 0 : position;
+    if (!settings.watchHistoryEnabled) return;
+    try {
+      await ref.read(watchHistoryRepositoryProvider).saveProgress(
+        WatchHistory(
+          mediaId: widget.mediaId,
+          title: widget.title,
+          mediaType: _normalizedMediaType,
+          season: widget.season,
+          episode: widget.episode,
+          posterUrl: widget.posterUrl,
+          backdropUrl: widget.backdropUrl,
+          sourceId: widget.sourceId,
+          lastPosition: position.clamp(0, runtime),
+          duration: runtime,
+          isWatched: isWatched,
+        ),
+      );
+    } catch (e) {
+      debugPrint('Error saving external progress: $e');
+    }
+  }
+
+  bool get _externalFinished {
+    final result = _externalResult;
+    if (result == null) return false;
+    if (result.completed) return true;
+    final runtime = result.durationMs > 0 ? result.durationMs : _episodeRuntimeMs();
+    if (runtime <= 0) return false;
+    final threshold = ref.read(appSettingsProvider).completionPercentage / 100.0;
+    return result.positionMs >= runtime * threshold;
+  }
+
+  /// Re-opens the current source after the user came back from the
+  /// external player.
+  Future<void> _resumeExternal() async {
+    final local = widget.localVideoPath;
+    if (local != null && local.isNotEmpty) {
+      await _playExternally(
+        local,
+        _resumePositionMs(),
+        localSubtitlePath: widget.localSubtitlePath,
+      );
+      return;
+    }
+    final url = _currentStreamUrl;
+    if (url == null) return;
+    await _playExternally(url, _resumePositionMs());
+  }
+
+  Future<void> _continueInApp() async {
+    _forceInApp = true;
+    setState(() => _externalResult = null);
+    final local = widget.localVideoPath;
+    if (local != null && local.isNotEmpty) {
+      await _initializeLocalPlayback(
+        local,
+        localSubtitlePath: widget.localSubtitlePath,
+      );
+      return;
+    }
+    final url = _currentStreamUrl;
+    if (url == null) return;
+    await _initializePlayer(url, provider: _currentMirrorName, isDirectLink: true);
+  }
+
+  /// Hands the stream that is playing in-app to an external player.
+  Future<void> _handOffToExternal({String? packageName}) async {
+    final url = _currentStreamUrl;
+    final local = widget.localVideoPath;
+    final source = (local != null && local.isNotEmpty) ? local : url;
+    if (source == null || !_isDirectLink) return;
+    await _saveProgress();
+    final position = _currentPlaybackPositionMs();
+    if (position > 0) _savedPositionMs = position;
+    _stopInAppEngines();
+    _forceInApp = false;
+    _externalOverride = packageName ?? ExternalPlayerService.askValue;
+    await _playExternally(
+      source,
+      _resumePositionMs(),
+      localSubtitlePath: widget.localSubtitlePath,
+    );
+  }
+
   Future<void> _initializeLocalPlayback(
     String filePath, {
     String? localSubtitlePath,
@@ -1115,6 +1387,15 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
         _errorMessageKey = 'source_not_found';
         _isLoading = false;
       });
+      return;
+    }
+
+    if (_externalTarget != null) {
+      await _playExternally(
+        filePath,
+        _resumePositionMs(),
+        localSubtitlePath: localSubtitlePath,
+      );
       return;
     }
 
@@ -1538,18 +1819,11 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
       unawaited(previousWindowsController.dispose());
     }
 
-    int resumeMs = _savedPositionMs;
-    if (resumeMs <= 0 && ref.read(appSettingsProvider).watchHistoryEnabled) {
-      final repo = ref.read(watchHistoryRepositoryProvider);
-      final history = repo.getProgress(
-        widget.mediaId,
-        mediaType: _normalizedMediaType,
-        season: widget.season,
-        episode: widget.episode,
-      );
-      if (history != null && history.lastPosition > 0 && !history.isWatched) {
-        resumeMs = history.lastPosition;
-      }
+    final int resumeMs = _resumePositionMs();
+
+    if (isDirectLink && _externalTarget != null) {
+      await _playExternally(streamUrl, resumeMs);
+      return;
     }
 
     if (isDirectLink) {
@@ -3084,7 +3358,9 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
               : text.t(_errorMessageKey!))
         : null;
 
-    final content = _isLoading
+    final content = _externalResult != null
+        ? _buildExternalReturnPanel(text)
+        : _isLoading
         ? Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
@@ -3241,6 +3517,8 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                     const SizedBox(width: 4),
                     _buildOrientationButton(),
                     _buildMirrorSelectorButton(),
+                    if (ExternalPlayerService.isSupported && _isDirectLink)
+                      _buildExternalPlayerButton(),
                     _buildSubtitleButton(),
                   ],
                 ),
@@ -3479,6 +3757,9 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
           subtitleLanguage: widget.subtitleLanguage,
           runtimeMinutes: widget.runtimeMinutes,
           preferAnimeSources: widget.preferAnimeSources,
+          preferredPlayer: _externalResult != null
+              ? 'ext:${_externalTarget == ExternalPlayerService.askValue ? '' : _externalTarget ?? ''}'
+              : widget.preferredPlayer,
         ),
       ),
     );
@@ -3839,6 +4120,178 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
         _armControlsAutoHide();
         _toggleOrientation();
       },
+    );
+  }
+
+  Widget _buildExternalPlayerButton() {
+    final text = ref.read(appTextProvider);
+    return IconButton(
+      icon: const Icon(Icons.open_in_new_rounded, color: Colors.white, size: 22),
+      tooltip: text.t('open_in_external_player'),
+      onPressed: () {
+        _armControlsAutoHide();
+        unawaited(_pickExternalPlayer());
+      },
+    );
+  }
+
+  Future<void> _pickExternalPlayer() async {
+    final text = ref.read(appTextProvider);
+    final apps = await ExternalPlayerService.installedPlayers();
+    if (!mounted) return;
+    final choice = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: Colors.grey.shade900,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (sheetContext) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+              child: Text(
+                text.t('open_in_external_player'),
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+            Flexible(
+              child: ListView(
+                shrinkWrap: true,
+                children: [
+                  for (final app in apps)
+                    ListTile(
+                      leading: const Icon(
+                        Icons.play_circle_outline_rounded,
+                        color: Colors.white70,
+                      ),
+                      title: Text(
+                        app.label,
+                        style: const TextStyle(color: Colors.white),
+                      ),
+                      onTap: () => Navigator.pop(sheetContext, app.packageName),
+                    ),
+                  ListTile(
+                    leading: const Icon(Icons.apps_rounded, color: Colors.white70),
+                    title: Text(
+                      text.t('external_player_ask'),
+                      style: const TextStyle(color: Colors.white),
+                    ),
+                    onTap: () => Navigator.pop(
+                      sheetContext,
+                      ExternalPlayerService.askValue,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (choice == null || !mounted) return;
+    await _handOffToExternal(packageName: choice);
+  }
+
+  Widget _buildExternalReturnPanel(AppText text) {
+    final result = _externalResult!;
+    final finished = _externalFinished;
+    final hasNext = _effectiveNextEpisodeNumber != null;
+    final runtime = result.durationMs > 0 ? result.durationMs : _episodeRuntimeMs();
+    final position = finished ? runtime : result.positionMs;
+    final progress = runtime > 0 ? (position / runtime).clamp(0.0, 1.0) : 0.0;
+    final scheme = Theme.of(context).colorScheme;
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 420),
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                finished ? Icons.check_circle_rounded : Icons.pause_circle_rounded,
+                color: finished ? Colors.greenAccent : Colors.white70,
+                size: 56,
+              ),
+              const SizedBox(height: 12),
+              Text(
+                _externalTitle,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 16),
+              if (runtime > 0) ...[
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(4),
+                  child: LinearProgressIndicator(
+                    value: progress,
+                    minHeight: 6,
+                    backgroundColor: Colors.white12,
+                    color: scheme.primary,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  '${_formatDuration(Duration(milliseconds: position))} / '
+                  '${_formatDuration(Duration(milliseconds: runtime))}',
+                  style: const TextStyle(color: Colors.white60, fontSize: 13),
+                ),
+                const SizedBox(height: 20),
+              ],
+              if (finished && hasNext)
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    onPressed: _playNextEpisode,
+                    icon: const Icon(Icons.skip_next_rounded),
+                    label: Text(text.t('next_episode')),
+                  ),
+                ),
+              if (!finished)
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    onPressed: () => unawaited(_resumeExternal()),
+                    icon: const Icon(Icons.play_arrow_rounded),
+                    label: Text(text.t('resume_external')),
+                  ),
+                ),
+              const SizedBox(height: 8),
+              if (!finished && hasNext)
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: _playNextEpisode,
+                    icon: const Icon(Icons.skip_next_rounded),
+                    label: Text(text.t('next_episode')),
+                  ),
+                ),
+              SizedBox(
+                width: double.infinity,
+                child: TextButton.icon(
+                  onPressed: () => unawaited(_continueInApp()),
+                  icon: const Icon(Icons.smart_display_outlined),
+                  label: Text(text.t('play_in_app')),
+                ),
+              ),
+              TextButton(
+                onPressed: () => Navigator.of(context).maybePop(),
+                child: Text(text.t('close')),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 

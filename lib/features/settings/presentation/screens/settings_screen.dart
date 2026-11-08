@@ -17,6 +17,7 @@ import '../../../addons/presentation/screens/addon_manager_screen.dart';
 import '../../../anime/data/providers/anime_extensions_provider.dart';
 import '../../../anime/presentation/screens/anime_extensions_screen.dart';
 import '../../../sources/presentation/providers/sources_provider.dart';
+import '../../../../core/player/external_player_service.dart';
 
 class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
@@ -38,6 +39,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   String _preferredSourceId = '';
   String _preferredMirror = 'auto';
   String _videoPlayer = 'native';
+  String _externalPlayer = '';
+  List<ExternalPlayerApp> _externalApps = const [];
+  bool _externalAppsRequested = false;
   bool _autoSelectSubtitle = false;
   double _defaultSubtitleOffset = 0.0;
   String _librarySort = 'recent';
@@ -98,6 +102,13 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     _preferredSourceId = settings.preferredSourceId;
     _preferredMirror = settings.preferredMirror;
     _videoPlayer = settings.videoPlayer;
+    _externalPlayer = settings.externalPlayer;
+    if (!_externalAppsRequested && ExternalPlayerService.isSupported) {
+      _externalAppsRequested = true;
+      ExternalPlayerService.installedPlayers().then((apps) {
+        if (mounted) setState(() => _externalApps = apps);
+      });
+    }
     _autoSelectSubtitle = settings.autoSelectSubtitle;
     _defaultSubtitleOffset = settings.defaultSubtitleOffset;
     _librarySort = settings.librarySort;
@@ -129,6 +140,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       preferredSourceId: _preferredSourceId,
       preferredMirror: _preferredMirror,
       videoPlayer: _videoPlayer,
+      externalPlayer: _externalPlayer,
       autoSelectSubtitle: _autoSelectSubtitle,
       defaultSubtitleOffset: _defaultSubtitleOffset,
       librarySort: _librarySort,
@@ -677,6 +689,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   },
                 ),
               ),
+              if (ExternalPlayerService.isSupported) ...[
+                const Divider(color: Colors.white10, height: 1),
+                _buildExternalPlayerTile(text),
+              ],
               const Divider(color: Colors.white10, height: 1),
 
               // Auto Select Source
@@ -843,6 +859,50 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             ],
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildExternalPlayerTile(AppText text) {
+    final items = <DropdownMenuItem<String>>[
+      DropdownMenuItem(value: '', child: Text(text.t('in_app_player'))),
+      DropdownMenuItem(
+        value: ExternalPlayerService.askValue,
+        child: Text(text.t('external_player_ask')),
+      ),
+      for (final app in _externalApps)
+        DropdownMenuItem(value: app.packageName, child: Text(app.label)),
+    ];
+    final known = items.any((i) => i.value == _externalPlayer);
+    if (!known) {
+      items.add(
+        DropdownMenuItem(value: _externalPlayer, child: Text(_externalPlayer)),
+      );
+    }
+    return ListTile(
+      leading: const Icon(Icons.open_in_new_rounded, color: Colors.white70),
+      title: Text(
+        text.t('video_player_app'),
+        style: const TextStyle(color: Colors.white, fontSize: 14),
+      ),
+      subtitle: Text(
+        text.t('video_player_app_desc'),
+        style: const TextStyle(color: Colors.white38, fontSize: 12),
+      ),
+      trailing: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 150),
+        child: DropdownButton<String>(
+          value: _externalPlayer,
+          isExpanded: true,
+          dropdownColor: const Color(0xFF1E1E28),
+          underline: const SizedBox.shrink(),
+          items: items,
+          onChanged: (val) {
+            if (val == null) return;
+            setState(() => _externalPlayer = val);
+            _saveSettings();
+          },
+        ),
       ),
     );
   }

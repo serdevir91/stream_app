@@ -20,6 +20,7 @@ import '../../../downloads/presentation/providers/download_provider.dart';
 import '../../../anime/data/providers/anime_extensions_provider.dart';
 import '../../../anime/domain/models/anime_item.dart';
 import '../../../anime/presentation/providers/anime_providers.dart';
+import '../../../../core/player/external_player_service.dart';
 
 typedef EpisodeTarget = ({int season, int episode});
 
@@ -412,12 +413,82 @@ class _MediaDetailsScreenState extends ConsumerState<MediaDetailsScreen> {
     return _preferAnimeSources();
   }
 
+  /// Player choice for the next PlayerScreen this screen opens: null uses
+  /// the settings, 'ext:<package>' an external app ('ext:' = chooser).
+  String? _playerOverride;
+
+  /// "Open with" sheet (long press on play or an episode): in-app or one of
+  /// the installed video player apps for this one playback.
+  Future<void> _openWith(void Function(String player) run) async {
+    final text = ref.read(appTextProvider);
+    final apps = ExternalPlayerService.isSupported
+        ? await ExternalPlayerService.installedPlayers()
+        : const <ExternalPlayerApp>[];
+    if (!mounted) return;
+    final choice = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: const Color(0xFF16161E),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (sheetContext) => SafeArea(
+        child: ListView(
+          shrinkWrap: true,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+              child: Text(
+                text.t('open_with'),
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+            ListTile(
+              leading: const Icon(Icons.smart_display_rounded, color: Colors.white70),
+              title: Text(
+                text.t('in_app_player'),
+                style: const TextStyle(color: Colors.white),
+              ),
+              onTap: () => Navigator.pop(sheetContext, 'in_app'),
+            ),
+            for (final app in apps)
+              ListTile(
+                leading: const Icon(
+                  Icons.play_circle_outline_rounded,
+                  color: Colors.white70,
+                ),
+                title: Text(app.label, style: const TextStyle(color: Colors.white)),
+                onTap: () => Navigator.pop(sheetContext, 'ext:${app.packageName}'),
+              ),
+            if (ExternalPlayerService.isSupported)
+              ListTile(
+                leading: const Icon(Icons.apps_rounded, color: Colors.white70),
+                title: Text(
+                  text.t('external_player_ask'),
+                  style: const TextStyle(color: Colors.white),
+                ),
+                onTap: () => Navigator.pop(sheetContext, 'ext:'),
+              ),
+          ],
+        ),
+      ),
+    );
+    if (choice == null || !mounted) return;
+    // 'in_app' keeps the settings' in-app engine but skips the external app.
+    run(choice == 'in_app' ? ref.read(appSettingsProvider).videoPlayer : choice);
+  }
+
   Future<void> _resolveAndPickSource({
     int season = 1,
     int episode = 1,
     String? preferredSourceId,
     int? runtimeMinutes,
+    String? preferredPlayer,
   }) async {
+    _playerOverride = preferredPlayer;
     final text = ref.read(appTextProvider);
     final settings = ref.read(appSettingsProvider);
 
@@ -444,6 +515,7 @@ class _MediaDetailsScreenState extends ConsumerState<MediaDetailsScreen> {
             backdropUrl: widget.mediaItem.backdropUrl,
             localVideoPath: downloaded.localVideoPath,
             localSubtitlePath: downloaded.localSubtitlePath,
+            preferredPlayer: _playerOverride,
           ),
         ),
       );
@@ -700,6 +772,7 @@ class _MediaDetailsScreenState extends ConsumerState<MediaDetailsScreen> {
           nextEpisodeNumber: nextTarget?.episode,
           totalEpisodesInSeason: episodeCount,
           preferAnimeSources: _preferAnimeSources(),
+          preferredPlayer: _playerOverride,
         ),
       ),
     );
@@ -818,6 +891,7 @@ class _MediaDetailsScreenState extends ConsumerState<MediaDetailsScreen> {
                                 nextEpisodeNumber: nextEpisodeNumber,
                                 totalEpisodesInSeason: totalEpisodesInSeason,
                                 preferAnimeSources: _preferAnimeSources(),
+                                preferredPlayer: _playerOverride,
                               ),
                             ),
                           );
@@ -1553,6 +1627,14 @@ class _MediaDetailsScreenState extends ConsumerState<MediaDetailsScreen> {
                                   ? null
                                   : () => _resolveAndPickSource(
                                       runtimeMinutes: mediaDetails?.runtimeMinutes,
+                                    ),
+                              onLongPress: _isResolving
+                                  ? null
+                                  : () => _openWith(
+                                      (player) => _resolveAndPickSource(
+                                        runtimeMinutes: mediaDetails?.runtimeMinutes,
+                                        preferredPlayer: player,
+                                      ),
                                     ),
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: Colors.redAccent,
@@ -2602,6 +2684,16 @@ class _MediaDetailsScreenState extends ConsumerState<MediaDetailsScreen> {
                             season: seasonNumber,
                             episode: episode.episodeNumber,
                             runtimeMinutes: episodeRuntimeMinutes,
+                          ),
+                    onLongPress: (!isAired || _isResolving)
+                        ? null
+                        : () => _openWith(
+                            (player) => _resolveAndPickSource(
+                              season: seasonNumber,
+                              episode: episode.episodeNumber,
+                              runtimeMinutes: episodeRuntimeMinutes,
+                              preferredPlayer: player,
+                            ),
                           ),
                   ),
                 );
